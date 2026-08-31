@@ -165,7 +165,13 @@ export default function LoginForm() {
 
             {/* Options Row */}
             <View style={styles.optionsRow}>
-                <Checkbox checked={remember} onPress={() => setRemember(!remember)} label="Remember me" />
+                <TouchableOpacity activeOpacity={0.8} style={styles.checkboxRow} onPress={() => setRemember(!remember)}>
+                    <View style={[styles.checkbox, remember && styles.checkboxActive]}>
+                        {remember && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+                    </View>
+                    <Text style={styles.checkboxLabel}>Remember me</Text>
+                </TouchableOpacity>
+
                 <TouchableOpacity onPress={() => router.push("/auth/forgot-password")}>
                     <Text style={styles.forgotPassword}>Forgot Password?</Text>
                 </TouchableOpacity>
@@ -184,14 +190,9 @@ export default function LoginForm() {
                 <View style={styles.dividerLine} />
             </View>
 
-            <View style={styles.socialRow}>
-                <View style={{ flex: 1 }}>
-                    <SocialButton provider="google" title="Continue with Google" onPress={() => {}} />
-                </View>
-                <View style={{ width: 12 }} />
-                <View style={{ flex: 1 }}>
-                    <SocialButton provider="apple" title="Continue with Apple" onPress={() => {}} />
-                </View>
+            <View style={styles.socialCol}>
+                <SocialButton provider="google" title="Continue with Google" onPress={() => {}} />
+                <SocialButton provider="apple" title="Continue with Apple" onPress={() => {}} />
             </View>
 
             {/* Signup Link */}
@@ -214,43 +215,43 @@ export default function LoginForm() {
 const styles = StyleSheet.create({
     container: {
         width: "100%",
-        paddingTop: 40,
+        paddingTop: 10, // Reduced from 40
     },
     logoSection: {
         alignItems: "center",
-        marginBottom: 40,
+        marginBottom: 24, // Reduced from 40
     },
     appName: {
-        fontSize: 36,
+        fontSize: 32, // Slightly smaller text
         fontWeight: "800",
         color: "#0F172A",
-        marginTop: 8,
+        marginTop: 4, // Reduced from 8
     },
     appTagline: {
-        fontSize: 14,
+        fontSize: 13, // Smaller text
         color: "#6D28D9",
         fontWeight: "500",
-        marginTop: 4,
+        marginTop: 2, // Reduced from 4
     },
     gradientTextRow: {
         flexDirection: "row",
-        marginTop: 4,
+        marginTop: 2, // Reduced from 4
     },
     gradText: {
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: "700",
     },
     welcomeSection: {
-        marginBottom: 24,
+        marginBottom: 20, // Reduced from 24
     },
     welcomeTitle: {
-        fontSize: 24,
+        fontSize: 22, // Smaller
         fontWeight: "700",
         color: "#0F172A",
         marginBottom: 4,
     },
     welcomeSubtitle: {
-        fontSize: 14,
+        fontSize: 13,
         color: "#64748B",
     },
     inputContainer: {
@@ -258,41 +259,41 @@ const styles = StyleSheet.create({
         alignItems: "center",
         borderWidth: 1,
         borderColor: "#E2E8F0",
-        borderRadius: 16,
+        borderRadius: 12, // More squared corners
         backgroundColor: "#FFFFFF",
-        marginBottom: 16,
-        height: 64,
-        paddingHorizontal: 12,
+        marginBottom: 12, // Reduced from 16
+        height: 60, // Reduced from 64
+        paddingHorizontal: 10, // Reduced from 12
         ...Platform.select({
-            ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3 },
-            android: { elevation: 2 },
-            web: { boxShadow: "0 2px 8px rgba(0,0,0,0.04)" } as any,
+            ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 2 },
+            android: { elevation: 1 },
+            web: { boxShadow: "0 1px 4px rgba(0,0,0,0.02)" } as any,
         }),
     },
     inputError: {
         borderColor: Colors.danger,
     },
     iconBox: {
-        width: 40,
-        height: 40,
-        borderRadius: 10,
+        width: 36, // Smaller icon box
+        height: 36,
+        borderRadius: 8,
         backgroundColor: "#F3E8FF",
         justifyContent: "center",
         alignItems: "center",
-        marginRight: 12,
+        marginRight: 10,
     },
     inputInner: {
         flex: 1,
         justifyContent: "center",
     },
     inputLabelFloating: {
-        fontSize: 12,
+        fontSize: 11,
         color: "#64748B",
         fontWeight: "600",
         marginBottom: 2,
     },
     textInput: {
-        fontSize: 14,
+        fontSize: 13,
         color: "#0F172A",
         padding: 0,
         margin: 0,
@@ -304,7 +305,7 @@ const styles = StyleSheet.create({
     errorText: {
         color: Colors.danger,
         fontSize: 12,
-        marginTop: -12,
+        marginTop: -8,
         marginBottom: 12,
         marginLeft: 4,
     },
@@ -312,44 +313,67 @@ const styles = StyleSheet.create({
         color: Colors.danger,
         fontSize: 14,
         fontWeight: "600",
-        marginBottom: 16,
+        marginBottom: 12,
     },
     optionsRow: {
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
-        marginBottom: 24,
+        marginBottom: 20,
+    },
+    checkboxRow: {
+        flexDirection: "row",
+        alignItems: "center",
+    },
+    checkbox: {
+        width: 20,
+        height: 20,
+        borderRadius: 6,
+        borderWidth: 2,
+        borderColor: "#E2E8F0",
+        justifyContent: "center",
+        alignItems: "center",
+        marginRight: 8,
+    },
+    checkboxActive: {
+        backgroundColor: "#5A32FA",
+        borderColor: "#5A32FA",
+    },
+    checkboxLabel: {
+        fontSize: 13,
+        color: "#64748B",
+        fontWeight: "500",
     },
     forgotPassword: {
         color: "#6D28D9",
         fontWeight: "600",
-        fontSize: 14,
+        fontSize: 13,
     },
     loginButton: {
-        backgroundColor: "#6D28D9",
-        height: 56,
-        borderRadius: 16,
+        backgroundColor: "#5A32FA", // Matched exact blue/purple from screenshot
+        height: 52, // Reduced from 56
+        borderRadius: 12,
         flexDirection: "row",
         justifyContent: "center",
         alignItems: "center",
         ...Platform.select({
-            ios: { shadowColor: "#6D28D9", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 8 },
-            android: { elevation: 6 },
-            web: { boxShadow: "0 6px 16px rgba(109, 40, 217, 0.3)" } as any,
+            ios: { shadowColor: "#5A32FA", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 6 },
+            android: { elevation: 4 },
+            web: { boxShadow: "0 4px 12px rgba(90, 50, 250, 0.2)" } as any,
         }),
     },
     loginBtnText: {
         color: "#FFFFFF",
         fontWeight: "700",
-        fontSize: 16,
+        fontSize: 15,
     },
     loginArrow: {
-        marginLeft: 12,
+        marginLeft: 8,
     },
     dividerRow: {
         flexDirection: "row",
         alignItems: "center",
-        marginVertical: 24,
+        marginVertical: 20, // Reduced from 24
     },
     dividerLine: {
         flex: 1,
@@ -358,38 +382,38 @@ const styles = StyleSheet.create({
     },
     dividerText: {
         color: "#64748B",
-        fontSize: 13,
-        paddingHorizontal: 16,
+        fontSize: 12,
+        paddingHorizontal: 12,
     },
-    socialRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        marginBottom: 24,
+    socialCol: {
+        flexDirection: "column",
+        marginBottom: 20,
+        gap: 12,
     },
     signupRow: {
         flexDirection: "row",
         justifyContent: "center",
-        marginBottom: 32,
+        marginBottom: 20, // Reduced from 32
     },
     signupText: {
-        fontSize: 14,
+        fontSize: 13,
         color: "#64748B",
     },
     signupLink: {
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: "700",
-        color: "#6D28D9",
+        color: "#5A32FA",
     },
     secureBadge: {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
-        marginTop: 20,
-        marginBottom: 40,
+        marginTop: 10,
+        marginBottom: 20,
     },
     secureText: {
         marginLeft: 6,
-        fontSize: 12,
+        fontSize: 11,
         color: "#64748B",
         fontWeight: "500",
     },

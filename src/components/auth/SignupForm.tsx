@@ -110,9 +110,6 @@ export default function SignupForm() {
         <View style={styles.container}>
             {/* Header Section */}
             <View style={styles.headerSection}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-                    <Ionicons name="chevron-back" size={24} color="#0F172A" />
-                </TouchableOpacity>
                 <View style={styles.titleRow}>
                     <View style={{ flex: 1 }}>
                         <Text style={styles.headerTitle}>Create Your Account</Text>
@@ -230,11 +227,6 @@ export default function SignupForm() {
                                 <Text style={styles.inputLabelFloating}>Mobile Number</Text>
                                 <TextInput placeholder="Enter your mobile number" placeholderTextColor="#94A3B8" value={value} onChangeText={onChange} style={styles.textInput} keyboardType="phone-pad" />
                             </View>
-                            <View style={styles.countryCodeBox}>
-                                <Text style={styles.flagEmoji}>🇮🇳</Text>
-                                <Text style={styles.countryCodeText}>+91</Text>
-                                <Ionicons name="chevron-down" size={14} color="#64748B" />
-                            </View>
                         </View>
                     )}
                 />
@@ -329,22 +321,7 @@ export default function SignupForm() {
                 )}
             </TouchableOpacity>
 
-            {/* Social Logins */}
-            <View style={styles.dividerRow}>
-                <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>or sign up with</Text>
-                <View style={styles.dividerLine} />
-            </View>
-
-            <View style={styles.socialRow}>
-                <View style={{ flex: 1 }}>
-                    <SocialButton provider="google" title="Continue with Google" onPress={() => { }} />
-                </View>
-                <View style={{ width: 12 }} />
-                <View style={{ flex: 1 }}>
-                    <SocialButton provider="apple" title="Continue with Apple" onPress={() => { }} />
-                </View>
-            </View>
+            {/* Social Logins Removed */}
 
             {/* Login Link */}
             <View style={styles.loginRow}>
@@ -494,14 +471,14 @@ const styles = StyleSheet.create({
         margin: 0,
         ...Platform.select({ web: { outlineStyle: "none" } as any }),
     },
-    countryCodeBox: {
+    countryCodeBoxLeft: {
         flexDirection: "row",
         alignItems: "center",
         backgroundColor: "#F8FAFC",
         paddingHorizontal: 8,
         paddingVertical: 6,
         borderRadius: 8,
-        marginLeft: 8,
+        marginRight: 12,
     },
     flagEmoji: {
         fontSize: 16,
@@ -576,6 +553,7 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         justifyContent: "center",
         alignItems: "center",
+        marginBottom: 24,
         ...Platform.select({
             ios: { shadowColor: "#6D28D9", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 8 },
             android: { elevation: 6 },

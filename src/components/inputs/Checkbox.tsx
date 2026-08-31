@@ -118,7 +118,6 @@ export default function Checkbox({
 const styles = StyleSheet.create({
 
     container: {
-        marginBottom: Spacing.lg,
     },
 
     row: {

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState } from "react";
 import {
     View,
     Text,
@@ -7,369 +7,356 @@ import {
     TouchableOpacity,
     TextInput,
     useWindowDimensions,
-    Alert,
     Platform,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import { useAppTheme, Radius, Spacing, Shadows, Typography } from "../../../theme";
-import apiClient from "../../../api/apiClient";
-import { useAuthStore } from "../../../store/auth.store";
+import Svg, { Path } from "react-native-svg";
+import { useAppTheme } from "../../../theme";
 
-// Standard mock transaction list for the transactions tab manager
-const INITIAL_TRANSACTIONS = [
-    { id: "1", title: "Amazon India", category: "Shopping", amount: -2499, date: "07 May, 2024", time: "02:14 PM", type: "expense", status: "Success", upi: "you@upi" },
-    { id: "2", title: "Salary Credited", category: "Income", amount: 50000, date: "06 May, 2024", time: "10:00 AM", type: "income", status: "Success", upi: "employer@upi" },
-    { id: "3", title: "Swiggy Delivery", category: "Food", amount: -420, date: "05 May, 2024", time: "08:30 PM", type: "expense", status: "Success", upi: "swiggy@upi" },
-    { id: "4", title: "Electric Bill Payment", category: "Utilities", amount: -1250, date: "04 May, 2024", time: "11:15 AM", type: "expense", status: "Success", upi: "statepower@upi" },
-    { id: "5", title: "Netflix Subscription", category: "Entertainment", amount: -649, date: "03 May, 2024", time: "09:00 AM", type: "expense", status: "Success", upi: "netflix@upi" },
-    { id: "6", title: "Zomato Dineout", category: "Food", amount: -1850, date: "02 May, 2024", time: "10:45 PM", type: "expense", status: "Success", upi: "zomato@upi" },
-    { id: "7", title: "Refund from Flipkart", category: "Shopping", amount: 899, date: "01 May, 2024", time: "04:20 PM", type: "income", status: "Success", upi: "flipkart@upi" },
-    { id: "8", title: "Local Grocery Shop", category: "Groceries", amount: -350, date: "30 Apr, 2024", time: "12:30 PM", type: "expense", status: "Success", upi: "grocer@upi" },
-    { id: "9", title: "P2P Transfer to Amit", category: "Transfer", amount: -500, date: "29 Apr, 2024", time: "06:15 PM", type: "expense", status: "Pending", upi: "amit@upi" },
-    { id: "10", title: "Uber Cab Ride", category: "Travel", amount: -280, date: "28 Apr, 2024", time: "08:00 AM", type: "expense", status: "Failed", upi: "uber@upi" },
+// Types
+type TabType = "All" | "Successful" | "Failed" | "Pending";
+
+// SVG Components
+const UpiLogo = () => (
+    <Svg width="40" height="16" viewBox="0 0 64 24">
+        {/* Simple UPI text representation for logo */}
+        <Path d="M4 4v10c0 3.31 2.69 6 6 6s6-2.69 6-6V4h-4v10c0 1.1-.9 2-2 2s-2-.9-2-2V4H4z" fill="#7A7A7A" />
+        <Path d="M22 4v16h4v-5h4c3.31 0 6-2.69 6-6s-2.69-6-6-6h-8zm4 4h4c1.1 0 2 .9 2 2s-.9 2-2 2h-4V8z" fill="#7A7A7A" />
+        <Path d="M42 4h4v16h-4z" fill="#7A7A7A" />
+        <Path d="M50 4l6 8 6-8v16h-4v-8l-2 3-2-3v8h-4V4z" fill="#7A7A7A" />
+        <Path d="M0 24L10 24 16 16 22 24 64 24" stroke="#00A251" strokeWidth="2" fill="none" />
+        <Path d="M0 24L5 24 10 18 15 24 64 24" stroke="#F1841E" strokeWidth="2" fill="none" />
+    </Svg>
+);
+
+const MOCK_DATA = [
+    {
+        id: "1",
+        merchant: "Google Pay",
+        vpa: "gpay-123456@okicici",
+        iconInitials: "G",
+        iconColor: "#22C55E",
+        iconBg: "#DCFCE7",
+        amount: 2450.0,
+        date: "31 May, 2024",
+        time: "10:30 AM",
+        status: "Successful",
+        isUpi: true,
+    },
+    {
+        id: "2",
+        merchant: "PhonePe",
+        vpa: "phonepe-987654@ybl",
+        iconInitials: "P",
+        iconColor: "#A855F7",
+        iconBg: "#F3E8FF",
+        amount: 1850.0,
+        date: "31 May, 2024",
+        time: "09:15 AM",
+        status: "Successful",
+        isUpi: true,
+    },
+    {
+        id: "3",
+        merchant: "Paytm",
+        vpa: "paytm-555666@paytm",
+        iconInitials: "P",
+        iconColor: "#F59E0B",
+        iconBg: "#FEF3C7",
+        amount: 980.0,
+        date: "30 May, 2024",
+        time: "08:45 PM",
+        status: "Failed",
+        isUpi: true,
+    },
+    {
+        id: "4",
+        merchant: "HDFC Bank",
+        vpa: "hdfcbank@upi",
+        iconInitials: "H",
+        iconColor: "#3B82F6",
+        iconBg: "#DBEAFE",
+        amount: 3200.0,
+        date: "30 May, 2024",
+        time: "07:20 PM",
+        status: "Successful",
+        isUpi: true,
+    },
+    {
+        id: "5",
+        merchant: "Amazon Pay",
+        vpa: "amazonpay@apl",
+        iconInitials: "a",
+        iconColor: "#F59E0B",
+        iconBg: "#FEF3C7",
+        amount: 1120.0,
+        date: "30 May, 2024",
+        time: "06:10 PM",
+        status: "Pending",
+        isUpi: true,
+    },
+    {
+        id: "6",
+        merchant: "Flipkart",
+        vpa: "flipkart@axisbank",
+        iconInitials: "f",
+        iconColor: "#F97316",
+        iconBg: "#FFEDD5",
+        amount: 2650.0,
+        date: "29 May, 2024",
+        time: "04:55 PM",
+        status: "Successful",
+        isUpi: true,
+    },
+    {
+        id: "7",
+        merchant: "Neha Patel",
+        vpa: "neha.patel@okicici",
+        iconInitials: "N",
+        iconColor: "#6366F1",
+        iconBg: "#E0E7FF",
+        amount: 750.0,
+        date: "29 May, 2024",
+        time: "02:30 PM",
+        status: "Successful",
+        isUpi: true,
+    },
 ];
 
-const CATEGORIES = ["All", "Shopping", "Income", "Food", "Utilities", "Groceries", "Transfer", "Travel"];
-const STATUSES = ["All", "Success", "Pending", "Failed"];
-
 export default function TransactionsScreen() {
-    const { width } = useWindowDimensions();
-    const isDesktop = width >= 900;
     const { colors, isDark } = useAppTheme();
-
+    const [activeTab, setActiveTab] = useState<TabType>("All");
     const [search, setSearch] = useState("");
-    const [selectedCategory, setSelectedCategory] = useState("All");
-    const [selectedStatus, setSelectedStatus] = useState("All");
 
-    const { user } = useAuthStore();
-    const [transactions, setTransactions] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        const fetchTransactions = async () => {
-            try {
-                const response = await apiClient.get("/transactions", {
-                    params: { userId: user?.id }
-                });
-                setTransactions(response.data);
-            } catch (err: any) {
-                console.warn("Failed to load transactions, falling back to mock:", err.message);
-                setTransactions(INITIAL_TRANSACTIONS);
-            } finally {
-                setLoading(false);
-            }
-        };
-        if (user?.id) {
-            fetchTransactions();
-        }
-    }, [user?.id]);
-
-    // Dynamic filtering
-    const filteredTransactions = useMemo(() => {
-        return transactions.filter((tx) => {
-            const matchesSearch =
-                tx.title.toLowerCase().includes(search.toLowerCase()) ||
-                tx.upi.toLowerCase().includes(search.toLowerCase()) ||
-                tx.category.toLowerCase().includes(search.toLowerCase());
-
-            const matchesCategory =
-                selectedCategory === "All" || tx.category === selectedCategory;
-
-            const matchesStatus =
-                selectedStatus === "All" || tx.status === selectedStatus;
-
-            return matchesSearch && matchesCategory && matchesStatus;
-        });
-    }, [transactions, search, selectedCategory, selectedStatus]);
-
-    const handleExport = (type: string) => {
-        if (Platform.OS === "web") {
-            alert(`Exporting transactions as ${type}...`);
-        } else {
-            Alert.alert("Exporting", `Exporting transactions as ${type}...`);
-        }
-    };
+    // Background should match screenshot perfectly
+    const bgColor = isDark ? colors.background : "#FCFDFE"; 
 
     return (
-        <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.scrollContent}>
-            {/* KPI Cards Row */}
-            <View style={[
-                styles.kpiGrid, 
-                isDesktop ? { flexDirection: "row", gap: 16 } : { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }
-            ]}>
-                <View style={[styles.kpiCard, isDesktop ? { flex: 1 } : { width: "48%", marginBottom: 16, padding: 12 }, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]} numberOfLines={1}>Total Volume</Text>
-                    <Text style={[styles.kpiValue, { color: colors.text }]} numberOfLines={1}>₹ 2,45,980</Text>
-                    <Text style={[styles.kpiSub, { color: colors.textSecondary }]} numberOfLines={1}>1,248 transactions</Text>
+        <ScrollView style={[styles.container, { backgroundColor: bgColor }]} contentContainerStyle={styles.scrollContent}>
+            
+            {/* Top Filters Row */}
+            <View style={styles.topFiltersRow}>
+                <View style={styles.leftFilters}>
+                    <TouchableOpacity style={styles.filterBox} activeOpacity={0.8}>
+                        <Ionicons name="calendar-outline" size={16} color="#64748B" style={{ marginRight: 8 }} />
+                        <Text style={styles.filterText}>01 May, 2024 - 31 May, 2024</Text>
+                        <Ionicons name="chevron-down" size={14} color="#64748B" style={{ marginLeft: 8 }} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.filterBox} activeOpacity={0.8}>
+                        <Ionicons name="funnel-outline" size={16} color="#64748B" style={{ marginRight: 8 }} />
+                        <Text style={styles.filterText}>Filter</Text>
+                        <Ionicons name="chevron-down" size={14} color="#64748B" style={{ marginLeft: 8 }} />
+                    </TouchableOpacity>
                 </View>
-                <View style={[styles.kpiCard, isDesktop ? { flex: 1 } : { width: "48%", marginBottom: 16, padding: 12 }, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]} numberOfLines={1}>Completed</Text>
-                    <Text style={[styles.kpiValue, { color: colors.success }]} numberOfLines={1}>1,231</Text>
-                    <Text style={[styles.kpiSub, { color: colors.textSecondary }]} numberOfLines={1}>₹ 2,44,850 completed</Text>
-                </View>
-                <View style={[styles.kpiCard, isDesktop ? { flex: 1 } : { width: "48%", marginBottom: 16, padding: 12 }, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]} numberOfLines={1}>Pending</Text>
-                    <Text style={[styles.kpiValue, { color: colors.warning }]} numberOfLines={1}>12</Text>
-                    <Text style={[styles.kpiSub, { color: colors.textSecondary }]} numberOfLines={1}>₹ 850 in escrow</Text>
-                </View>
-                <View style={[styles.kpiCard, isDesktop ? { flex: 1 } : { width: "48%", marginBottom: 16, padding: 12 }, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]} numberOfLines={1}>Failed</Text>
-                    <Text style={[styles.kpiValue, { color: colors.danger }]} numberOfLines={1}>5</Text>
-                    <Text style={[styles.kpiSub, { color: colors.textSecondary }]} numberOfLines={1}>₹ 280 failed attempts</Text>
-                </View>
+
+                <TouchableOpacity style={styles.downloadBtn} activeOpacity={0.8}>
+                    <Ionicons name="download-outline" size={18} color="#64748B" />
+                </TouchableOpacity>
             </View>
 
-            {/* Main Content Area */}
-            <View style={[styles.mainCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            {/* KPIs Row */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.kpiRow} style={{ flexGrow: 0, marginBottom: 20 }}>
+                {/* Total Transactions */}
+                <View style={[styles.kpiCard, { borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                    <View style={[styles.iconCircle, { backgroundColor: "#F5F3FF" }]}>
+                        <Ionicons name="swap-horizontal" size={18} color="#8B5CF6" />
+                    </View>
+                    <Text style={styles.kpiTitle}>Total Transactions</Text>
+                    <Text style={[styles.kpiValue, { color: colors.text }]}>1,248</Text>
+                    <View style={styles.kpiTrendRow}>
+                        <Ionicons name="arrow-up" size={12} color="#22C55E" />
+                        <Text style={styles.kpiTrendGreen}>12.4%</Text>
+                        <Text style={styles.kpiTrendSub}> vs Apr 01 - Apr 30</Text>
+                    </View>
+                </View>
+
+                {/* Successful */}
+                <View style={[styles.kpiCard, { borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                    <View style={[styles.iconCircle, { backgroundColor: "#DCFCE7" }]}>
+                        <Ionicons name="checkmark-circle-outline" size={18} color="#22C55E" />
+                    </View>
+                    <Text style={styles.kpiTitle}>Successful</Text>
+                    <Text style={[styles.kpiValue, { color: colors.text }]}>1,180</Text>
+                    <View style={styles.kpiTrendRow}>
+                        <Ionicons name="arrow-up" size={12} color="#22C55E" />
+                        <Text style={styles.kpiTrendGreen}>94.6%</Text>
+                    </View>
+                </View>
+
+                {/* Failed */}
+                <View style={[styles.kpiCard, { borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                    <View style={[styles.iconCircle, { backgroundColor: "#FEF2F2", position: 'relative' }]}>
+                        <Ionicons name="close-circle-outline" size={18} color="#EF4444" />
+                        <View style={{position: 'absolute', top: 0, right: 0, width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444', borderWidth: 1, borderColor: '#FEF2F2'}} />
+                    </View>
+                    <Text style={styles.kpiTitle}>Failed</Text>
+                    <Text style={[styles.kpiValue, { color: colors.text }]}>48</Text>
+                    <View style={styles.kpiTrendRow}>
+                        <Ionicons name="arrow-down" size={12} color="#EF4444" />
+                        <Text style={styles.kpiTrendRed}>3.8%</Text>
+                    </View>
+                </View>
+
+                {/* Pending */}
+                <View style={[styles.kpiCard, { borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                    <View style={[styles.iconCircle, { backgroundColor: "#F0F9FF" }]}>
+                        <Ionicons name="time-outline" size={18} color="#3B82F6" />
+                    </View>
+                    <Text style={styles.kpiTitle}>Pending</Text>
+                    <Text style={[styles.kpiValue, { color: colors.text }]}>20</Text>
+                    <View style={styles.kpiTrendRow}>
+                        <Ionicons name="arrow-up" size={12} color="#3B82F6" />
+                        <Text style={styles.kpiTrendBlue}>1.6%</Text>
+                    </View>
+                </View>
+            </ScrollView>
+
+            {/* Tabs Row */}
+            <View style={styles.tabsWrapper}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContainer}>
+                    {(["All", "Successful", "Failed", "Pending"] as TabType[]).map((tab) => (
+                        <TouchableOpacity
+                            key={tab}
+                            style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
+                            onPress={() => setActiveTab(tab)}
+                            activeOpacity={0.8}
+                        >
+                            <Text style={[
+                                styles.tabText,
+                                { color: activeTab === tab ? "#6D28D9" : "#64748B" },
+                                activeTab === tab && styles.tabTextActive
+                            ]}>
+                                {tab}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
+            </View>
+
+            {/* Search Row */}
+            <View style={styles.searchRow}>
+                <View style={[styles.searchBox, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                    <Ionicons name="search-outline" size={18} color="#94A3B8" />
+                    <TextInput
+                        style={[styles.searchInput, { color: colors.text }]}
+                        placeholder="Search transactions..."
+                        placeholderTextColor="#94A3B8"
+                        value={search}
+                        onChangeText={setSearch}
+                    />
+                </View>
+                <TouchableOpacity style={[styles.slidersBtn, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]} activeOpacity={0.8}>
+                    <Ionicons name="options-outline" size={20} color="#6D28D9" />
+                </TouchableOpacity>
+            </View>
+
+            {/* Main Table Content */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={[styles.tableContainer, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                    
+                    {/* Table Header */}
+                    <View style={[styles.tableHeader, { borderBottomColor: isDark ? colors.border : "#F1F5F9" }]}>
+                        <Text style={[styles.thText, { flex: 2, minWidth: 200 }]}>Transaction</Text>
+                        <Text style={[styles.thText, { flex: 1.2, minWidth: 100 }]}>Type</Text>
+                        <Text style={[styles.thText, { flex: 1.5, minWidth: 140 }]}>Amount</Text>
+                        <Text style={[styles.thText, { width: 100 }]}>Status</Text>
+                    </View>
+
+                    {/* Table Rows */}
+                    {MOCK_DATA.map((tx, index) => (
+                        <View key={tx.id} style={[styles.tableRow, index !== MOCK_DATA.length - 1 && { borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : "#F1F5F9" }]}>
+                            
+                            {/* Transaction Column */}
+                            <View style={[styles.tdCol, { flex: 2, minWidth: 200, flexDirection: "row", alignItems: "center" }]}>
+                                <View style={[styles.merchantIcon, { backgroundColor: tx.iconBg }]}>
+                                    {tx.merchant.includes("Google") || tx.merchant.includes("Paytm") || tx.merchant.includes("Amazon") || tx.merchant.includes("Flipkart") ? (
+                                        <Text style={{ color: tx.iconColor, fontWeight: "800", fontSize: 16 }}>{tx.iconInitials}</Text>
+                                    ) : tx.merchant.includes("PhonePe") ? (
+                                        <Text style={{ color: tx.iconColor, fontWeight: "800", fontSize: 16 }}>{tx.iconInitials}</Text>
+                                    ) : tx.merchant.includes("Bank") ? (
+                                        <Ionicons name="business" size={16} color={tx.iconColor} />
+                                    ) : (
+                                        <Ionicons name="arrow-up-outline" size={16} color={tx.iconColor} style={{ transform: [{rotate: '45deg'}] }} />
+                                    )}
+                                </View>
+                                <View style={{ marginLeft: 10, flex: 1 }}>
+                                    <Text style={[styles.tdMainText, { color: colors.text }]} numberOfLines={1}>{tx.merchant}</Text>
+                                    <Text style={styles.tdSubText} numberOfLines={1}>{tx.vpa}</Text>
+                                </View>
+                            </View>
+
+                            {/* Type Column */}
+                            <View style={[styles.tdCol, { flex: 1.2, minWidth: 100, justifyContent: "center" }]}>
+                                <Text style={[styles.tdMainText, { color: colors.text, fontSize: 11 }]}>UPI Payment</Text>
+                                <View style={{ marginTop: 2 }}>
+                                    <UpiLogo />
+                                </View>
+                            </View>
+
+                            {/* Amount Column */}
+                            <View style={[styles.tdCol, { flex: 1.5, minWidth: 140, justifyContent: "center" }]}>
+                                <Text style={[styles.tdMainText, { color: colors.text }]}>₹ {tx.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</Text>
+                                <Text style={styles.tdSubText}>{tx.date} • {tx.time}</Text>
+                            </View>
+
+                            {/* Status Column */}
+                            <View style={[styles.tdCol, { width: 100, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
+                                <View style={[
+                                    styles.statusPill,
+                                    tx.status === "Successful" && { backgroundColor: isDark ? "#064e3b" : "#DCFCE7" },
+                                    tx.status === "Pending" && { backgroundColor: isDark ? "#1e3a8a" : "#E0F2FE" },
+                                    tx.status === "Failed" && { backgroundColor: isDark ? "#7f1d1d" : "#FEE2E2" },
+                                ]}>
+                                    <Text style={[
+                                        styles.statusText,
+                                        tx.status === "Successful" && { color: "#16A34A" },
+                                        tx.status === "Pending" && { color: "#0284C7" },
+                                        tx.status === "Failed" && { color: "#DC2626" },
+                                    ]}>{tx.status}</Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={16} color="#94A3B8" />
+                            </View>
+                        </View>
+                    ))}
+                </View>
+            </ScrollView>
+
+            {/* Pagination Footer */}
+            <View style={styles.paginationRow}>
+                <Text style={styles.paginationText}>Showing 1 to 10 of 1,248 transactions</Text>
                 
-                {/* Search & Export Row */}
-                <View style={[styles.searchExportRow, isDesktop ? styles.rowLayout : styles.columnLayout]}>
-                    <View style={[styles.searchWrapper, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
-                        <Ionicons name="search-outline" size={18} color={colors.textSecondary} style={styles.searchIcon} />
-                        <TextInput
-                            placeholder="Search by UPI ID, category or description..."
-                            placeholderTextColor={colors.placeholder}
-                            value={search}
-                            onChangeText={setSearch}
-                            style={[styles.searchInput, { color: colors.text }]}
-                        />
+                <View style={styles.pageControls}>
+                    <TouchableOpacity style={[styles.pageBtn, { borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                        <Ionicons name="chevron-back" size={14} color="#94A3B8" />
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity style={[styles.pageBtn, styles.pageBtnActive]}>
+                        <Text style={styles.pageTextActive}>1</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity style={[styles.pageBtn, { borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                        <Text style={styles.pageText}>2</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity style={[styles.pageBtn, { borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                        <Text style={styles.pageText}>3</Text>
+                    </TouchableOpacity>
+                    
+                    <View style={styles.pageDots}>
+                        <Text style={styles.pageText}>...</Text>
                     </View>
                     
-                    <View style={styles.exportBtnsContainer}>
-                        <TouchableOpacity style={[styles.exportBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => handleExport("PDF")} activeOpacity={0.8}>
-                            <Ionicons name="document-text-outline" size={16} color={colors.textSecondary} />
-                            <Text style={[styles.exportBtnText, { color: colors.text }]}>PDF</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={[styles.exportBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => handleExport("CSV")} activeOpacity={0.8}>
-                            <Ionicons name="download-outline" size={16} color={colors.textSecondary} />
-                            <Text style={[styles.exportBtnText, { color: colors.text }]}>CSV</Text>
-                        </TouchableOpacity>
-                    </View>
+                    <TouchableOpacity style={[styles.pageBtn, { borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                        <Text style={styles.pageText}>125</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity style={[styles.pageBtn, { borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                        <Ionicons name="chevron-forward" size={14} color="#64748B" />
+                    </TouchableOpacity>
                 </View>
-
-                {/* Categories & Status Filters Row */}
-                <View style={styles.filtersBlock}>
-                    <Text style={[styles.filterTitle, { color: colors.textSecondary }]}>Category</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-                        <View style={styles.filterPillsRow}>
-                            {CATEGORIES.map((cat) => (
-                                <TouchableOpacity
-                                    key={cat}
-                                    onPress={() => setSelectedCategory(cat)}
-                                    style={[
-                                        styles.pillBtn,
-                                        { backgroundColor: isDark ? colors.border : "#F1F5F9" },
-                                        selectedCategory === cat && { backgroundColor: colors.primary }
-                                    ]}
-                                >
-                                    <Text style={[
-                                        styles.pillBtnText,
-                                        { color: colors.textSecondary },
-                                        selectedCategory === cat && { color: "#FFFFFF", fontWeight: "700" }
-                                    ]}>
-                                        {cat}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-                    </ScrollView>
-
-                    <Text style={[styles.filterTitle, { marginTop: 12, color: colors.textSecondary }]}>Status</Text>
-                    <View style={styles.filterPillsRow}>
-                        {STATUSES.map((st) => (
-                            <TouchableOpacity
-                                key={st}
-                                onPress={() => setSelectedStatus(st)}
-                                style={[
-                                    styles.pillBtn,
-                                    { backgroundColor: isDark ? colors.border : "#F1F5F9" },
-                                    selectedStatus === st && { backgroundColor: colors.primary }
-                                ]}
-                            >
-                                <Text style={[
-                                    styles.pillBtnText,
-                                    { color: colors.textSecondary },
-                                    selectedStatus === st && { color: "#FFFFFF", fontWeight: "700" }
-                                ]}>
-                                    {st}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                </View>
-
-                <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-                {/* Transactions Table / List */}
-                {isDesktop ? (
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tableScroll}>
-                        <View style={styles.tableInner}>
-                            {/* Header Row */}
-                            <View style={[styles.tableHeaderRow, { borderBottomColor: colors.border }]}>
-                                <Text style={[styles.tableHeaderCell, { width: 140, color: colors.textSecondary }]}>Date & Time</Text>
-                                <Text style={[styles.tableHeaderCell, { width: 160, color: colors.textSecondary }]}>UPI ID</Text>
-                                <Text style={[styles.tableHeaderCell, { width: 120, color: colors.textSecondary }]}>Description</Text>
-                                <Text style={[styles.tableHeaderCell, { width: 110, color: colors.textSecondary }]}>Category</Text>
-                                <Text style={[styles.tableHeaderCell, { width: 90, color: colors.textSecondary }]}>Status</Text>
-                                <Text style={[styles.tableHeaderCell, { width: 100, textAlign: "right", color: colors.textSecondary }]}>Amount</Text>
-                            </View>
-
-                            {/* Data Rows */}
-                            {filteredTransactions.length === 0 ? (
-                                <View style={styles.emptyState}>
-                                    <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No transactions match your search/filters.</Text>
-                                </View>
-                            ) : (
-                                filteredTransactions.map((tx) => {
-                                    const isIncome = tx.type === "income";
-                                    return (
-                                        <View key={tx.id} style={[styles.tableRow, { borderBottomColor: colors.border }]}>
-                                            {/* Date */}
-                                            <View style={{ width: 140 }}>
-                                                <Text style={[styles.cellMainText, { color: colors.text }]}>{tx.date}</Text>
-                                                <Text style={[styles.cellSubText, { color: colors.textSecondary }]}>{tx.time}</Text>
-                                            </View>
-
-                                            {/* UPI ID */}
-                                            <Text style={[styles.cellMainText, { width: 160, color: colors.textSecondary }]} numberOfLines={1}>
-                                                {tx.upi}
-                                            </Text>
-
-                                            {/* Description */}
-                                            <Text style={[styles.cellMainText, { width: 120, color: colors.text }]} numberOfLines={1}>
-                                                {tx.title}
-                                            </Text>
-
-                                            {/* Category Badge */}
-                                            <View style={{ width: 110 }}>
-                                                <View style={[styles.catBadge, { backgroundColor: isDark ? colors.border : "#F5F3FF" }]}>
-                                                    <Text style={[styles.catBadgeText, { color: colors.primary }]}>{tx.category}</Text>
-                                                </View>
-                                            </View>
-
-                                            {/* Status Pill */}
-                                            <View style={{ width: 90 }}>
-                                                <View style={[
-                                                    styles.statusPill,
-                                                    tx.status === "Success" && { backgroundColor: isDark ? "#064e3b" : "#ECFDF5" },
-                                                    tx.status === "Pending" && { backgroundColor: isDark ? "#78350f" : "#FFF9E6" },
-                                                    tx.status === "Failed" && { backgroundColor: isDark ? "#7f1d1d" : "#FFF5F5" },
-                                                ]}>
-                                                    <View style={[
-                                                        styles.statusDot,
-                                                        tx.status === "Success" && { backgroundColor: colors.success },
-                                                        tx.status === "Pending" && { backgroundColor: colors.warning },
-                                                        tx.status === "Failed" && { backgroundColor: colors.danger },
-                                                    ]} />
-                                                    <Text style={[
-                                                        styles.statusText,
-                                                        tx.status === "Success" && { color: colors.success },
-                                                        tx.status === "Pending" && { color: colors.warning },
-                                                        tx.status === "Failed" && { color: colors.danger },
-                                                    ]}>{tx.status}</Text>
-                                                </View>
-                                            </View>
-
-                                            {/* Amount */}
-                                            <Text style={[
-                                                styles.amountText,
-                                                { width: 100, textAlign: "right" },
-                                                { color: isIncome ? colors.success : colors.danger }
-                                            ]}>
-                                                {isIncome ? "+" : "-"}₹{Math.abs(tx.amount).toLocaleString()}
-                                            </Text>
-                                        </View>
-                                    );
-                                })
-                            )}
-                        </View>
-                    </ScrollView>
-                ) : (
-                    // Mobile List View
-                    <View style={styles.mobileListWrapper}>
-                        {filteredTransactions.length === 0 ? (
-                            <View style={styles.emptyState}>
-                                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No transactions match your search/filters.</Text>
-                            </View>
-                        ) : (
-                            filteredTransactions.map((tx) => {
-                                const isIncome = tx.type === "income";
-                                return (
-                                    <View key={tx.id} style={[styles.mobileCard, { backgroundColor: isDark ? colors.border : "#F8FAFC", borderColor: colors.border }]}>
-                                        <View style={styles.mobileCardTopRow}>
-                                            <View style={styles.mobileIconWrapper}>
-                                                <View style={[styles.mobileIcon, { backgroundColor: isIncome ? "#ECFDF5" : "#FEF2F2" }]}>
-                                                    <Ionicons name={isIncome ? "arrow-down" : "arrow-up"} size={16} color={isIncome ? colors.success : colors.danger} />
-                                                </View>
-                                                <View style={{ flex: 1, paddingRight: 8 }}>
-                                                    <Text style={[styles.mobileCardTitle, { color: colors.text }]} numberOfLines={1}>{tx.title}</Text>
-                                                    <Text style={[styles.mobileCardUpi, { color: colors.textSecondary }]} numberOfLines={1}>{tx.upi}</Text>
-                                                </View>
-                                            </View>
-                                            <Text style={[
-                                                styles.mobileAmountText,
-                                                { color: isIncome ? colors.success : colors.text }
-                                            ]}>
-                                                {isIncome ? "+" : "-"}₹{Math.abs(tx.amount).toLocaleString()}
-                                            </Text>
-                                        </View>
-                                        
-                                        <View style={styles.mobileCardBottomRow}>
-                                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                                                <Text style={[styles.mobileDateText, { color: colors.textSecondary }]}>{tx.date} • {tx.time}</Text>
-                                            </View>
-                                            
-                                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                                                <View style={[styles.catBadge, { backgroundColor: isDark ? colors.background : "#F5F3FF" }]}>
-                                                    <Text style={[styles.catBadgeText, { color: colors.primary }]}>{tx.category}</Text>
-                                                </View>
-                                                <View style={[
-                                                    styles.statusPill,
-                                                    tx.status === "Success" && { backgroundColor: isDark ? "#064e3b" : "#ECFDF5" },
-                                                    tx.status === "Pending" && { backgroundColor: isDark ? "#78350f" : "#FFF9E6" },
-                                                    tx.status === "Failed" && { backgroundColor: isDark ? "#7f1d1d" : "#FFF5F5" },
-                                                ]}>
-                                                    <View style={[
-                                                        styles.statusDot,
-                                                        tx.status === "Success" && { backgroundColor: colors.success },
-                                                        tx.status === "Pending" && { backgroundColor: colors.warning },
-                                                        tx.status === "Failed" && { backgroundColor: colors.danger },
-                                                    ]} />
-                                                    <Text style={[
-                                                        styles.statusText,
-                                                        tx.status === "Success" && { color: colors.success },
-                                                        tx.status === "Pending" && { color: colors.warning },
-                                                        tx.status === "Failed" && { color: colors.danger },
-                                                    ]}>{tx.status}</Text>
-                                                </View>
-                                            </View>
-                                        </View>
-                                    </View>
-                                );
-                            })
-                        )}
-                    </View>
-                )}
-
-                {/* Pagination footer */}
-                <View style={styles.paginationRow}>
-                    <Text style={[styles.paginationLabel, { color: colors.textSecondary }]}>
-                        Showing 1 to {filteredTransactions.length} of {filteredTransactions.length} records
-                    </Text>
-                    <View style={styles.paginationControls}>
-                        <TouchableOpacity style={[styles.pageArrow, { backgroundColor: colors.surface, borderColor: colors.border }]} disabled>
-                            <Ionicons name="chevron-back" size={16} color={colors.textSecondary} />
-                        </TouchableOpacity>
-                        <View style={[styles.pageActivePill, { backgroundColor: colors.primary, borderColor: colors.primary }]}>
-                            <Text style={[styles.pageActiveText, { color: "#FFFFFF" }]}>1</Text>
-                        </View>
-                        <TouchableOpacity style={[styles.pageArrow, { backgroundColor: colors.surface, borderColor: colors.border }]} disabled>
-                            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-                        </TouchableOpacity>
-                    </View>
-                </View>
-
             </View>
+
         </ScrollView>
     );
 }
@@ -379,46 +366,149 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     scrollContent: {
-        padding: Spacing.lg,
-        paddingBottom: 80,
+        padding: 16,
+        paddingBottom: 40,
     },
-    kpiGrid: {
-        marginBottom: 24,
-    },
-    kpiCard: {
-        borderWidth: 1,
-        borderRadius: 16,
-        padding: 18,
-        ...Shadows.sm,
-    },
-    kpiLabel: {
-        fontSize: 11,
-        fontWeight: "600",
-    },
-    kpiValue: {
-        fontSize: 22,
-        fontWeight: "800",
-        marginTop: 6,
-    },
-    kpiSub: {
-        fontSize: 10,
-        marginTop: 2,
-    },
-    mainCard: {
-        borderRadius: 20,
-        padding: 24,
-        borderWidth: 1,
-        ...Shadows.md,
-    },
-    searchExportRow: {
+    topFiltersRow: {
+        flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
-        gap: 16,
         marginBottom: 20,
     },
-    searchWrapper: {
+    leftFilters: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+    },
+    filterBox: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#FFFFFF",
+        borderWidth: 1,
+        borderColor: "#F1F5F9",
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        ...Platform.select({
+            ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 3 },
+            android: { elevation: 1 },
+            web: { boxShadow: "0 2px 6px rgba(0,0,0,0.02)" } as any,
+        })
+    },
+    filterText: {
+        fontSize: 12,
+        color: "#1E293B",
+        fontWeight: "500",
+    },
+    downloadBtn: {
+        width: 34,
+        height: 34,
+        backgroundColor: "#FFFFFF",
+        borderWidth: 1,
+        borderColor: "#F1F5F9",
+        borderRadius: 8,
+        justifyContent: "center",
+        alignItems: "center",
+        ...Platform.select({
+            ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 3 },
+            android: { elevation: 1 },
+            web: { boxShadow: "0 2px 6px rgba(0,0,0,0.02)" } as any,
+        })
+    },
+    kpiRow: {
+        gap: 16,
+        paddingBottom: 4,
+    },
+    kpiCard: {
+        backgroundColor: "#FFFFFF",
+        borderWidth: 1,
+        borderRadius: 16,
+        padding: 16,
+        width: 150,
+        ...Platform.select({
+            ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4 },
+            android: { elevation: 2 },
+            web: { boxShadow: "0 4px 12px rgba(0,0,0,0.03)" } as any,
+        })
+    },
+    iconCircle: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        justifyContent: "center",
+        alignItems: "center",
+        marginBottom: 12,
+    },
+    kpiTitle: {
+        fontSize: 11,
+        color: "#64748B",
+        fontWeight: "600",
+        marginBottom: 4,
+    },
+    kpiValue: {
+        fontSize: 20,
+        fontWeight: "800",
+        marginBottom: 8,
+    },
+    kpiTrendRow: {
+        flexDirection: "row",
+        alignItems: "center",
+    },
+    kpiTrendGreen: {
+        fontSize: 10,
+        color: "#16A34A",
+        fontWeight: "700",
+        marginLeft: 2,
+    },
+    kpiTrendRed: {
+        fontSize: 10,
+        color: "#DC2626",
+        fontWeight: "700",
+        marginLeft: 2,
+    },
+    kpiTrendBlue: {
+        fontSize: 10,
+        color: "#0284C7",
+        fontWeight: "700",
+        marginLeft: 2,
+    },
+    kpiTrendSub: {
+        fontSize: 10,
+        color: "#94A3B8",
+        marginLeft: 4,
+    },
+    tabsWrapper: {
+        borderBottomWidth: 1,
+        borderBottomColor: "#F1F5F9",
+        marginBottom: 20,
+    },
+    tabsContainer: {
+        flexDirection: "row",
+    },
+    tabItem: {
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        marginRight: 8,
+        borderBottomWidth: 2,
+        borderBottomColor: "transparent",
+    },
+    tabItemActive: {
+        borderBottomColor: "#6D28D9",
+    },
+    tabText: {
+        fontSize: 13,
+        fontWeight: "600",
+    },
+    tabTextActive: {
+        fontWeight: "700",
+    },
+    searchRow: {
+        flexDirection: "row",
+        gap: 12,
+        marginBottom: 20,
+    },
+    searchBox: {
         flex: 1,
-        width: "100%",
         flexDirection: "row",
         alignItems: "center",
         borderWidth: 1,
@@ -426,231 +516,116 @@ const styles = StyleSheet.create({
         paddingHorizontal: 12,
         height: 44,
     },
-    searchIcon: {
-        marginRight: 8,
-    },
     searchInput: {
         flex: 1,
+        marginLeft: 8,
         fontSize: 13,
-        borderWidth: 0,
         padding: 0,
-        ...Platform.select({
-            web: {
-                outlineStyle: "none",
-            } as any,
-        }),
+        ...Platform.select({ web: { outlineStyle: "none" } as any }),
     },
-    exportBtnsContainer: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 10,
-    },
-    exportBtn: {
-        flexDirection: "row",
-        alignItems: "center",
+    slidersBtn: {
+        width: 44,
+        height: 44,
         borderWidth: 1,
-        borderRadius: 10,
-        paddingHorizontal: 16,
-        height: 38,
-        gap: 6,
-    },
-    exportBtnText: {
-        fontSize: 12,
-        fontWeight: "600",
-    },
-    filtersBlock: {
-        marginBottom: 16,
-    },
-    filterTitle: {
-        fontSize: 11,
-        fontWeight: "700",
-        marginBottom: 8,
-        textTransform: "uppercase",
-        letterSpacing: 0.5,
-    },
-    horizontalScroll: {
-        width: "100%",
-    },
-    filterPillsRow: {
-        flexDirection: "row",
-        gap: 8,
-        paddingBottom: 2,
-    },
-    pillBtn: {
-        paddingHorizontal: 14,
-        paddingVertical: 6,
-        borderRadius: 8,
-    },
-    pillBtnText: {
-        fontSize: 12,
-        fontWeight: "600",
-    },
-    divider: {
-        height: 1,
-        marginVertical: 16,
-    },
-    tableScroll: {
-        width: "100%",
-    },
-    tableInner: {
-        minWidth: 720,
-    },
-    tableHeaderRow: {
-        flexDirection: "row",
+        borderRadius: 12,
+        justifyContent: "center",
         alignItems: "center",
-        borderBottomWidth: 1.5,
-        paddingBottom: 10,
-        marginBottom: 6,
     },
-    tableHeaderCell: {
+    tableContainer: {
+        borderRadius: 16,
+        borderWidth: 1,
+        overflow: "hidden",
+        minWidth: 700, 
+    },
+    tableHeader: {
+        flexDirection: "row",
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        backgroundColor: "#F8FAFC",
+    },
+    thText: {
         fontSize: 11,
+        color: "#64748B",
         fontWeight: "700",
     },
     tableRow: {
         flexDirection: "row",
-        alignItems: "center",
-        borderBottomWidth: 1,
-        paddingVertical: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 16,
     },
-    cellMainText: {
-        fontSize: 13,
-        fontWeight: "600",
+    tdCol: {
     },
-    cellSubText: {
-        fontSize: 10,
-        marginTop: 2,
-    },
-    catBadge: {
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 6,
-        alignSelf: "flex-start",
-    },
-    catBadgeText: {
-        fontSize: 10,
-        fontWeight: "700",
-    },
-    statusPill: {
-        flexDirection: "row",
-        alignItems: "center",
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 8,
-        alignSelf: "flex-start",
-        gap: 6,
-    },
-    statusDot: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-    },
-    statusText: {
-        fontSize: 10,
-        fontWeight: "700",
-    },
-    amountText: {
-        fontSize: 13,
-        fontWeight: "700",
-    },
-    emptyState: {
-        paddingVertical: 32,
-        alignItems: "center",
-    },
-    emptyText: {
-        fontSize: 13,
-    },
-    paginationRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginTop: 18,
-    },
-    paginationLabel: {
-        fontSize: 12,
-    },
-    paginationControls: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
-    },
-    pageArrow: {
-        width: 32,
-        height: 32,
-        borderRadius: 8,
-        borderWidth: 1,
-        justifyContent: "center",
-        alignItems: "center",
-    },
-    pageActivePill: {
-        width: 32,
-        height: 32,
-        borderRadius: 8,
-        borderWidth: 1,
-        justifyContent: "center",
-        alignItems: "center",
-    },
-    pageActiveText: {
-        fontSize: 12,
-        fontWeight: "700",
-    },
-    rowLayout: {
-        flexDirection: "row",
-    },
-    columnLayout: {
-        flexDirection: "column",
-    },
-    mobileListWrapper: {
-        width: "100%",
-        gap: 12,
-    },
-    mobileCard: {
-        borderWidth: 1,
-        borderRadius: 12,
-        padding: 16,
-        ...Shadows.sm,
-    },
-    mobileCardTopRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "flex-start",
-        marginBottom: 12,
-    },
-    mobileIconWrapper: {
-        flexDirection: "row",
-        flex: 1,
-        alignItems: "center",
-        gap: 12,
-    },
-    mobileIcon: {
+    merchantIcon: {
         width: 36,
         height: 36,
         borderRadius: 18,
         justifyContent: "center",
         alignItems: "center",
     },
-    mobileCardTitle: {
-        fontSize: 14,
+    tdMainText: {
+        fontSize: 12,
         fontWeight: "700",
         marginBottom: 2,
     },
-    mobileCardUpi: {
-        fontSize: 11,
+    tdSubText: {
+        fontSize: 10,
+        color: "#94A3B8",
     },
-    mobileAmountText: {
-        fontSize: 15,
-        fontWeight: "800",
-        paddingLeft: 8,
+    statusPill: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
     },
-    mobileCardBottomRow: {
+    statusText: {
+        fontSize: 10,
+        fontWeight: "700",
+    },
+    paginationRow: {
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
-        borderTopWidth: 1,
-        borderTopColor: "rgba(0,0,0,0.05)",
-        paddingTop: 12,
+        marginTop: 20,
+        paddingHorizontal: 4,
+        flexWrap: "wrap",
+        gap: 12,
     },
-    mobileDateText: {
-        fontSize: 11,
-        fontWeight: "500",
+    paginationText: {
+        fontSize: 12,
+        color: "#64748B",
     },
+    pageControls: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+    },
+    pageBtn: {
+        minWidth: 32,
+        height: 32,
+        borderRadius: 6,
+        borderWidth: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        paddingHorizontal: 8,
+        backgroundColor: "#FFFFFF",
+    },
+    pageBtnActive: {
+        backgroundColor: "#F3E8FF",
+        borderColor: "#F3E8FF",
+    },
+    pageText: {
+        fontSize: 12,
+        color: "#0F172A",
+        fontWeight: "600",
+    },
+    pageTextActive: {
+        fontSize: 12,
+        color: "#6D28D9",
+        fontWeight: "700",
+    },
+    pageDots: {
+        width: 24,
+        justifyContent: "center",
+        alignItems: "center",
+    }
 });

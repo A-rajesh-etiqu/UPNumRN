@@ -101,7 +101,8 @@ const styles = StyleSheet.create({
     mobileContent: {
         flexGrow: 1,
         paddingHorizontal: 24,
-        paddingVertical: 36,
+        paddingTop: Platform.OS === 'ios' ? 60 : 40,
+        paddingBottom: 24,
     },
     tabletHero: {
         height: 360,

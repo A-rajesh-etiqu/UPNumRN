@@ -1,45 +1,66 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
     ActivityIndicator,
     StyleSheet,
     Text,
     View,
     Modal,
-    TextInput,
     TouchableOpacity,
-    Alert,
-    Platform,
     useWindowDimensions,
     ScrollView,
+    Platform,
+    Alert,
+    TextInput
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import { openBrowserAuth, openBrowser } from "../../../utils/browser";
-import { Linking } from "react-native";
-import { setuService } from "../../../services/setu.service";
-import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop } from "react-native-svg";
-import { LineChart } from "react-native-gifted-charts";
+import { LineChart, PieChart } from "react-native-gifted-charts";
 
 import DashboardLayout from "../../../components/layout/DashboardLayout";
 import { useDashboardStore } from "../../../store/dashboard.store";
-import { useAppTheme, Spacing } from "../../../theme";
+import { useAppTheme } from "../../../theme";
 import { useAuthStore } from "../../../store/auth.store";
+import { router, useLocalSearchParams } from "../../../navigation/RootNavigation";
+import { setuService } from "../../../services/setu.service";
 import apiClient from "../../../api/apiClient";
-import { useLocalSearchParams, router } from "../../../navigation/RootNavigation";
+import { openBrowserAuth } from "../../../utils/browser";
+
+// Reusable Components
+const SectionCard = ({ children, style }: any) => {
+    const { colors, isDark } = useAppTheme();
+    return (
+        <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }, style]}>
+            {children}
+        </View>
+    );
+};
+
+const SectionHeader = ({ title, icon }: any) => {
+    const { colors } = useAppTheme();
+    return (
+        <View style={styles.sectionHeaderRow}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
+            {icon && <Ionicons name={icon} size={16} color={colors.textSecondary} />}
+        </View>
+    );
+};
 
 export default function DashboardScreen() {
     const { width } = useWindowDimensions();
     const isDesktop = width >= 1024;
-    const { user, updateUser, logout } = useAuthStore();
-    const { colors } = useAppTheme();
+    const { user, logout } = useAuthStore();
+    const { colors, isDark } = useAppTheme();
+    const { loading, loadDashboard } = useDashboardStore();
 
-    const [isSyncModalVisible, setIsSyncModalVisible] = React.useState(false);
-    const [isProfileMenuVisible, setIsProfileMenuVisible] = React.useState(false);
-    const [phoneNumber, setPhoneNumber] = React.useState("");
-    const [isSyncing, setIsSyncing] = React.useState(false);
-    const [activeTab, setActiveTab] = React.useState("Overview");
+    const [isProfileMenuVisible, setIsProfileMenuVisible] = useState(false);
+    const [isSyncModalVisible, setIsSyncModalVisible] = useState(false);
+    const [phoneNumber, setPhoneNumber] = useState("");
+    const [isSyncing, setIsSyncing] = useState(false);
+    const params = useLocalSearchParams();
+    
+    // Determine user type
+    const isBusiness = user?.userType === "BUSINESS";
 
     const handleSyncSubmit = async () => {
-        console.log("Sync submit clicked with phone:", phoneNumber);
         if (!phoneNumber) {
             Alert.alert("Error", "Please enter your phone number");
             return;
@@ -47,26 +68,20 @@ export default function DashboardScreen() {
 
         setIsSyncing(true);
         try {
-            console.log("Current user:", user);
             const requestUserId = user?.id || "user-1";
-
             const redirectUrl = Platform.OS === 'web' 
                 ? ((globalThis as any).window?.location?.origin || '') + '/tabs/dashboard'
                 : 'upnumrn://tabs/dashboard';
 
-            console.log("Calling createConsent API with redirectUrl:", redirectUrl);
             const response = await setuService.createConsent({
                 userId: requestUserId,
                 vua: `${phoneNumber}@setu`,
                 consentDetail: {},
                 redirectUrl: redirectUrl
             });
-            console.log("createConsent Response:", response);
 
             if (response.data?.url) {
-                // Hide modal and open browser
                 setIsSyncModalVisible(false);
-
                 const browserResult = await openBrowserAuth(
                     response.data.url,
                     redirectUrl
@@ -87,16 +102,11 @@ export default function DashboardScreen() {
                 Alert.alert("Error", "Failed to generate Setu Consent link");
             }
         } catch (error: any) {
-            console.error("Setu Sync Error: ", error);
             Alert.alert("Error", error.message || "Failed to start sync");
         } finally {
             setIsSyncing(false);
         }
     };
-
-
-    const { data, loading, loadDashboard } = useDashboardStore();
-    const params = useLocalSearchParams();
 
     useEffect(() => {
         const checkParamsAndSync = async () => {
@@ -120,22 +130,6 @@ export default function DashboardScreen() {
         loadDashboard(user?.id);
     }, [user?.id]);
 
-    useEffect(() => {
-        const syncProfile = async () => {
-            try {
-                const response = await apiClient.get(`/profile?userId=${user?.id}`);
-                if (response.data && response.data.profile) {
-                    updateUser(response.data.profile);
-                }
-            } catch (err) {
-                console.warn("Failed to sync profile status:", err);
-            }
-        };
-        if (user?.id) {
-            syncProfile();
-        }
-    }, [user?.id]);
-
     if (loading) {
         return (
             <DashboardLayout>
@@ -144,59 +138,27 @@ export default function DashboardScreen() {
         );
     }
 
-    const chartData1 = [
-        { value: 15000, label: '01 May' },
-        { value: 20000, label: '' },
-        { value: 30000, label: '06 May' },
-        { value: 28000, label: '' },
-        { value: 30000, label: '' },
-        { value: 22000, label: '11 May' },
-        { value: 38000, label: '' },
-        { value: 22000, label: '16 May' },
-        { value: 38000, label: '' },
-        { value: 40000, label: '21 May' },
-        { value: 30000, label: '' },
-        { value: 40000, label: '26 May' },
-        { value: 45000, label: '' },
-        { value: 32000, label: '31 May' },
-    ];
-    
-    const chartData2 = [
-        { value: 7500, label: '01 May' },
-        { value: 12500, label: '' },
-        { value: 17500, label: '06 May' },
-        { value: 20000, label: '' },
-        { value: 15000, label: '' },
-        { value: 17500, label: '11 May' },
-        { value: 22500, label: '' },
-        { value: 15000, label: '16 May' },
-        { value: 22500, label: '' },
-        { value: 25000, label: '21 May' },
-        { value: 22500, label: '' },
-        { value: 32500, label: '26 May' },
-        { value: 35000, label: '' },
-        { value: 25000, label: '31 May' },
-    ];
+    const userName = user?.firstName || "Testuser";
 
     return (
         <DashboardLayout>
-            {/* Header */}
+            {/* Header Section */}
             <View style={styles.headerContainer}>
                 <View style={{ flex: 1 }}>
-                    <View style={styles.headerTitleRow}>
-                        <Text style={styles.pageTitle}>AI Insights</Text>
-                        <Ionicons name="sparkles" size={24} color="#6C2CF4" style={{ marginLeft: 6 }} />
-                    </View>
-                    <Text style={styles.pageSubtitle}>Smart insights and recommendations{"\n"}to grow your business</Text>
+                    <Text style={[styles.greetingText, { color: colors.text }]}>Good afternoon, {userName} 👋</Text>
+                    <Text style={[styles.subGreetingText, { color: colors.textSecondary }]}>
+                        Here's your {isBusiness ? "business" : "financial"} overview
+                    </Text>
                 </View>
-                <View style={styles.headerActions}>
-                    <TouchableOpacity style={styles.syncBtn} onPress={() => setIsSyncModalVisible(true)}>
-                        <Text style={styles.syncBtnText}>Sync Data</Text>
-                        <Ionicons name="refresh-outline" size={14} color="#FFF" />
+                
+                <View style={styles.headerRightActions}>
+                    <TouchableOpacity style={[styles.iconButton, { borderColor: colors.border }]}>
+                        <Ionicons name="notifications-outline" size={20} color={colors.text} />
+                        <View style={styles.notificationBadge} />
                     </TouchableOpacity>
-                    {/* User Avatar */}
+                    
                     <View style={{ position: "relative" }}>
-                        <TouchableOpacity onPress={() => setIsProfileMenuVisible(true)} style={styles.avatarCircle}>
+                        <TouchableOpacity onPress={() => setIsProfileMenuVisible(true)} style={[styles.avatarCircle, { backgroundColor: colors.primary }]}>
                             <Ionicons name="person" size={20} color="#FFF" />
                         </TouchableOpacity>
 
@@ -220,248 +182,25 @@ export default function DashboardScreen() {
                 </View>
             </View>
 
-            {/* Filters */}
-            <View style={styles.filtersRow}>
-                <TouchableOpacity style={styles.filterBtn} activeOpacity={0.8}>
-                    <Ionicons name="calendar-outline" size={14} color="#64748B" />
-                    <Text style={styles.filterText}>01 May, 2024 - 31 May, 2024</Text>
-                    <Ionicons name="chevron-down" size={14} color="#64748B" />
+            {/* Global Filter & Sync Data */}
+            <View style={{ marginBottom: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <TouchableOpacity style={[styles.monthFilter, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={[styles.monthFilterText, { color: colors.text }]}>This Month</Text>
+                    <Ionicons name="chevron-down" size={16} color={colors.textSecondary} />
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.filterBtn} activeOpacity={0.8}>
-                    <Ionicons name="bar-chart-outline" size={14} color="#64748B" />
-                    <Text style={styles.filterText}>Compare</Text>
-                    <Ionicons name="chevron-down" size={14} color="#64748B" />
-                </TouchableOpacity>
-            </View>
 
-            {/* Time Tabs */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
-                <View style={styles.tabsRow}>
-                    {["Overview", "Day", "Week", "Month", "Quarter", "Year"].map((tab) => {
-                        const isActive = activeTab === tab;
-                        return (
-                            <TouchableOpacity
-                                key={tab}
-                                style={[styles.tabBtn, isActive && styles.tabBtnActive]}
-                                onPress={() => setActiveTab(tab)}
-                            >
-                                <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{tab}</Text>
-                            </TouchableOpacity>
-                        );
-                    })}
-                </View>
-            </ScrollView>
-
-            {/* KPI Cards */}
-            <View style={styles.kpiGrid}>
-                {/* Total Sales */}
-                <View style={[styles.kpiCard, { backgroundColor: "#F9F5FF" }]}>
-                    <View style={styles.kpiCardTop}>
-                        <View style={styles.kpiContent}>
-                            <View style={[styles.kpiIconBox, { backgroundColor: "#F0E7FF" }]}>
-                                <Ionicons name="cash-outline" size={16} color="#6C2CF4" />
-                            </View>
-                            <Text style={styles.kpiTitle}>Total Sales</Text>
-                            <Text style={styles.kpiValue}>₹ 2,45,980</Text>
-                            <Text style={styles.kpiTrendUp}>↑ 18.6%</Text>
-                            <Text style={styles.kpiDesc}>vs Apr 01 - Apr 30</Text>
-                        </View>
-                        <View style={styles.kpiGraphic}>
-                            <Svg width="100%" height="80" viewBox="0 0 100 80">
-                                <Defs>
-                                    <SvgGradient id="gradPurple" x1="0" y1="0" x2="0" y2="1">
-                                        <Stop offset="0%" stopColor="#6C2CF4" stopOpacity="0.2" />
-                                        <Stop offset="100%" stopColor="#6C2CF4" stopOpacity="0" />
-                                    </SvgGradient>
-                                </Defs>
-                                <Path d="M0,60 L20,40 L40,50 L60,30 L80,40 L100,10 L100,80 L0,80 Z" fill="url(#gradPurple)" />
-                                <Path d="M0,60 L20,40 L40,50 L60,30 L80,40 L100,10" fill="none" stroke="#6C2CF4" strokeWidth="2" />
-                            </Svg>
-                        </View>
-                    </View>
-                    <View style={styles.kpiFooter}>
-                        <Text style={[styles.viewDetailsText, { color: "#6C2CF4" }]}>View Details</Text>
-                        <Ionicons name="chevron-forward" size={14} color="#6C2CF4" />
-                    </View>
-                </View>
-
-                {/* Total Transactions */}
-                <View style={[styles.kpiCard, { backgroundColor: "#FFF7ED" }]}>
-                    <View style={styles.kpiCardTop}>
-                        <View style={styles.kpiContent}>
-                            <View style={[styles.kpiIconBox, { backgroundColor: "#FFEDD5" }]}>
-                                <Ionicons name="swap-horizontal" size={16} color="#F97316" />
-                            </View>
-                            <Text style={styles.kpiTitle}>Total Transactions</Text>
-                            <Text style={styles.kpiValue}>1,248</Text>
-                            <Text style={styles.kpiTrendUp}>↑ 12.4%</Text>
-                            <Text style={styles.kpiDesc}>vs Apr 01 - Apr 30</Text>
-                        </View>
-                        <View style={styles.kpiGraphic}>
-                            <Svg width="100%" height="80" viewBox="0 0 100 80">
-                                <Defs>
-                                    <SvgGradient id="gradOrange" x1="0" y1="0" x2="0" y2="1">
-                                        <Stop offset="0%" stopColor="#F97316" stopOpacity="0.2" />
-                                        <Stop offset="100%" stopColor="#F97316" stopOpacity="0" />
-                                    </SvgGradient>
-                                </Defs>
-                                <Path d="M0,70 L25,50 L50,60 L75,30 L100,20 L100,80 L0,80 Z" fill="url(#gradOrange)" />
-                                <Path d="M0,70 L25,50 L50,60 L75,30 L100,20" fill="none" stroke="#F97316" strokeWidth="2" />
-                            </Svg>
-                        </View>
-                    </View>
-                    <View style={styles.kpiFooter}>
-                        <Text style={[styles.viewDetailsText, { color: "#F97316" }]}>View Details</Text>
-                        <Ionicons name="chevron-forward" size={14} color="#F97316" />
-                    </View>
-                </View>
-
-                {/* New Customers */}
-                <View style={[styles.kpiCard, { backgroundColor: "#F0F9FF" }]}>
-                    <View style={styles.kpiCardTop}>
-                        <View style={styles.kpiContent}>
-                            <View style={[styles.kpiIconBox, { backgroundColor: "#E0F2FE" }]}>
-                                <Ionicons name="person-outline" size={16} color="#0EA5E9" />
-                            </View>
-                            <Text style={styles.kpiTitle}>New Customers</Text>
-                            <Text style={styles.kpiValue}>312</Text>
-                            <Text style={styles.kpiTrendUp}>↑ 15.7%</Text>
-                            <Text style={styles.kpiDesc}>vs Apr 01 - Apr 30</Text>
-                        </View>
-                        <View style={[styles.kpiGraphic, { justifyContent: "center", alignItems: "center" }]}>
-                            <View style={styles.glowBlue} />
-                            <Ionicons name="people" size={48} color="#38BDF8" style={{ position: 'absolute' }} />
-                        </View>
-                    </View>
-                    <View style={styles.kpiFooter}>
-                        <Text style={[styles.viewDetailsText, { color: "#0EA5E9" }]}>View Details</Text>
-                        <Ionicons name="chevron-forward" size={14} color="#0EA5E9" />
-                    </View>
-                </View>
-
-                {/* Avg. Order Value */}
-                <View style={[styles.kpiCard, { backgroundColor: "#F0FDF4" }]}>
-                    <View style={styles.kpiCardTop}>
-                        <View style={styles.kpiContent}>
-                            <View style={[styles.kpiIconBox, { backgroundColor: "#DCFCE7" }]}>
-                                <Ionicons name="stats-chart" size={16} color="#22C55E" />
-                            </View>
-                            <Text style={styles.kpiTitle}>Avg. Order Value</Text>
-                            <Text style={styles.kpiValue}>₹ 197.10</Text>
-                            <Text style={styles.kpiTrendUp}>↑ 8.2%</Text>
-                            <Text style={styles.kpiDesc}>vs Apr 01 - Apr 30</Text>
-                        </View>
-                        <View style={[styles.kpiGraphic, { justifyContent: "center", alignItems: "center" }]}>
-                            <View style={styles.glowGreen} />
-                            <Ionicons name="cart" size={48} color="#4ADE80" style={{ position: 'absolute' }} />
-                        </View>
-                    </View>
-                    <View style={styles.kpiFooter}>
-                        <Text style={[styles.viewDetailsText, { color: "#22C55E" }]}>View Details</Text>
-                        <Ionicons name="chevron-forward" size={14} color="#22C55E" />
-                    </View>
-                </View>
-
-                {/* Refunds (Half Width just like others) */}
-                <View style={[styles.kpiCard, { backgroundColor: "#FEF2F2" }]}>
-                    <View style={styles.kpiCardTop}>
-                        <View style={styles.kpiContent}>
-                            <View style={[styles.kpiIconBox, { backgroundColor: "#FEE2E2" }]}>
-                                <Ionicons name="refresh" size={16} color="#EF4444" />
-                            </View>
-                            <Text style={styles.kpiTitle}>Refunds</Text>
-                            <Text style={styles.kpiValue}>₹ 3,240</Text>
-                            <Text style={styles.kpiTrendDown}>↓ 3.1%</Text>
-                            <Text style={styles.kpiDesc}>vs Apr 01 - Apr 30</Text>
-                        </View>
-                        <View style={[styles.kpiGraphic, { justifyContent: "center", alignItems: "center" }]}>
-                            <View style={styles.glowRed} />
-                            <Ionicons name="wallet" size={40} color="#F87171" style={{ position: 'absolute' }} />
-                        </View>
-                    </View>
-                    <View style={styles.kpiFooter}>
-                        <Text style={[styles.viewDetailsText, { color: "#EF4444" }]}>View Details</Text>
-                        <Ionicons name="chevron-forward" size={14} color="#EF4444" />
-                    </View>
-                </View>
-            </View>
-
-            {/* AI Insight for You */}
-            <View style={styles.aiBanner}>
-                <View style={styles.aiIconBox}>
-                    <Ionicons name="hardware-chip" size={24} color="#FFF" />
-                    <View style={styles.aiBadge}>
-                        <Text style={styles.aiBadgeText}>AI</Text>
-                    </View>
-                </View>
-                <View style={styles.aiBannerContent}>
-                    <Text style={styles.aiBannerTitle}>AI Insight for You</Text>
-                    <Text style={styles.aiBannerText}>Sales are up 18.6% this month! 🎉{"\n"}Weekend sales show the highest growth.</Text>
-                </View>
-                <TouchableOpacity style={styles.aiBtn}>
-                    <Text style={styles.aiBtnText}>View Insights</Text>
-                    <Ionicons name="chevron-forward" size={12} color="#6C2CF4" />
+                <TouchableOpacity style={styles.syncBtn} onPress={() => setIsSyncModalVisible(true)}>
+                    <Text style={styles.syncBtnText}>Sync Data</Text>
+                    <Ionicons name="refresh-outline" size={14} color="#FFF" />
                 </TouchableOpacity>
             </View>
 
-            {/* Chart Section */}
-            <View style={styles.chartCard}>
-                <View style={styles.chartHeader}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                        <Text style={styles.chartTitle}>Sales vs Amount</Text>
-                        <Ionicons name="information-circle-outline" size={16} color="#94A3B8" />
-                    </View>
-                    <TouchableOpacity style={styles.chartDropdown}>
-                        <Text style={styles.chartDropdownText}>Daily</Text>
-                        <Ionicons name="chevron-down" size={12} color="#334155" />
-                    </TouchableOpacity>
-                </View>
-
-                <View style={styles.legendRow}>
-                    <View style={styles.legendItem}>
-                        <View style={[styles.legendDot, { backgroundColor: "#6C2CF4" }]} />
-                        <Text style={styles.legendText}>Amount (₹)</Text>
-                    </View>
-                    <View style={styles.legendItem}>
-                        <View style={[styles.legendDot, { backgroundColor: "#F97316" }]} />
-                        <Text style={styles.legendText}>Transactions</Text>
-                    </View>
-                </View>
-
-                <View style={[styles.chartWrapper, { overflow: 'hidden' }]}>
-                    <LineChart
-                        data={chartData1}
-                        data2={chartData2}
-                        height={200}
-                        width={width - 80}
-                        adjustToWidth={true}
-                        showVerticalLines={false}
-                        color1="#6C2CF4"
-                        color2="#F97316"
-                        dataPointsColor1="#6C2CF4"
-                        dataPointsColor2="#F97316"
-                        dataPointsRadius1={4}
-                        dataPointsRadius2={4}
-                        thickness1={2}
-                        thickness2={2}
-                        yAxisColor="#E2E8F0"
-                        xAxisColor="#E2E8F0"
-                        yAxisTextStyle={{ color: "#64748B", fontSize: 10 }}
-                        xAxisLabelTextStyle={{ color: "#64748B", fontSize: 10 }}
-                        areaChart
-                        areaChart2={false}
-                        startFillColor1="#6C2CF4"
-                        endFillColor1="#6C2CF4"
-                        startOpacity1={0.3}
-                        endOpacity1={0.0}
-                        hideRules={false}
-                        rulesColor="#F1F5F9"
-                        yAxisLabelTexts={['0', '10K', '20K', '30K', '40K', '50K']}
-                        maxValue={50000}
-                        noOfSections={5}
-                    />
-                </View>
-            </View>
+            {/* Conditionally Render Dashboards */}
+            {isBusiness ? (
+                <BusinessDashboard />
+            ) : (
+                <PersonalDashboard />
+            )}
 
             {/* Sync Modal */}
             <Modal
@@ -511,31 +250,373 @@ export default function DashboardScreen() {
     );
 }
 
+// -----------------------------------------------------------------------------
+// PERSONAL DASHBOARD
+// -----------------------------------------------------------------------------
+function PersonalDashboard() {
+    const { colors, isDark } = useAppTheme();
+    const { width } = useWindowDimensions();
+
+    const chartDataIncome = [
+        { value: 15000 }, { value: 30000 }, { value: 26000 }, { value: 40000 }, { value: 38000 }, { value: 50000 },
+    ];
+    const chartDataExpense = [
+        { value: 10000 }, { value: 12000 }, { value: 22000 }, { value: 18000 }, { value: 25000 }, { value: 28000 },
+    ];
+
+    const pieData = [
+        { value: 45, color: '#6C2CF4' },
+        { value: 25, color: '#38BDF8' },
+        { value: 20, color: '#F97316' },
+        { value: 10, color: '#4ADE80' },
+    ];
+
+    return (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+            {/* KPI Grid */}
+            <View style={styles.kpiGrid}>
+                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>Income</Text>
+                    <Text style={[styles.kpiValue, { color: colors.text }]}>₹85,400</Text>
+                    <Text style={styles.kpiTrendUp}>+12.5%</Text>
+                </View>
+                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>Expenses</Text>
+                    <Text style={[styles.kpiValue, { color: colors.text }]}>₹52,350</Text>
+                    <Text style={styles.kpiTrendUp}>+8.2%</Text>
+                </View>
+                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>Savings</Text>
+                    <Text style={[styles.kpiValue, { color: colors.text }]}>₹33,050</Text>
+                    <Text style={styles.kpiTrendUp}>38.7%</Text>
+                </View>
+                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>Transactions</Text>
+                    <Text style={[styles.kpiValue, { color: colors.text }]}>124</Text>
+                </View>
+            </View>
+
+            {/* Income vs Expenses Chart */}
+            <SectionCard>
+                <SectionHeader title="Income vs Expenses" />
+                <View style={{ marginTop: 16, overflow: 'hidden' }}>
+                    <LineChart
+                        data={chartDataIncome}
+                        data2={chartDataExpense}
+                        height={180}
+                        width={width - 80}
+                        showVerticalLines={false}
+                        color1="#16A34A"
+                        color2="#EF4444"
+                        dataPointsColor1="#16A34A"
+                        dataPointsColor2="#EF4444"
+                        thickness1={2}
+                        thickness2={2}
+                        yAxisColor="transparent"
+                        xAxisColor="transparent"
+                        hideRules={false}
+                        rulesColor={isDark ? "#334155" : "#F1F5F9"}
+                        yAxisTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
+                        xAxisLabelTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
+                        areaChart
+                        startFillColor1="#16A34A"
+                        endFillColor1="#16A34A"
+                        startFillColor2="#EF4444"
+                        endFillColor2="#EF4444"
+                        startOpacity1={0.2}
+                        endOpacity1={0.0}
+                        startOpacity2={0.2}
+                        endOpacity2={0.0}
+                    />
+                </View>
+            </SectionCard>
+
+            {/* Spending Breakdown & Pie Chart Row (Desktop view allows side-by-side) */}
+            <View style={{ flexDirection: width >= 768 ? "row" : "column", gap: 16 }}>
+                <SectionCard style={{ flex: 1 }}>
+                    <SectionHeader title="Spending Breakdown" />
+                    <View style={styles.listContainer}>
+                        <View style={styles.listItemRow}>
+                            <Text style={styles.listLabel}>🍔 Food</Text>
+                            <Text style={[styles.listAmount, { color: colors.text }]}>₹8,450</Text>
+                        </View>
+                        <View style={styles.listItemRow}>
+                            <Text style={styles.listLabel}>🛍 Shopping</Text>
+                            <Text style={[styles.listAmount, { color: colors.text }]}>₹7,200</Text>
+                        </View>
+                        <View style={styles.listItemRow}>
+                            <Text style={styles.listLabel}>🚗 Transport</Text>
+                            <Text style={[styles.listAmount, { color: colors.text }]}>₹4,850</Text>
+                        </View>
+                        <View style={styles.listItemRow}>
+                            <Text style={styles.listLabel}>🏠 Bills</Text>
+                            <Text style={[styles.listAmount, { color: colors.text }]}>₹12,300</Text>
+                        </View>
+                    </View>
+                </SectionCard>
+
+                <SectionCard style={{ flex: 1 }}>
+                    <SectionHeader title="Where Your Money Goes" />
+                    <View style={{ alignItems: "center", marginTop: 24, paddingBottom: 16 }}>
+                        <PieChart
+                            data={pieData}
+                            donut
+                            radius={70}
+                            innerRadius={45}
+                            innerCircleColor={colors.surface}
+                        />
+                    </View>
+                </SectionCard>
+            </View>
+
+            {/* Recurring Payments & AI Insight */}
+            <SectionCard>
+                <SectionHeader title="Recurring Payments" />
+                <View style={styles.listContainer}>
+                    <View style={styles.listItemRow}>
+                        <Text style={[styles.listLabelText, { color: colors.text }]}>Netflix</Text>
+                        <Text style={[styles.listAmount, { color: colors.text }]}>₹649</Text>
+                    </View>
+                    <View style={styles.listItemRow}>
+                        <Text style={[styles.listLabelText, { color: colors.text }]}>Electricity</Text>
+                        <Text style={[styles.listAmount, { color: colors.text }]}>₹2,450</Text>
+                    </View>
+                    <View style={styles.listItemRow}>
+                        <Text style={[styles.listLabelText, { color: colors.text }]}>Rent</Text>
+                        <Text style={[styles.listAmount, { color: colors.text }]}>₹15,000</Text>
+                    </View>
+                </View>
+            </SectionCard>
+
+            <View style={[styles.aiInsightCard, { backgroundColor: isDark ? "#2E1065" : "#F3E8FF" }]}>
+                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+                    <Text style={[styles.aiInsightTitle, { color: "#8B5CF6" }]}>AI Financial Insight ✨</Text>
+                </View>
+                <Text style={[styles.aiInsightText, { color: isDark ? "#E9D5FF" : "#6B21A8" }]}>
+                    "Your food spending increased 18% this month. You spent most between 7 PM and 9 PM."
+                </Text>
+                <TouchableOpacity style={styles.aiInsightBtn}>
+                    <Text style={{ color: "#8B5CF6", fontWeight: "700", fontSize: 13 }}>View Insights</Text>
+                </TouchableOpacity>
+            </View>
+
+            {/* Recent Transactions */}
+            <SectionCard>
+                <SectionHeader title="Recent Transactions" />
+                <View style={styles.listContainer}>
+                    <View style={styles.listItemRow}>
+                        <Text style={[styles.listLabelText, { color: colors.textSecondary }]}>UPI • Grocery</Text>
+                        <Text style={[styles.listAmount, { color: colors.danger }]}>-₹850</Text>
+                    </View>
+                    <View style={styles.listItemRow}>
+                        <Text style={[styles.listLabelText, { color: colors.textSecondary }]}>Salary</Text>
+                        <Text style={[styles.listAmount, { color: colors.success }]}>+₹65,000</Text>
+                    </View>
+                    <View style={styles.listItemRow}>
+                        <Text style={[styles.listLabelText, { color: colors.textSecondary }]}>Electricity</Text>
+                        <Text style={[styles.listAmount, { color: colors.danger }]}>-₹2,450</Text>
+                    </View>
+                </View>
+            </SectionCard>
+        </ScrollView>
+    );
+}
+
+
+// -----------------------------------------------------------------------------
+// BUSINESS DASHBOARD
+// -----------------------------------------------------------------------------
+function BusinessDashboard() {
+    const { colors, isDark } = useAppTheme();
+    const { width } = useWindowDimensions();
+
+    const chartDataSales = [
+        { value: 50000 }, { value: 75000 }, { value: 65000 }, { value: 100000 }, { value: 125000 }, { value: 110000 },
+    ];
+
+    return (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+            {/* KPI Grid */}
+            <View style={styles.kpiGrid}>
+                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>Sales</Text>
+                    <Text style={[styles.kpiValue, { color: colors.text }]}>₹2,45,980</Text>
+                    <Text style={styles.kpiTrendUp}>↑ 18.6%</Text>
+                </View>
+                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>Expenses</Text>
+                    <Text style={[styles.kpiValue, { color: colors.text }]}>₹1,32,450</Text>
+                    <Text style={styles.kpiTrendUp}>↑ 7.4%</Text>
+                </View>
+                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>Net Cashflow</Text>
+                    <Text style={[styles.kpiValue, { color: colors.text }]}>₹1,13,530</Text>
+                    <Text style={styles.kpiTrendUp}>↑ 24.2%</Text>
+                </View>
+                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>Transactions</Text>
+                    <Text style={[styles.kpiValue, { color: colors.text }]}>842</Text>
+                    <Text style={styles.kpiTrendUp}>+12.5%</Text>
+                </View>
+            </View>
+
+            {/* Sales Performance */}
+            <SectionCard>
+                <SectionHeader title="Sales Performance" />
+                <View style={{ marginTop: 16, overflow: 'hidden' }}>
+                    <LineChart
+                        data={chartDataSales}
+                        height={180}
+                        width={width - 80}
+                        showVerticalLines={false}
+                        color1="#6C2CF4"
+                        dataPointsColor1="#6C2CF4"
+                        thickness1={3}
+                        yAxisColor="transparent"
+                        xAxisColor="transparent"
+                        hideRules={false}
+                        rulesColor={isDark ? "#334155" : "#F1F5F9"}
+                        yAxisTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
+                        xAxisLabelTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
+                        areaChart
+                        startFillColor1="#6C2CF4"
+                        endFillColor1="#6C2CF4"
+                        startOpacity1={0.3}
+                        endOpacity1={0.0}
+                    />
+                </View>
+            </SectionCard>
+
+            <View style={{ flexDirection: width >= 768 ? "row" : "column", gap: 16 }}>
+                {/* Sales by Day (Histogram Text Mock) */}
+                <SectionCard style={{ flex: 1 }}>
+                    <SectionHeader title="Sales by Day" />
+                    <View style={styles.histogramList}>
+                        <View style={styles.histogramRow}><Text style={[styles.histLabel, { color: colors.textSecondary }]}>Mon</Text><View style={[styles.histBar, { width: '40%', backgroundColor: '#C4B5FD' }]}></View></View>
+                        <View style={styles.histogramRow}><Text style={[styles.histLabel, { color: colors.textSecondary }]}>Tue</Text><View style={[styles.histBar, { width: '60%', backgroundColor: '#A78BFA' }]}></View></View>
+                        <View style={styles.histogramRow}><Text style={[styles.histLabel, { color: colors.textSecondary }]}>Wed</Text><View style={[styles.histBar, { width: '30%', backgroundColor: '#DDD6FE' }]}></View></View>
+                        <View style={styles.histogramRow}><Text style={[styles.histLabel, { color: colors.textSecondary }]}>Thu</Text><View style={[styles.histBar, { width: '65%', backgroundColor: '#8B5CF6' }]}></View></View>
+                        <View style={styles.histogramRow}><Text style={[styles.histLabel, { color: colors.textSecondary }]}>Fri</Text><View style={[styles.histBar, { width: '55%', backgroundColor: '#A78BFA' }]}></View></View>
+                        <View style={styles.histogramRow}><Text style={[styles.histLabel, { color: colors.textSecondary }]}>Sat</Text><View style={[styles.histBar, { width: '90%', backgroundColor: '#6D28D9' }]}></View></View>
+                        <View style={styles.histogramRow}><Text style={[styles.histLabel, { color: colors.textSecondary }]}>Sun</Text><View style={[styles.histBar, { width: '50%', backgroundColor: '#C4B5FD' }]}></View></View>
+                    </View>
+                </SectionCard>
+
+                {/* Peak Sales Hours */}
+                <SectionCard style={{ flex: 1, justifyContent: "center" }}>
+                    <SectionHeader title="Peak Sales Hours" />
+                    <View style={{ alignItems: "center", paddingVertical: 32 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center" }}>
+                            <Text style={[styles.peakTimeText, { color: colors.text }]}>6 PM</Text>
+                            <View style={{ height: 2, backgroundColor: "#6C2CF4", width: 60, marginHorizontal: 12 }} />
+                            <Text style={[styles.peakTimeText, { color: colors.text }]}>9 PM</Text>
+                        </View>
+                        <Text style={{ fontSize: 24, marginTop: 12 }}>🔥</Text>
+                    </View>
+                </SectionCard>
+            </View>
+
+            {/* Income and Expenses Breakdown */}
+            <View style={{ flexDirection: width >= 768 ? "row" : "column", gap: 16 }}>
+                <SectionCard style={{ flex: 1 }}>
+                    <SectionHeader title="Top Income Sources" />
+                    <View style={styles.listContainer}>
+                        <View style={styles.listItemRow}>
+                            <Text style={[styles.listLabelText, { color: colors.text }]}>ABC Store</Text>
+                            <Text style={[styles.listAmount, { color: colors.text }]}>₹45,000</Text>
+                        </View>
+                        <View style={styles.listItemRow}>
+                            <Text style={[styles.listLabelText, { color: colors.text }]}>XYZ Customer</Text>
+                            <Text style={[styles.listAmount, { color: colors.text }]}>₹31,500</Text>
+                        </View>
+                        <View style={styles.listItemRow}>
+                            <Text style={[styles.listLabelText, { color: colors.text }]}>Online Sales</Text>
+                            <Text style={[styles.listAmount, { color: colors.text }]}>₹28,200</Text>
+                        </View>
+                    </View>
+                </SectionCard>
+
+                <SectionCard style={{ flex: 1 }}>
+                    <SectionHeader title="Expense Breakdown" />
+                    <View style={styles.listContainer}>
+                        <View style={styles.listItemRow}>
+                            <Text style={[styles.listLabelText, { color: colors.textSecondary }]}>Rent</Text>
+                            <Text style={[styles.listAmount, { color: colors.text }]}>₹30,000</Text>
+                        </View>
+                        <View style={styles.listItemRow}>
+                            <Text style={[styles.listLabelText, { color: colors.textSecondary }]}>Inventory</Text>
+                            <Text style={[styles.listAmount, { color: colors.text }]}>₹25,500</Text>
+                        </View>
+                        <View style={styles.listItemRow}>
+                            <Text style={[styles.listLabelText, { color: colors.textSecondary }]}>Utilities</Text>
+                            <Text style={[styles.listAmount, { color: colors.text }]}>₹12,300</Text>
+                        </View>
+                        <View style={styles.listItemRow}>
+                            <Text style={[styles.listLabelText, { color: colors.textSecondary }]}>Other</Text>
+                            <Text style={[styles.listAmount, { color: colors.text }]}>₹18,600</Text>
+                        </View>
+                    </View>
+                </SectionCard>
+            </View>
+
+            {/* AI Insight */}
+            <View style={[styles.aiInsightCard, { backgroundColor: isDark ? "#172554" : "#DBEAFE" }]}>
+                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+                    <Text style={[styles.aiInsightTitle, { color: "#2563EB" }]}>AI Business Insights ✨</Text>
+                </View>
+                <Text style={[styles.aiInsightText, { color: isDark ? "#BFDBFE" : "#1E3A8A", marginBottom: 12 }]}>
+                    "Saturday generates 31% of your weekly sales."
+                </Text>
+                <Text style={[styles.aiInsightText, { color: isDark ? "#BFDBFE" : "#1E3A8A" }]}>
+                    "Your peak sales period is 6 PM–9 PM."
+                </Text>
+                <TouchableOpacity style={styles.aiInsightBtn}>
+                    <Text style={{ color: "#2563EB", fontWeight: "700", fontSize: 13 }}>View Full Analysis</Text>
+                </TouchableOpacity>
+            </View>
+
+            {/* Recent Transactions */}
+            <SectionCard>
+                <SectionHeader title="Recent Transactions" />
+                <View style={styles.listContainer}>
+                    <View style={styles.listItemRow}>
+                        <Text style={[styles.listLabelText, { color: colors.textSecondary }]}>Supplier ABC</Text>
+                        <Text style={[styles.listAmount, { color: colors.danger }]}>-₹15,000</Text>
+                    </View>
+                    <View style={styles.listItemRow}>
+                        <Text style={[styles.listLabelText, { color: colors.textSecondary }]}>In-store Sale</Text>
+                        <Text style={[styles.listAmount, { color: colors.success }]}>+₹850</Text>
+                    </View>
+                    <View style={styles.listItemRow}>
+                        <Text style={[styles.listLabelText, { color: colors.textSecondary }]}>Online Order #402</Text>
+                        <Text style={[styles.listAmount, { color: colors.success }]}>+₹4,250</Text>
+                    </View>
+                </View>
+            </SectionCard>
+        </ScrollView>
+    );
+}
+
+// -----------------------------------------------------------------------------
+// STYLES
+// -----------------------------------------------------------------------------
 const styles = StyleSheet.create({
     headerContainer: {
         flexDirection: "row",
         justifyContent: "space-between",
-        alignItems: "flex-start",
-        marginTop: 20,
+        alignItems: "center",
+        marginTop: 16,
         marginBottom: 20,
     },
-    headerTitleRow: {
-        flexDirection: "row",
-        alignItems: "center",
+    greetingText: {
+        fontSize: 24,
+        fontWeight: "800",
+        marginBottom: 4,
     },
-    pageTitle: {
-        fontSize: 26,
-        fontWeight: "900",
-        color: "#0F172A",
-        letterSpacing: -0.5,
+    subGreetingText: {
+        fontSize: 14,
     },
-    pageSubtitle: {
-        fontSize: 13,
-        color: "#64748B",
-        marginTop: 4,
-        lineHeight: 18,
-    },
-    headerActions: {
+    headerRightActions: {
         flexDirection: "row",
         alignItems: "center",
         gap: 12,
@@ -554,56 +635,72 @@ const styles = StyleSheet.create({
         fontWeight: "600",
         fontSize: 12,
     },
-    avatarCircle: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: "#94A3B8",
+    iconButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        borderWidth: 1,
         justifyContent: "center",
         alignItems: "center",
-        overflow: "hidden",
+        position: "relative",
     },
-    filtersRow: {
-        flexDirection: "row",
-        gap: 12,
-        marginBottom: 20,
+    notificationBadge: {
+        position: "absolute",
+        top: 10,
+        right: 10,
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: "#EF4444",
     },
-    filterBtn: {
+    avatarCircle: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    dropdownOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.1)",
+        justifyContent: "flex-start",
+        alignItems: "flex-end",
+    },
+    profileDropdown: {
+        marginTop: 80,
+        marginRight: 20,
+        width: 160,
+        borderRadius: 12,
+        borderWidth: 1,
+        padding: 8,
+    },
+    dropdownItem: {
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: "#FFF",
-        borderWidth: 1,
-        borderColor: "#E2E8F0",
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 8,
+        padding: 12,
         gap: 8,
     },
-    filterText: {
-        fontSize: 12,
+    dropdownText: {
+        fontSize: 14,
         fontWeight: "600",
-        color: "#334155",
     },
-    tabsRow: {
+    dropdownDivider: {
+        height: 1,
+        marginVertical: 4,
+    },
+    monthFilter: {
         flexDirection: "row",
-        gap: 8,
-        paddingBottom: 4,
-    },
-    tabBtn: {
+        alignItems: "center",
+        alignSelf: "flex-start",
+        borderWidth: 1,
+        borderRadius: 20,
         paddingHorizontal: 16,
         paddingVertical: 8,
-        borderRadius: 20,
+        gap: 8,
     },
-    tabBtnActive: {
-        backgroundColor: "#6C2CF4",
-    },
-    tabText: {
+    monthFilterText: {
         fontSize: 13,
         fontWeight: "600",
-        color: "#64748B",
-    },
-    tabTextActive: {
-        color: "#FFF",
     },
     kpiGrid: {
         flexDirection: "row",
@@ -614,300 +711,150 @@ const styles = StyleSheet.create({
     kpiCard: {
         width: "48%",
         borderRadius: 16,
-        padding: 14,
+        borderWidth: 1,
+        padding: 16,
         marginBottom: 16,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 5,
-        elevation: 2,
+        ...Platform.select({
+            ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 4 },
+            android: { elevation: 1 },
+            web: { boxShadow: "0 2px 10px rgba(0,0,0,0.02)" } as any,
+        })
     },
-    kpiCardTop: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-    },
-    kpiContent: {
-        flex: 1,
-    },
-    kpiGraphic: {
-        width: 60,
-        height: 80,
-        marginLeft: 10,
-    },
-    kpiIconBox: {
-        width: 32,
-        height: 32,
-        borderRadius: 8,
-        justifyContent: "center",
-        alignItems: "center",
-        marginBottom: 12,
-    },
-    kpiTitle: {
-        fontSize: 11,
+    kpiLabel: {
+        fontSize: 12,
         fontWeight: "600",
-        color: "#64748B",
-        marginBottom: 4,
+        marginBottom: 8,
     },
     kpiValue: {
-        fontSize: 20,
+        fontSize: 22,
         fontWeight: "800",
-        color: "#0F172A",
-        marginBottom: 4,
+        marginBottom: 8,
     },
     kpiTrendUp: {
-        fontSize: 10,
+        fontSize: 12,
         fontWeight: "700",
         color: "#16A34A",
     },
-    kpiTrendDown: {
-        fontSize: 10,
-        fontWeight: "700",
-        color: "#DC2626",
-    },
-    kpiDesc: {
-        fontSize: 9,
-        color: "#94A3B8",
-        marginTop: 2,
-        marginBottom: 12,
-    },
-    kpiFooter: {
-        flexDirection: "row",
-        justifyContent: "flex-end",
-        alignItems: "center",
-        borderTopWidth: 1,
-        borderTopColor: "rgba(0,0,0,0.05)",
-        paddingTop: 10,
-    },
-    viewDetailsText: {
-        fontSize: 11,
-        fontWeight: "700",
-        marginRight: 4,
-    },
-    glowBlue: {
-        position: 'absolute',
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        backgroundColor: "#38BDF8",
-        opacity: 0.2,
-        transform: [{ scale: 1.5 }],
-    },
-    glowGreen: {
-        position: 'absolute',
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        backgroundColor: "#4ADE80",
-        opacity: 0.2,
-        transform: [{ scale: 1.5 }],
-    },
-    glowRed: {
-        position: 'absolute',
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        backgroundColor: "#F87171",
-        opacity: 0.2,
-        transform: [{ scale: 1.5 }],
-    },
-    aiBanner: {
-        backgroundColor: "#F3E8FF",
+    sectionCard: {
         borderRadius: 16,
-        padding: 16,
-        flexDirection: "row",
-        alignItems: "center",
-        marginBottom: 24,
-    },
-    aiIconBox: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: "#6C2CF4",
-        justifyContent: "center",
-        alignItems: "center",
-        position: "relative",
-    },
-    aiBadge: {
-        position: "absolute",
-        bottom: -4,
-        right: -4,
-        backgroundColor: "#FFF",
-        borderRadius: 8,
-        paddingHorizontal: 4,
-        paddingVertical: 2,
         borderWidth: 1,
-        borderColor: "#E2E8F0",
+        padding: 20,
+        marginBottom: 16,
+        ...Platform.select({
+            ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 4 },
+            android: { elevation: 1 },
+            web: { boxShadow: "0 2px 10px rgba(0,0,0,0.02)" } as any,
+        })
     },
-    aiBadgeText: {
-        fontSize: 8,
-        fontWeight: "800",
-        color: "#6C2CF4",
-    },
-    aiBannerContent: {
-        flex: 1,
-        marginLeft: 16,
-    },
-    aiBannerTitle: {
-        fontSize: 14,
-        fontWeight: "800",
-        color: "#6C2CF4",
-        marginBottom: 4,
-    },
-    aiBannerText: {
-        fontSize: 12,
-        color: "#475569",
-        lineHeight: 18,
-    },
-    aiBtn: {
-        backgroundColor: "#FFF",
-        flexDirection: "row",
-        alignItems: "center",
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: "#E2E8F0",
-    },
-    aiBtnText: {
-        fontSize: 11,
-        fontWeight: "700",
-        color: "#6C2CF4",
-        marginRight: 4,
-    },
-    chartCard: {
-        backgroundColor: "#FFF",
-        borderRadius: 16,
-        padding: 16,
-        marginBottom: 30,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 5,
-        elevation: 2,
-    },
-    chartHeader: {
+    sectionHeaderRow: {
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
-        marginBottom: 16,
     },
-    chartTitle: {
+    sectionTitle: {
         fontSize: 16,
         fontWeight: "800",
-        color: "#0F172A",
     },
-    chartDropdown: {
+    listContainer: {
+        marginTop: 16,
+    },
+    listItemRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: "rgba(0,0,0,0.05)",
+    },
+    listLabel: {
+        fontSize: 14,
+    },
+    listLabelText: {
+        fontSize: 14,
+        fontWeight: "500",
+    },
+    listAmount: {
+        fontSize: 14,
+        fontWeight: "700",
+    },
+    aiInsightCard: {
+        borderRadius: 16,
+        padding: 20,
+        marginBottom: 16,
+    },
+    aiInsightTitle: {
+        fontSize: 16,
+        fontWeight: "800",
+    },
+    aiInsightText: {
+        fontSize: 14,
+        lineHeight: 22,
+        fontStyle: "italic",
+    },
+    aiInsightBtn: {
+        marginTop: 16,
+        alignSelf: "flex-start",
+    },
+    histogramList: {
+        marginTop: 16,
+        gap: 12,
+    },
+    histogramRow: {
         flexDirection: "row",
         alignItems: "center",
-        borderWidth: 1,
-        borderColor: "#E2E8F0",
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 8,
-        gap: 6,
+        gap: 12,
     },
-    chartDropdownText: {
+    histLabel: {
+        width: 30,
         fontSize: 12,
         fontWeight: "600",
-        color: "#334155",
     },
-    legendRow: {
-        flexDirection: "row",
-        marginBottom: 16,
-        gap: 16,
+    histBar: {
+        height: 12,
+        borderRadius: 6,
     },
-    legendItem: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 6,
-    },
-    legendDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-    },
-    legendText: {
-        fontSize: 11,
-        fontWeight: "600",
-        color: "#64748B",
-    },
-    chartWrapper: {
-        marginTop: 10,
-        marginLeft: -10,
+    peakTimeText: {
+        fontSize: 18,
+        fontWeight: "800",
     },
     modalOverlay: {
         flex: 1,
         backgroundColor: "rgba(0,0,0,0.5)",
-        justifyContent: "center",
-        alignItems: "center",
-        padding: 20,
+        justifyContent: "flex-end",
     },
     modalContent: {
-        width: "100%",
-        maxWidth: 400,
-        borderRadius: 12,
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
         padding: 24,
+        paddingBottom: Platform.OS === 'ios' ? 40 : 24,
     },
     modalTitle: {
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: "bold",
         marginBottom: 8,
     },
     modalSubtitle: {
         fontSize: 14,
-        marginBottom: 20,
+        marginBottom: 24,
         lineHeight: 20,
     },
     input: {
         borderWidth: 1,
-        borderRadius: 8,
-        padding: 12,
+        borderRadius: 12,
+        padding: 16,
         fontSize: 16,
         marginBottom: 24,
     },
     modalActions: {
         flexDirection: "row",
-        justifyContent: "flex-end",
+        justifyContent: "space-between",
         gap: 12,
     },
     modalBtn: {
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderRadius: 8,
-        justifyContent: "center",
-        alignItems: "center",
-    },
-    dropdownOverlay: {
         flex: 1,
-    },
-    profileDropdown: {
-        position: "absolute",
-        top: Platform.OS === 'web' ? 70 : 80,
-        right: 20,
-        width: 160,
+        paddingVertical: 14,
         borderRadius: 12,
-        borderWidth: 1,
-        paddingVertical: 8,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 10,
-        elevation: 5,
-    },
-    dropdownItem: {
-        flexDirection: "row",
         alignItems: "center",
-        paddingVertical: 10,
-        paddingHorizontal: 16,
-        gap: 10,
-    },
-    dropdownText: {
-        fontSize: 14,
-        fontWeight: "600",
-    },
-    dropdownDivider: {
-        height: 1,
-        width: "100%",
-        marginVertical: 4,
-    },
+        justifyContent: "center",
+    }
 });

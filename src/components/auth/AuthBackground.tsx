@@ -42,6 +42,37 @@ export default function AuthBackground({ type = "login" }: AuthBackgroundProps) 
                 </View>
             )}
 
+            {/* Top Right Floating Shield (Login Only) */}
+            {type === "login" && (
+                <View style={styles.floatingShield}>
+                    <Svg width="100" height="100" viewBox="0 0 100 100">
+                        {/* Faint circular outlines */}
+                        <Circle cx="50" cy="50" r="40" stroke="#F3E8FF" strokeWidth="1" fill="none" />
+                        <Circle cx="50" cy="50" r="30" stroke="#F3E8FF" strokeWidth="0.5" fill="none" />
+                        {/* Shield icon */}
+                        <Path 
+                            d="M 30 35 L 50 25 L 70 35 L 70 50 C 70 65, 50 75, 50 75 C 50 75, 30 65, 30 50 Z" 
+                            fill="#F3E8FF" 
+                        />
+                        {/* Lock body inside shield */}
+                        <Path 
+                            d="M 44 48 L 56 48 L 56 56 L 44 56 Z" 
+                            fill="#FFFFFF" 
+                            rx="2"
+                        />
+                        {/* Lock hook */}
+                        <Path 
+                            d="M 46 48 L 46 44 C 46 40, 54 40, 54 44 L 54 48" 
+                            stroke="#FFFFFF" 
+                            strokeWidth="2"
+                            fill="none"
+                        />
+                        <Circle cx="80" cy="20" r="8" fill="#F3E8FF" />
+                        <Path d="M 77 20 L 79 22 L 83 18" stroke="#FFFFFF" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                    </Svg>
+                </View>
+            )}
+
             {/* Bottom Left Dots */}
             <View style={styles.bottomLeftDots}>
                 <Svg width="60" height="60" viewBox="0 0 60 60">
@@ -94,5 +125,11 @@ const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
+    },
+    floatingShield: {
+        position: "absolute",
+        top: 140,
+        right: 20,
+        opacity: 0.8,
     },
 });
