@@ -105,6 +105,11 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
     }
+    externalNativeBuild {
+        cmake {
+            buildStagingDirectory "C:/tmp/${rootProject.name}_cxx"
+        }
+    }
 }
 
 dependencies {
