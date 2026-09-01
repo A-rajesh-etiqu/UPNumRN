@@ -55,7 +55,8 @@ export function useOtp(userId: string) {
                 response.refreshToken
             );
 
-            router.replace("/complete-profile");
+            // Let AuthProvider handle the redirect to dashboard when user state changes
+            router.replace("/tabs/dashboard");
 
         } catch (e: any) {
 

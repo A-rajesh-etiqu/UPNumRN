@@ -55,6 +55,26 @@ class AuthApi {
             userId,
         });
     }
+
+    async verifyUpi(userId: string, upiId: string) {
+        const response = await apiClient.post("/auth/verify-upi", {
+            userId,
+            upiId
+        });
+        return response.data;
+    }
+
+    async forgotPassword(mobile: string) {
+        const response = await apiClient.post<import("../types/auth").ForgotPasswordResponse>("/auth/forgot-password", {
+            mobile,
+        });
+        return response.data;
+    }
+
+    async resetPassword(data: import("../types/auth").ResetPasswordRequest) {
+        const response = await apiClient.post<import("../types/auth").ResetPasswordResponse>("/auth/reset-password", data);
+        return response.data;
+    }
 }
 
 export const authApi = new AuthApi();

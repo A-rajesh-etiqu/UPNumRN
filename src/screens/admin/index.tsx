@@ -12,7 +12,7 @@ import {
     ActivityIndicator,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import { LinearGradient } from "react-native-linear-gradient";
+import LinearGradient from "react-native-linear-gradient";
 import Svg, { Path, Circle, Rect, Line, Defs, LinearGradient as SvgGradient, Stop, Text as SvgText } from "react-native-svg";
 import { useAppTheme, Radius, Spacing, Shadows, Typography } from "../../theme";
 import { router } from "../../navigation/RootNavigation";

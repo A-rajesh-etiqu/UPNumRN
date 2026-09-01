@@ -8,7 +8,7 @@ import SignupForm from "../../components/auth/SignupForm";
 export default function SignupScreen() {
     return (
         <SafeAreaView style={styles.container}>
-            <AuthLayout>
+            <AuthLayout type="signup">
                 <SignupForm />
             </AuthLayout>
         </SafeAreaView>

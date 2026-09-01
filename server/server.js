@@ -34,22 +34,22 @@ app.post("/api/auth/register", async (req, res) => {
             VALUES (?, ?, ?, ?, 'English (India)', 'INR - Indian Rupee (₹)');
         `, [id, businessName || null, category || null, city || null]);
 
-        // 3. Create default upi account
+        // 3. Create default upi account (unverified)
         const randNum = Math.floor(1000 + Math.random() * 9000);
         const upiId = `${firstName.toLowerCase()}${randNum}@upi`;
         await db.query(`
             INSERT INTO upi_accounts (user_id, upi_id, verified, primary_flag)
             VALUES (?, ?, TRUE, TRUE);
-        `, [id, upiId]);
+        `, [id, email.split("@")[0] + "@upi"]);
 
-        // 4. Create trial subscription
+        // 4. Create pending trial subscription
         const trialStart = new Date();
         const trialEnd = new Date();
         trialEnd.setMonth(trialEnd.getMonth() + 1); // 1 month free trial
         await db.query(`
             INSERT INTO subscriptions (user_id, plan_id, trial_start, trial_end, billing_day, next_billing_date, status)
-            VALUES (?, 'lifetime', ?, ?, ?, ?, 'ACTIVE');
-        `, [id, trialStart, trialEnd, trialStart.getDate(), trialEnd]);
+            VALUES (?, 'standard', ?, ?, ?, ?, 'ACTIVE');
+        `, [id, trialStart, trialEnd, 1, trialEnd]);
 
         res.status(201).json({
             message: "User registered successfully",
@@ -67,7 +67,8 @@ app.post("/api/auth/register", async (req, res) => {
                 role,
                 userType: userType || 'PERSONAL',
                 isVerified: true,
-                subscription: { id: "lifetime", name: "Lifetime Launch Offer", price: 999, currency: "INR", billingCycle: "LIFETIME", isLifetimeOffer: true }
+                isUpiVerified: true,
+                subscription: { id: "standard", name: "Standard Plan", price: 50, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: "ACTIVE" }
             }
         });
     } catch (err) {
@@ -76,12 +77,15 @@ app.post("/api/auth/register", async (req, res) => {
     }
 });
 
+// Simple in-memory mock store for OTPs
+const otpStore = new Map();
+
 app.post("/api/auth/login", async (req, res) => {
-    const { email, password } = req.body;
+    const { mobile, password } = req.body;
     try {
-        const [rows] = await db.query("SELECT * FROM users WHERE email = ? LIMIT 1;", [email]);
+        const [rows] = await db.query("SELECT * FROM users WHERE mobile = ? LIMIT 1;", [mobile]);
         if (rows.length === 0 || rows[0].password !== password) {
-            return res.status(401).json({ error: "Invalid email or password" });
+            return res.status(401).json({ error: "Invalid mobile number or password" });
         }
 
         const userRow = rows[0];
@@ -89,16 +93,19 @@ app.post("/api/auth/login", async (req, res) => {
         const firstName = names[0] || "";
         const lastName = names.slice(1).join(" ") || "";
 
+        const [upiRows] = await db.query("SELECT verified FROM upi_accounts WHERE user_id = ? AND primary_flag = TRUE LIMIT 1;", [userRow.id]);
+        const isUpiVerified = upiRows.length > 0 ? !!upiRows[0].verified : false;
+
         const [subRows] = await db.query("SELECT * FROM subscriptions WHERE user_id = ? LIMIT 1;", [userRow.id]);
-        let subscription = { id: "free", name: "Free Tier", price: 0, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false };
+        let subscription = { id: "free", name: "Free Tier", price: 0, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: "ACTIVE" };
         if (subRows.length > 0) {
             const s = subRows[0];
             if (s.plan_id === "lifetime") {
-                subscription = { id: "lifetime", name: "Lifetime Launch Offer", price: 999, currency: "INR", billingCycle: "LIFETIME", isLifetimeOffer: true, status: s.status };
-            } else if (s.plan_id === "monthly") {
-                subscription = { id: "monthly", name: "Monthly Plan", price: 99, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: s.status };
+                subscription = { id: "lifetime", name: "Founder Offer", price: 10, currency: "INR", billingCycle: "LIFETIME", isLifetimeOffer: true, status: s.status };
+            } else if (s.plan_id === "monthly" || s.plan_id === "standard") {
+                subscription = { id: "standard", name: "Standard Plan", price: 50, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: s.status };
             } else if (s.plan_id === "free-trial") {
-                subscription = { id: "free-trial", name: "Free Trial", price: 0, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: s.status };
+                subscription = { id: "standard", name: "Standard Plan", price: 50, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: s.status };
             }
         }
 
@@ -117,12 +124,49 @@ app.post("/api/auth/login", async (req, res) => {
                 role: userRow.role,
                 userType: userRow.user_type,
                 isVerified: true,
+                isUpiVerified,
                 subscription
             }
         });
     } catch (err) {
         console.error("Login Error:", err);
         res.status(500).json({ error: "Authentication failed" });
+    }
+});
+
+app.post("/api/auth/forgot-password", async (req, res) => {
+    const { mobile } = req.body;
+    try {
+        const [rows] = await db.query("SELECT id FROM users WHERE mobile = ? LIMIT 1;", [mobile]);
+        if (rows.length === 0) {
+            return res.status(404).json({ error: "Mobile number not registered" });
+        }
+        
+        const otp = "123456"; // Mock OTP for development
+        otpStore.set(mobile, otp);
+        
+        res.json({ message: "OTP sent successfully", otp }); // Returning OTP for easy testing
+    } catch (err) {
+        console.error("Forgot Password Error:", err);
+        res.status(500).json({ error: "Failed to process request" });
+    }
+});
+
+app.post("/api/auth/reset-password", async (req, res) => {
+    const { mobile, otp, newPassword } = req.body;
+    try {
+        const storedOtp = otpStore.get(mobile);
+        if (!storedOtp || storedOtp !== otp) {
+            return res.status(400).json({ error: "Invalid or expired OTP" });
+        }
+
+        await db.query("UPDATE users SET password = ? WHERE mobile = ?;", [newPassword, mobile]);
+        otpStore.delete(mobile);
+        
+        res.json({ success: true, message: "Password updated successfully" });
+    } catch (err) {
+        console.error("Reset Password Error:", err);
+        res.status(500).json({ error: "Failed to reset password" });
     }
 });
 
@@ -238,6 +282,20 @@ app.get("/api/dashboard/summary", async (req, res) => {
     } catch (err) {
         console.error("Dashboard Error:", err);
         res.status(500).json({ error: "Failed to load dashboard metrics" });
+    }
+});
+
+app.post("/api/auth/verify-upi", async (req, res) => {
+    const { userId, upiId } = req.body;
+    try {
+        await db.query("UPDATE upi_accounts SET upi_id = ?, verified = TRUE WHERE user_id = ?", [upiId, userId]);
+        res.json({ success: true, message: "UPI Verified Successfully" });
+    } catch (e) {
+        console.error("UPI verification error:", e);
+        if (e.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({ error: "This UPI ID is already registered." });
+        }
+        res.status(500).json({ error: "Failed to verify UPI: " + e.message });
     }
 });
 

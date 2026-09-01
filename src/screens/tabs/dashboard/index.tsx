@@ -49,7 +49,7 @@ export default function DashboardScreen() {
     const isDesktop = width >= 1024;
     const { user, logout } = useAuthStore();
     const { colors, isDark } = useAppTheme();
-    const { loading, loadDashboard } = useDashboardStore();
+    const { data, loading, loadDashboard } = useDashboardStore();
 
     const [isProfileMenuVisible, setIsProfileMenuVisible] = useState(false);
     const [isSyncModalVisible, setIsSyncModalVisible] = useState(false);
@@ -197,9 +197,9 @@ export default function DashboardScreen() {
 
             {/* Conditionally Render Dashboards */}
             {isBusiness ? (
-                <BusinessDashboard />
+                <BusinessDashboard recentTransactions={data?.recentTransactions || []} />
             ) : (
-                <PersonalDashboard />
+                <PersonalDashboard data={data} recentTransactions={data?.recentTransactions || []} />
             )}
 
             {/* Sync Modal */}
@@ -253,9 +253,18 @@ export default function DashboardScreen() {
 // -----------------------------------------------------------------------------
 // PERSONAL DASHBOARD
 // -----------------------------------------------------------------------------
-function PersonalDashboard() {
+function PersonalDashboard({ data, recentTransactions }: { data: any, recentTransactions: any[] }) {
     const { colors, isDark } = useAppTheme();
     const { width } = useWindowDimensions();
+    const isDesktop = width >= 1024;
+
+    const [chartWidth, setChartWidth] = useState(width - 80);
+
+    // Use dynamic data if available, otherwise mock to match screenshot
+    const income = data?.income || 85400;
+    const expenses = data?.expenses || 52350;
+    const savings = data?.savings || 33050;
+    const txCount = data?.transactionsCount || 124;
 
     const chartDataIncome = [
         { value: 15000 }, { value: 30000 }, { value: 26000 }, { value: 40000 }, { value: 38000 }, { value: 50000 },
@@ -265,159 +274,226 @@ function PersonalDashboard() {
     ];
 
     const pieData = [
-        { value: 45, color: '#6C2CF4' },
-        { value: 25, color: '#38BDF8' },
-        { value: 20, color: '#F97316' },
-        { value: 10, color: '#4ADE80' },
+        { value: 30, color: '#6C2CF4' },
+        { value: 25, color: '#3B82F6' },
+        { value: 15, color: '#10B981' },
+        { value: 10, color: '#F59E0B' },
+        { value: 10, color: '#EAB308' },
+        { value: 10, color: '#94A3B8' },
     ];
+
+    const topCategories = [
+        { label: "Food & Dining", percent: 30, amount: 15705, color: "#6C2CF4" },
+        { label: "Shopping", percent: 25, amount: 13118, color: "#6C2CF4" },
+        { label: "Transport", percent: 15, amount: 7853, color: "#6C2CF4" },
+        { label: "Entertainment", percent: 10, amount: 5235, color: "#6C2CF4" },
+        { label: "Bills & Utilities", percent: 10, amount: 5235, color: "#6C2CF4" },
+    ];
+    
+    // Add missing styles inline
+    const localStyles = {
+        iconCircle: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center' as const, alignItems: 'center' as const },
+        badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
+        badgeText: { fontSize: 10, fontWeight: '600' as const, color: colors.textSecondary }
+    };
 
     return (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
             {/* KPI Grid */}
-            <View style={styles.kpiGrid}>
-                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>Income</Text>
-                    <Text style={[styles.kpiValue, { color: colors.text }]}>₹85,400</Text>
-                    <Text style={styles.kpiTrendUp}>+12.5%</Text>
+            <View style={[styles.kpiGrid, isDesktop && { flexWrap: "nowrap", gap: 16 }]}>
+                {/* Income */}
+                <View style={[styles.kpiCard, isDesktop && { width: "23%", marginBottom: 0 }]}>
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <View style={[localStyles.iconCircle, { backgroundColor: "#DCFCE7" }]}>
+                            <Ionicons name="arrow-down-outline" size={20} color="#16A34A" />
+                        </View>
+                        <View style={{ marginLeft: 12 }}>
+                            <Text style={styles.kpiLabel}>Income</Text>
+                            <Text style={[styles.kpiValue, { color: colors.text, fontSize: 20 }]}>₹{income.toLocaleString('en-IN')}</Text>
+                        </View>
+                    </View>
+                    <Text style={[styles.kpiTrendUp, { marginTop: 8 }]}>↑ 12.5% <Text style={{color: colors.textSecondary, fontWeight: "normal"}}>vs Last Month</Text></Text>
                 </View>
-                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>Expenses</Text>
-                    <Text style={[styles.kpiValue, { color: colors.text }]}>₹52,350</Text>
-                    <Text style={styles.kpiTrendUp}>+8.2%</Text>
+                
+                {/* Expenses */}
+                <View style={[styles.kpiCard, isDesktop && { width: "23%", marginBottom: 0 }]}>
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <View style={[localStyles.iconCircle, { backgroundColor: "#FEE2E2" }]}>
+                            <Ionicons name="arrow-up-outline" size={20} color="#EF4444" />
+                        </View>
+                        <View style={{ marginLeft: 12 }}>
+                            <Text style={styles.kpiLabel}>Expenses</Text>
+                            <Text style={[styles.kpiValue, { color: colors.text, fontSize: 20 }]}>₹{expenses.toLocaleString('en-IN')}</Text>
+                        </View>
+                    </View>
+                    <Text style={[styles.kpiTrendUp, { color: "#EF4444", marginTop: 8 }]}>↑ 8.2% <Text style={{color: colors.textSecondary, fontWeight: "normal"}}>vs Last Month</Text></Text>
                 </View>
-                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>Savings</Text>
-                    <Text style={[styles.kpiValue, { color: colors.text }]}>₹33,050</Text>
-                    <Text style={styles.kpiTrendUp}>38.7%</Text>
+
+                {/* Savings */}
+                <View style={[styles.kpiCard, isDesktop && { width: "23%", marginBottom: 0 }]}>
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <View style={[localStyles.iconCircle, { backgroundColor: "#F3E8FF" }]}>
+                            <Ionicons name="wallet-outline" size={20} color="#6C2CF4" />
+                        </View>
+                        <View style={{ marginLeft: 12 }}>
+                            <Text style={styles.kpiLabel}>Savings</Text>
+                            <Text style={[styles.kpiValue, { color: colors.text, fontSize: 20 }]}>₹{savings.toLocaleString('en-IN')}</Text>
+                        </View>
+                    </View>
+                    <Text style={[styles.kpiTrendUp, { color: "#16A34A", marginTop: 8 }]}>↑ 38.7% <Text style={{color: colors.textSecondary, fontWeight: "normal"}}>vs Last Month</Text></Text>
                 </View>
-                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>Transactions</Text>
-                    <Text style={[styles.kpiValue, { color: colors.text }]}>124</Text>
+
+                {/* Transactions */}
+                <View style={[styles.kpiCard, isDesktop && { width: "23%", marginBottom: 0 }]}>
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <View style={[localStyles.iconCircle, { backgroundColor: "#E0F2FE" }]}>
+                            <Ionicons name="document-text-outline" size={20} color="#0284C7" />
+                        </View>
+                        <View style={{ marginLeft: 12 }}>
+                            <Text style={styles.kpiLabel}>Transactions</Text>
+                            <Text style={[styles.kpiValue, { color: colors.text, fontSize: 20 }]}>{txCount}</Text>
+                        </View>
+                    </View>
+                    <Text style={[styles.kpiTrendUp, { color: "#16A34A", marginTop: 8 }]}>↑ 15.6% <Text style={{color: colors.textSecondary, fontWeight: "normal"}}>vs Last Month</Text></Text>
                 </View>
             </View>
 
-            {/* Income vs Expenses Chart */}
-            <SectionCard>
-                <SectionHeader title="Income vs Expenses" />
-                <View style={{ marginTop: 16, overflow: 'hidden' }}>
-                    <LineChart
-                        data={chartDataIncome}
-                        data2={chartDataExpense}
-                        height={180}
-                        width={width - 80}
-                        showVerticalLines={false}
-                        color1="#16A34A"
-                        color2="#EF4444"
-                        dataPointsColor1="#16A34A"
-                        dataPointsColor2="#EF4444"
-                        thickness1={2}
-                        thickness2={2}
-                        yAxisColor="transparent"
-                        xAxisColor="transparent"
-                        hideRules={false}
-                        rulesColor={isDark ? "#334155" : "#F1F5F9"}
-                        yAxisTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
-                        xAxisLabelTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
-                        areaChart
-                        startFillColor1="#16A34A"
-                        endFillColor1="#16A34A"
-                        startFillColor2="#EF4444"
-                        endFillColor2="#EF4444"
-                        startOpacity1={0.2}
-                        endOpacity1={0.0}
-                        startOpacity2={0.2}
-                        endOpacity2={0.0}
-                    />
+            {/* 2 Column Layout */}
+            <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 16, marginTop: 16 }}>
+                
+                {/* LEFT COLUMN */}
+                <View style={{ flex: 1, gap: 16 }}>
+                    {/* Income vs Expenses Chart */}
+                    <SectionCard>
+                        <SectionHeader title="Income vs Expenses" />
+                        <View 
+                            style={{ marginTop: 16, overflow: 'hidden' }}
+                            onLayout={(e) => setChartWidth(e.nativeEvent.layout.width)}
+                        >
+                            <LineChart
+                                data={chartDataIncome}
+                                data2={chartDataExpense}
+                                height={180}
+                                width={chartWidth}
+                                showVerticalLines={false}
+                                color1="#16A34A"
+                                color2="#EF4444"
+                                dataPointsColor1="#16A34A"
+                                dataPointsColor2="#EF4444"
+                                thickness1={2}
+                                thickness2={2}
+                                yAxisColor="transparent"
+                                xAxisColor="transparent"
+                                hideRules={false}
+                                rulesColor={isDark ? "#334155" : "#F1F5F9"}
+                                yAxisTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
+                                xAxisLabelTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
+                                areaChart
+                                startFillColor1="#16A34A"
+                                endFillColor1="#16A34A"
+                                startFillColor2="#EF4444"
+                                endFillColor2="#EF4444"
+                                startOpacity1={0.2}
+                                endOpacity1={0.0}
+                                startOpacity2={0.2}
+                                endOpacity2={0.0}
+                            />
+                        </View>
+                    </SectionCard>
+
+                    {/* Expense Breakdown */}
+                    <SectionCard>
+                        <SectionHeader title="Expense Breakdown" />
+                        <View style={{ flexDirection: isDesktop ? "row" : "column", alignItems: "center", marginTop: 16 }}>
+                            <View style={{ alignItems: "center", paddingBottom: 16, width: 160 }}>
+                                <PieChart
+                                    data={pieData}
+                                    donut
+                                    radius={60}
+                                    innerRadius={30}
+                                    innerCircleColor={colors.surface}
+                                />
+                            </View>
+                            <View style={{ flex: 1, paddingLeft: isDesktop ? 20 : 0, width: "100%" }}>
+                                {topCategories.map((cat, i) => (
+                                    <View key={i} style={[styles.listItemRow, { borderBottomWidth: 0, paddingVertical: 8 }]}>
+                                        <View style={{ flexDirection: "row", alignItems: "center", width: 140 }}>
+                                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: pieData[i].color, marginRight: 8 }} />
+                                            <Text style={styles.listLabelText}>{cat.label}</Text>
+                                        </View>
+                                        <Text style={[styles.listLabelText, { color: colors.textSecondary, width: 40 }]}>{cat.percent}%</Text>
+                                        <Text style={[styles.listAmount, { color: colors.text }]}>₹{cat.amount.toLocaleString('en-IN')}</Text>
+                                    </View>
+                                ))}
+                            </View>
+                        </View>
+                    </SectionCard>
                 </View>
-            </SectionCard>
 
-            {/* Spending Breakdown & Pie Chart Row (Desktop view allows side-by-side) */}
-            <View style={{ flexDirection: width >= 768 ? "row" : "column", gap: 16 }}>
-                <SectionCard style={{ flex: 1 }}>
-                    <SectionHeader title="Spending Breakdown" />
-                    <View style={styles.listContainer}>
-                        <View style={styles.listItemRow}>
-                            <Text style={styles.listLabel}>🍔 Food</Text>
-                            <Text style={[styles.listAmount, { color: colors.text }]}>₹8,450</Text>
+                {/* RIGHT COLUMN */}
+                <View style={{ flex: 1, gap: 16 }}>
+                    {/* Recent Transactions */}
+                    <SectionCard>
+                        <SectionHeader title="Recent Transactions" />
+                        <View style={styles.listContainer}>
+                            {recentTransactions.length > 0 ? (
+                                recentTransactions.slice(0, 5).map((tx, index) => (
+                                    <View key={tx.id || index} style={styles.listItemRow}>
+                                        <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                                            <View style={[localStyles.iconCircle, { backgroundColor: tx.type === 'expense' ? "#FEE2E2" : "#DCFCE7", width: 32, height: 32, borderRadius: 16 }]}>
+                                                <Ionicons name={tx.type === 'expense' ? "cart" : "cash"} size={14} color={tx.type === 'expense' ? "#EF4444" : "#16A34A"} />
+                                            </View>
+                                            <Text style={[styles.listLabelText, { color: colors.text, marginLeft: 12 }]} numberOfLines={1}>
+                                                {tx.title || tx.category || "Transaction"}
+                                            </Text>
+                                        </View>
+                                        <View style={{ width: 100, alignItems: "center" }}>
+                                            <View style={localStyles.badge}>
+                                                <Text style={localStyles.badgeText}>{tx.category || "General"}</Text>
+                                            </View>
+                                        </View>
+                                        <View style={{ width: 80, alignItems: "flex-end" }}>
+                                            <Text style={[
+                                                styles.listAmount, 
+                                                { color: colors.text }
+                                            ]}>
+                                                {tx.type === 'expense' ? '-' : ''}₹{Math.abs(tx.amount).toLocaleString('en-IN')}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                ))
+                            ) : (
+                                <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 10 }}>No recent transactions</Text>
+                            )}
+                            <TouchableOpacity style={{ marginTop: 16 }}>
+                                <Text style={{ color: "#6C2CF4", fontWeight: "600", fontSize: 13 }}>View All Transactions →</Text>
+                            </TouchableOpacity>
                         </View>
-                        <View style={styles.listItemRow}>
-                            <Text style={styles.listLabel}>🛍 Shopping</Text>
-                            <Text style={[styles.listAmount, { color: colors.text }]}>₹7,200</Text>
-                        </View>
-                        <View style={styles.listItemRow}>
-                            <Text style={styles.listLabel}>🚗 Transport</Text>
-                            <Text style={[styles.listAmount, { color: colors.text }]}>₹4,850</Text>
-                        </View>
-                        <View style={styles.listItemRow}>
-                            <Text style={styles.listLabel}>🏠 Bills</Text>
-                            <Text style={[styles.listAmount, { color: colors.text }]}>₹12,300</Text>
-                        </View>
-                    </View>
-                </SectionCard>
+                    </SectionCard>
 
-                <SectionCard style={{ flex: 1 }}>
-                    <SectionHeader title="Where Your Money Goes" />
-                    <View style={{ alignItems: "center", marginTop: 24, paddingBottom: 16 }}>
-                        <PieChart
-                            data={pieData}
-                            donut
-                            radius={70}
-                            innerRadius={45}
-                            innerCircleColor={colors.surface}
-                        />
-                    </View>
-                </SectionCard>
+                    {/* Top Categories Bars */}
+                    <SectionCard>
+                        <SectionHeader title="Top Categories" />
+                        <View style={styles.listContainer}>
+                            {topCategories.map((cat, index) => (
+                                <View key={index} style={{ marginBottom: 16 }}>
+                                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                                        <Text style={[styles.listLabelText, { color: colors.text }]}>{cat.label}</Text>
+                                        <View style={{ flexDirection: "row", gap: 20 }}>
+                                            <Text style={[styles.listLabelText, { color: colors.textSecondary }]}>{cat.percent}%</Text>
+                                            <Text style={[styles.listAmount, { color: colors.text, width: 60, textAlign: "right" }]}>₹{cat.amount.toLocaleString('en-IN')}</Text>
+                                        </View>
+                                    </View>
+                                    <View style={{ height: 6, backgroundColor: colors.border, borderRadius: 3, width: "100%", overflow: "hidden" }}>
+                                        <View style={{ height: "100%", width: `${cat.percent}%`, backgroundColor: "#6C2CF4", borderRadius: 3 }} />
+                                    </View>
+                                </View>
+                            ))}
+                        </View>
+                    </SectionCard>
+                </View>
+
             </View>
-
-            {/* Recurring Payments & AI Insight */}
-            <SectionCard>
-                <SectionHeader title="Recurring Payments" />
-                <View style={styles.listContainer}>
-                    <View style={styles.listItemRow}>
-                        <Text style={[styles.listLabelText, { color: colors.text }]}>Netflix</Text>
-                        <Text style={[styles.listAmount, { color: colors.text }]}>₹649</Text>
-                    </View>
-                    <View style={styles.listItemRow}>
-                        <Text style={[styles.listLabelText, { color: colors.text }]}>Electricity</Text>
-                        <Text style={[styles.listAmount, { color: colors.text }]}>₹2,450</Text>
-                    </View>
-                    <View style={styles.listItemRow}>
-                        <Text style={[styles.listLabelText, { color: colors.text }]}>Rent</Text>
-                        <Text style={[styles.listAmount, { color: colors.text }]}>₹15,000</Text>
-                    </View>
-                </View>
-            </SectionCard>
-
-            <View style={[styles.aiInsightCard, { backgroundColor: isDark ? "#2E1065" : "#F3E8FF" }]}>
-                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-                    <Text style={[styles.aiInsightTitle, { color: "#8B5CF6" }]}>AI Financial Insight ✨</Text>
-                </View>
-                <Text style={[styles.aiInsightText, { color: isDark ? "#E9D5FF" : "#6B21A8" }]}>
-                    "Your food spending increased 18% this month. You spent most between 7 PM and 9 PM."
-                </Text>
-                <TouchableOpacity style={styles.aiInsightBtn}>
-                    <Text style={{ color: "#8B5CF6", fontWeight: "700", fontSize: 13 }}>View Insights</Text>
-                </TouchableOpacity>
-            </View>
-
-            {/* Recent Transactions */}
-            <SectionCard>
-                <SectionHeader title="Recent Transactions" />
-                <View style={styles.listContainer}>
-                    <View style={styles.listItemRow}>
-                        <Text style={[styles.listLabelText, { color: colors.textSecondary }]}>UPI • Grocery</Text>
-                        <Text style={[styles.listAmount, { color: colors.danger }]}>-₹850</Text>
-                    </View>
-                    <View style={styles.listItemRow}>
-                        <Text style={[styles.listLabelText, { color: colors.textSecondary }]}>Salary</Text>
-                        <Text style={[styles.listAmount, { color: colors.success }]}>+₹65,000</Text>
-                    </View>
-                    <View style={styles.listItemRow}>
-                        <Text style={[styles.listLabelText, { color: colors.textSecondary }]}>Electricity</Text>
-                        <Text style={[styles.listAmount, { color: colors.danger }]}>-₹2,450</Text>
-                    </View>
-                </View>
-            </SectionCard>
         </ScrollView>
     );
 }
@@ -426,7 +502,7 @@ function PersonalDashboard() {
 // -----------------------------------------------------------------------------
 // BUSINESS DASHBOARD
 // -----------------------------------------------------------------------------
-function BusinessDashboard() {
+function BusinessDashboard({ recentTransactions }: { recentTransactions: any[] }) {
     const { colors, isDark } = useAppTheme();
     const { width } = useWindowDimensions();
 
@@ -579,18 +655,23 @@ function BusinessDashboard() {
             <SectionCard>
                 <SectionHeader title="Recent Transactions" />
                 <View style={styles.listContainer}>
-                    <View style={styles.listItemRow}>
-                        <Text style={[styles.listLabelText, { color: colors.textSecondary }]}>Supplier ABC</Text>
-                        <Text style={[styles.listAmount, { color: colors.danger }]}>-₹15,000</Text>
-                    </View>
-                    <View style={styles.listItemRow}>
-                        <Text style={[styles.listLabelText, { color: colors.textSecondary }]}>In-store Sale</Text>
-                        <Text style={[styles.listAmount, { color: colors.success }]}>+₹850</Text>
-                    </View>
-                    <View style={styles.listItemRow}>
-                        <Text style={[styles.listLabelText, { color: colors.textSecondary }]}>Online Order #402</Text>
-                        <Text style={[styles.listAmount, { color: colors.success }]}>+₹4,250</Text>
-                    </View>
+                    {recentTransactions.length > 0 ? (
+                        recentTransactions.map((tx, index) => (
+                            <View key={tx.id || index} style={styles.listItemRow}>
+                                <Text style={[styles.listLabelText, { color: colors.textSecondary }]}>
+                                    {tx.category || tx.title}
+                                </Text>
+                                <Text style={[
+                                    styles.listAmount, 
+                                    { color: tx.type === 'expense' ? colors.danger : colors.success }
+                                ]}>
+                                    {tx.type === 'expense' ? '-' : '+'}₹{Math.abs(tx.amount).toLocaleString('en-IN')}
+                                </Text>
+                            </View>
+                        ))
+                    ) : (
+                        <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 10 }}>No recent transactions</Text>
+                    )}
                 </View>
             </SectionCard>
         </ScrollView>

@@ -27,7 +27,7 @@ export default function SignupForm() {
     const [signupError, setSignupError] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-    const { loading } = useSignup();
+    const [loading, setLoading] = useState(false);
 
     const {
         control,
@@ -60,6 +60,7 @@ export default function SignupForm() {
 
     const onSubmit = async (data: SignupFormType) => {
         setSignupError(null);
+        setLoading(true);
         try {
             const [firstName, ...rest] = data.fullName.trim().split(" ");
             const lastName = rest.join(" ") || "";
@@ -103,6 +104,8 @@ export default function SignupForm() {
                 return;
             }
             setSignupError(err.response?.data?.error || "Registration failed. Try a different email.");
+        } finally {
+            setLoading(false);
         }
     };
 

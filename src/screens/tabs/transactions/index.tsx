@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     View,
     Text,
@@ -8,10 +8,16 @@ import {
     TextInput,
     useWindowDimensions,
     Platform,
+    ActivityIndicator,
+    Image,
+    Modal,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import Svg, { Path } from "react-native-svg";
 import { useAppTheme } from "../../../theme";
+import { useTransactionStore } from "../../../store/transaction.store";
+import { useAuthStore } from "../../../store/auth.store";
+import { router } from "../../../navigation/RootNavigation";
 
 // Types
 type TabType = "All" | "Successful" | "Failed" | "Pending";
@@ -125,15 +131,91 @@ const MOCK_DATA = [
 
 export default function TransactionsScreen() {
     const { colors, isDark } = useAppTheme();
+    const { user, logout } = useAuthStore();
+    const { transactions, loading, loadTransactions } = useTransactionStore();
     const [activeTab, setActiveTab] = useState<TabType>("All");
     const [search, setSearch] = useState("");
+    const [currentPage, setCurrentPage] = useState(1);
+    const [isProfileMenuVisible, setIsProfileMenuVisible] = useState(false);
+    const ITEMS_PER_PAGE = 10;
+
+    useEffect(() => {
+        loadTransactions(user?.id);
+    }, [user?.id]);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [activeTab, search]);
 
     // Background should match screenshot perfectly
     const bgColor = isDark ? colors.background : "#FCFDFE"; 
 
+    // Helper to get initials
+    const getInitials = (name: string) => {
+        return name ? name.charAt(0).toUpperCase() : "T";
+    };
+
+    // Filter transactions
+    const filteredTransactions = transactions.filter(tx => {
+        const normalizedTab = activeTab.toLowerCase() === "successful" ? "success" : activeTab.toLowerCase();
+        const matchTab = activeTab === "All" || (tx.status && tx.status.toLowerCase() === normalizedTab);
+        const matchSearch = (tx.title || "").toLowerCase().includes(search.toLowerCase()) || 
+                            (tx.category || "").toLowerCase().includes(search.toLowerCase());
+        return matchTab && matchSearch;
+    });
+
+    const totalItems = filteredTransactions.length;
+    const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE) || 1;
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, totalItems);
+    const paginatedTransactions = filteredTransactions.slice(startIndex, endIndex);
+
+    if (loading) {
+        return (
+            <View style={[styles.container, { backgroundColor: bgColor, justifyContent: 'center', alignItems: 'center' }]}>
+                <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+        );
+    }
+
     return (
         <ScrollView style={[styles.container, { backgroundColor: bgColor }]} contentContainerStyle={styles.scrollContent}>
             
+            {/* Page Header */}
+            <View style={styles.pageHeaderRow}>
+                <View style={styles.pageHeaderLeft}>
+                    <Text style={[styles.pageTitle, { color: colors.text }]}>Transactions</Text>
+                    <Text style={styles.pageSubtitle}>Track and manage all your transactions</Text>
+                </View>
+                <View style={styles.avatarWrapper}>
+                    <TouchableOpacity onPress={() => setIsProfileMenuVisible(true)} style={styles.avatarCircle}>
+                        <Image 
+                            source={{ uri: "https://randomuser.me/api/portraits/men/32.jpg" }} 
+                            style={{ width: 44, height: 44, borderRadius: 22 }}
+                            resizeMode="cover"
+                        />
+                    </TouchableOpacity>
+                    <View style={styles.activeDot} />
+
+                    {/* Profile Dropdown */}
+                    <Modal visible={isProfileMenuVisible} transparent={true} animationType="fade">
+                        <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setIsProfileMenuVisible(false)}>
+                            <View style={[styles.profileDropdown, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                                <TouchableOpacity style={styles.dropdownItem} onPress={() => { setIsProfileMenuVisible(false); router.replace("/tabs/profile"); }}>
+                                    <Ionicons name="person-outline" size={16} color={colors.text} />
+                                    <Text style={[styles.dropdownText, { color: colors.text }]}>Edit Profile</Text>
+                                </TouchableOpacity>
+                                <View style={[styles.dropdownDivider, { backgroundColor: colors.border }]} />
+                                <TouchableOpacity style={styles.dropdownItem} onPress={() => { setIsProfileMenuVisible(false); logout(); router.replace("/auth"); }}>
+                                    <Ionicons name="log-out-outline" size={16} color="#EF4444" />
+                                    <Text style={[styles.dropdownText, { color: "#EF4444" }]}>Logout</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </TouchableOpacity>
+                    </Modal>
+                </View>
+            </View>
+
             {/* Top Filters Row */}
             <View style={styles.topFiltersRow}>
                 <View style={styles.leftFilters}>
@@ -264,25 +346,17 @@ export default function TransactionsScreen() {
                     </View>
 
                     {/* Table Rows */}
-                    {MOCK_DATA.map((tx, index) => (
-                        <View key={tx.id} style={[styles.tableRow, index !== MOCK_DATA.length - 1 && { borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : "#F1F5F9" }]}>
+                    {paginatedTransactions.map((tx, index) => (
+                        <View key={tx.id || index} style={[styles.tableRow, index !== paginatedTransactions.length - 1 && { borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : "#F1F5F9" }]}>
                             
                             {/* Transaction Column */}
                             <View style={[styles.tdCol, { flex: 2, minWidth: 200, flexDirection: "row", alignItems: "center" }]}>
-                                <View style={[styles.merchantIcon, { backgroundColor: tx.iconBg }]}>
-                                    {tx.merchant.includes("Google") || tx.merchant.includes("Paytm") || tx.merchant.includes("Amazon") || tx.merchant.includes("Flipkart") ? (
-                                        <Text style={{ color: tx.iconColor, fontWeight: "800", fontSize: 16 }}>{tx.iconInitials}</Text>
-                                    ) : tx.merchant.includes("PhonePe") ? (
-                                        <Text style={{ color: tx.iconColor, fontWeight: "800", fontSize: 16 }}>{tx.iconInitials}</Text>
-                                    ) : tx.merchant.includes("Bank") ? (
-                                        <Ionicons name="business" size={16} color={tx.iconColor} />
-                                    ) : (
-                                        <Ionicons name="arrow-up-outline" size={16} color={tx.iconColor} style={{ transform: [{rotate: '45deg'}] }} />
-                                    )}
+                                <View style={[styles.merchantIcon, { backgroundColor: isDark ? colors.border : "#E0E7FF" }]}>
+                                    <Text style={{ color: "#6366F1", fontWeight: "800", fontSize: 16 }}>{getInitials(tx.title || tx.category)}</Text>
                                 </View>
                                 <View style={{ marginLeft: 10, flex: 1 }}>
-                                    <Text style={[styles.tdMainText, { color: colors.text }]} numberOfLines={1}>{tx.merchant}</Text>
-                                    <Text style={styles.tdSubText} numberOfLines={1}>{tx.vpa}</Text>
+                                    <Text style={[styles.tdMainText, { color: colors.text }]} numberOfLines={1}>{tx.title || tx.category}</Text>
+                                    <Text style={styles.tdSubText} numberOfLines={1}>{tx.upi || tx.category}</Text>
                                 </View>
                             </View>
 
@@ -296,24 +370,24 @@ export default function TransactionsScreen() {
 
                             {/* Amount Column */}
                             <View style={[styles.tdCol, { flex: 1.5, minWidth: 140, justifyContent: "center" }]}>
-                                <Text style={[styles.tdMainText, { color: colors.text }]}>₹ {tx.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</Text>
-                                <Text style={styles.tdSubText}>{tx.date} • {tx.time}</Text>
+                                <Text style={[styles.tdMainText, { color: colors.text }]}>₹ {Math.abs(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</Text>
+                                <Text style={styles.tdSubText}>{tx.date} • {tx.time || "12:00 PM"}</Text>
                             </View>
 
                             {/* Status Column */}
                             <View style={[styles.tdCol, { width: 100, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
                                 <View style={[
                                     styles.statusPill,
-                                    tx.status === "Successful" && { backgroundColor: isDark ? "#064e3b" : "#DCFCE7" },
-                                    tx.status === "Pending" && { backgroundColor: isDark ? "#1e3a8a" : "#E0F2FE" },
-                                    tx.status === "Failed" && { backgroundColor: isDark ? "#7f1d1d" : "#FEE2E2" },
+                                    (!tx.status || tx.status.toLowerCase() === "success" || tx.status.toLowerCase() === "successful") && { backgroundColor: isDark ? "#064e3b" : "#DCFCE7" },
+                                    tx.status?.toLowerCase() === "pending" && { backgroundColor: isDark ? "#1e3a8a" : "#E0F2FE" },
+                                    tx.status?.toLowerCase() === "failed" && { backgroundColor: isDark ? "#7f1d1d" : "#FEE2E2" },
                                 ]}>
                                     <Text style={[
                                         styles.statusText,
-                                        tx.status === "Successful" && { color: "#16A34A" },
-                                        tx.status === "Pending" && { color: "#0284C7" },
-                                        tx.status === "Failed" && { color: "#DC2626" },
-                                    ]}>{tx.status}</Text>
+                                        (!tx.status || tx.status.toLowerCase() === "success" || tx.status.toLowerCase() === "successful") && { color: "#16A34A" },
+                                        tx.status?.toLowerCase() === "pending" && { color: "#0284C7" },
+                                        tx.status?.toLowerCase() === "failed" && { color: "#DC2626" },
+                                    ]}>{tx.status || "Successful"}</Text>
                                 </View>
                                 <Ionicons name="chevron-forward" size={16} color="#94A3B8" />
                             </View>
@@ -324,34 +398,34 @@ export default function TransactionsScreen() {
 
             {/* Pagination Footer */}
             <View style={styles.paginationRow}>
-                <Text style={styles.paginationText}>Showing 1 to 10 of 1,248 transactions</Text>
+                <Text style={styles.paginationText}>Showing {totalItems > 0 ? startIndex + 1 : 0} to {endIndex} of {totalItems} transactions</Text>
                 
                 <View style={styles.pageControls}>
-                    <TouchableOpacity style={[styles.pageBtn, { borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                    <TouchableOpacity 
+                        style={[styles.pageBtn, { borderColor: isDark ? colors.border : "#F1F5F9", opacity: currentPage === 1 ? 0.5 : 1 }]}
+                        disabled={currentPage === 1}
+                        onPress={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    >
                         <Ionicons name="chevron-back" size={14} color="#94A3B8" />
                     </TouchableOpacity>
                     
                     <TouchableOpacity style={[styles.pageBtn, styles.pageBtnActive]}>
-                        <Text style={styles.pageTextActive}>1</Text>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity style={[styles.pageBtn, { borderColor: isDark ? colors.border : "#F1F5F9" }]}>
-                        <Text style={styles.pageText}>2</Text>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity style={[styles.pageBtn, { borderColor: isDark ? colors.border : "#F1F5F9" }]}>
-                        <Text style={styles.pageText}>3</Text>
+                        <Text style={styles.pageTextActive}>{currentPage}</Text>
                     </TouchableOpacity>
                     
                     <View style={styles.pageDots}>
-                        <Text style={styles.pageText}>...</Text>
+                        <Text style={styles.pageText}>of</Text>
                     </View>
                     
                     <TouchableOpacity style={[styles.pageBtn, { borderColor: isDark ? colors.border : "#F1F5F9" }]}>
-                        <Text style={styles.pageText}>125</Text>
+                        <Text style={styles.pageText}>{totalPages}</Text>
                     </TouchableOpacity>
                     
-                    <TouchableOpacity style={[styles.pageBtn, { borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                    <TouchableOpacity 
+                        style={[styles.pageBtn, { borderColor: isDark ? colors.border : "#F1F5F9", opacity: currentPage === totalPages ? 0.5 : 1 }]}
+                        disabled={currentPage === totalPages}
+                        onPress={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    >
                         <Ionicons name="chevron-forward" size={14} color="#64748B" />
                     </TouchableOpacity>
                 </View>
@@ -368,6 +442,77 @@ const styles = StyleSheet.create({
     scrollContent: {
         padding: 16,
         paddingBottom: 40,
+    },
+    pageHeaderRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 24,
+    },
+    pageHeaderLeft: {
+        flex: 1,
+    },
+    pageTitle: {
+        fontSize: 24,
+        fontWeight: '800',
+        marginBottom: 4,
+    },
+    pageSubtitle: {
+        fontSize: 14,
+        color: '#64748B',
+    },
+    avatarWrapper: {
+        position: 'relative',
+    },
+    avatarCircle: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: '#6D28D9',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    activeDot: {
+        position: 'absolute',
+        bottom: 0,
+        right: 0,
+        width: 14,
+        height: 14,
+        borderRadius: 7,
+        backgroundColor: '#22C55E',
+        borderWidth: 2,
+        borderColor: '#FFFFFF',
+    },
+    dropdownOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.1)",
+        alignItems: "flex-end",
+        paddingTop: Platform.OS === 'ios' ? 100 : 70,
+        paddingRight: 16,
+    },
+    profileDropdown: {
+        width: 160,
+        borderRadius: 12,
+        borderWidth: 1,
+        overflow: "hidden",
+        ...Platform.select({
+            ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12 },
+            android: { elevation: 8 },
+            web: { boxShadow: "0 4px 12px rgba(0,0,0,0.1)" } as any,
+        })
+    },
+    dropdownItem: {
+        flexDirection: "row",
+        alignItems: "center",
+        padding: 12,
+        gap: 8,
+    },
+    dropdownText: {
+        fontSize: 14,
+        fontWeight: "500",
+    },
+    dropdownDivider: {
+        height: 1,
     },
     topFiltersRow: {
         flexDirection: "row",

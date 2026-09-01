@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { router } from "../../../navigation/RootNavigation";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import { LinearGradient } from "react-native-linear-gradient";
+import LinearGradient from "react-native-linear-gradient";
 import Svg, { Rect, Path, Ellipse, Circle } from "react-native-svg";
 import { useAppTheme, Radius, Spacing, Shadows, Typography } from "../../../theme";
 import { useAuthStore } from "../../../store/auth.store";
@@ -33,16 +33,13 @@ export default function SubscriptionIndexScreen() {
     const { colors, isDark } = useAppTheme();
 
     const handleSubscribe = (planId: string) => {
-        router.push({
-            pathname: "/payment" as any,
-            params: { planId },
-        });
+        router.push("/payment", { planId });
     };
 
     const handleCopy = (text: string) => {
         if (Platform.OS === "web") {
-            navigator.clipboard.writeText(text);
-            alert("Copied: " + text);
+            (globalThis as any).navigator.clipboard.writeText(text);
+            (globalThis as any).alert("Copied: " + text);
         } else {
             Alert.alert("Success", "Copied to clipboard!");
         }
@@ -307,18 +304,18 @@ export default function SubscriptionIndexScreen() {
                         <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>Plan Details</Text>
                         <View style={[styles.detailRow, { borderBottomColor: colors.border }]}>
                             <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} style={styles.detailIcon} />
-                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Billing Cycle</Text>
-                            <Text style={[styles.detailValue, { color: colors.text }]}>Monthly</Text>
+                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Current Plan</Text>
+                            <Text style={[styles.detailValue, { color: colors.text }]}>{user?.subscription?.name || "Free Tier"}</Text>
                         </View>
                         <View style={[styles.detailRow, { borderBottomColor: colors.border }]}>
                             <Ionicons name="wallet-outline" size={16} color={colors.textSecondary} style={styles.detailIcon} />
                             <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Amount</Text>
-                            <Text style={[styles.detailValue, { color: colors.text }]}>₹{billingCycle === "monthly" ? "50" : "40"} / month</Text>
+                            <Text style={[styles.detailValue, { color: colors.text }]}>{user?.subscription?.price ? `₹${user.subscription.price}` : "Free"}</Text>
                         </View>
                         <View style={[styles.detailRow, { borderBottomColor: colors.border }]}>
                             <Ionicons name="time-outline" size={16} color={colors.textSecondary} style={styles.detailIcon} />
-                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Next Billing Date</Text>
-                            <Text style={[styles.detailValue, { color: colors.text }]}>01 Jun, 2024</Text>
+                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Status</Text>
+                            <Text style={[styles.detailValue, { color: colors.text }]}>{user?.subscription?.status || "ACTIVE"}</Text>
                         </View>
                     </View>
 

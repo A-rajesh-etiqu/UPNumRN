@@ -79,7 +79,8 @@ const styles = StyleSheet.create({
     desktopContainer: {
         flex: 1,
         flexDirection: "row",
-        backgroundColor: "#FFFFFF", // Changed to pure white
+        backgroundColor: "#FFFFFF",
+        overflow: "hidden",
     },
     leftPanel: {
         flex: 1.1,
@@ -96,7 +97,8 @@ const styles = StyleSheet.create({
     },
     mobileContainer: {
         flex: 1,
-        backgroundColor: "#FFFFFF", // Changed to pure white
+        backgroundColor: "#FFFFFF",
+        overflow: "hidden",
     },
     mobileContent: {
         flexGrow: 1,

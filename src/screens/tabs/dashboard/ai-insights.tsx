@@ -8,7 +8,7 @@ import {
     useWindowDimensions,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import { LinearGradient } from "react-native-linear-gradient";
+import LinearGradient from "react-native-linear-gradient";
 import Svg, { Path, Circle, Rect, Line, Text as SvgText } from "react-native-svg";
 import { useAppTheme, Radius, Spacing, Shadows, Typography } from "../../../theme";
 

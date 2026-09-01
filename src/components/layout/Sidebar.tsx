@@ -6,16 +6,17 @@ import {
     TouchableOpacity,
     ScrollView,
 } from "react-native";
-import { router, usePathname } from "../../navigation/RootNavigation";
+import { router, navigationRef } from "../../navigation/RootNavigation";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import { LinearGradient } from "react-native-linear-gradient";
+import LinearGradient from "react-native-linear-gradient";
 import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop } from "react-native-svg";
 import { useAppTheme } from "../../theme";
+import { useAuthStore } from "../../store/auth.store";
 
 const SIDEBAR_ITEMS = [
     { title: "Dashboard", route: "/tabs/dashboard", icon: "grid-outline" as const },
     { title: "Transactions", route: "/tabs/transactions", icon: "swap-horizontal-outline" as const },
-    { title: "Customers", route: "/tabs/profile", icon: "people-outline" as const },
+    { title: "Customers", route: "/tabs/customers", icon: "people-outline" as const },
     { title: "Reports", route: "/tabs/dashboard", icon: "bar-chart-outline" as const },
     { title: "Insights (AI)", route: "/tabs/dashboard/ai-insights", icon: "sparkles-outline" as const, badge: "New" },
     { title: "Subscriptions", route: "/tabs/subscription", icon: "card-outline" as const },
@@ -25,12 +26,34 @@ const SIDEBAR_ITEMS = [
 ];
 
 export default function Sidebar() {
-    const pathname = usePathname();
+    const [pathname, setPathname] = useState(navigationRef.isReady() ? navigationRef.getCurrentRoute()?.name || "" : "");
     const [showPromo, setShowPromo] = useState(true);
     const [activeTab, setActiveTab] = useState("Dashboard");
+    const { user } = useAuthStore();
     const { colors, isDark } = useAppTheme();
 
     React.useEffect(() => {
+        if (!navigationRef.isReady()) return;
+
+        const updatePath = () => {
+            const currentRoute = navigationRef.getCurrentRoute();
+            if (currentRoute) {
+                setPathname(currentRoute.name);
+            }
+        };
+
+        // Initial set
+        updatePath();
+
+        const unsubscribe = navigationRef.addListener('state', updatePath);
+        return () => {
+            unsubscribe();
+        };
+    }, []);
+
+    React.useEffect(() => {
+        if (!pathname) return;
+
         if (pathname === "/payment") {
             setActiveTab("Subscriptions");
             return;
@@ -76,7 +99,7 @@ export default function Sidebar() {
                     <Path d="M 4 20 L 28 6 L 16 22 Z" fill="url(#orangeGrad)" />
                     {/* Right facet */}
                     <Path d="M 16 22 L 28 6 L 22 28 Z" fill="url(#purpleGrad)" />
-                    
+
                     {/* Sparkles */}
                     <Path d="M 26 2 Q 26 4 24 4 Q 26 4 26 6 Q 26 4 28 4 Q 26 4 26 2 Z" fill="#FB923C" />
                     <Path d="M 30 6 Q 30 7.5 28.5 7.5 Q 30 7.5 30 9 Q 30 7.5 31.5 7.5 Q 30 7.5 30 6 Z" fill="#FDBA74" />
@@ -88,12 +111,15 @@ export default function Sidebar() {
             </View>
 
             {/* Menu Items */}
-            <ScrollView 
-                style={styles.menuContainer} 
+            <ScrollView
+                style={styles.menuContainer}
                 contentContainerStyle={styles.menuScrollContent}
                 showsVerticalScrollIndicator={false}
             >
-                {SIDEBAR_ITEMS.map((item, index) => {
+                {SIDEBAR_ITEMS.filter(item => {
+                    if (item.title === "Customers" && user?.userType !== "BUSINESS") return false;
+                    return true;
+                }).map((item, index) => {
                     const isActive = item.title === activeTab;
 
                     const content = (
@@ -151,7 +177,7 @@ export default function Sidebar() {
                     >
                         <Ionicons name="close" size={16} color={colors.textSecondary} />
                     </TouchableOpacity>
-                    
+
                     {/* Crown Row */}
                     <View style={styles.crownRow}>
                         <Svg width="16" height="16" viewBox="0 0 24 24" style={{ marginRight: 8 }}>
@@ -164,7 +190,7 @@ export default function Sidebar() {
                     <Text style={[styles.promoText, { color: colors.textSecondary }]}>
                         Lifetime access for first 1000 users at ₹10/month
                     </Text>
-                    
+
                     {/* Progress bar */}
                     <View style={styles.progressContainer}>
                         <View style={[styles.progressBar, { backgroundColor: isDark ? colors.border : "#334155" }]}>

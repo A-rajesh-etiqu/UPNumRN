@@ -8,6 +8,10 @@ import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
+import { useFonts } from 'expo-font';
+import { Poppins_600SemiBold, Poppins_700Bold } from '@expo-google-fonts/poppins';
+import { Inter_400Regular, Inter_500Medium, Inter_700Bold } from '@expo-google-fonts/inter';
+
 import AuthProvider from './src/providers/AuthProvider';
 import { navigationRef } from './src/navigation/RootNavigation';
 import { useAuthStore } from './src/store/auth.store';
@@ -18,6 +22,8 @@ import IndexScreen from './src/screens/index';
 import LoginScreen from './src/screens/auth/login';
 import SignupScreen from './src/screens/auth/signup';
 import OtpScreen from './src/screens/auth/otp';
+import VerifyUPIScreen from './src/screens/auth/verify-upi';
+import ForgotPasswordScreen from './src/screens/auth/forgot-password';
 // Tabs
 import DashboardScreen from './src/screens/tabs/dashboard/index';
 import TransactionsScreen from './src/screens/tabs/transactions/index';
@@ -27,7 +33,7 @@ import ProfileScreen from './src/screens/tabs/profile/index';
 // Other
 import PaymentScreen from './src/screens/payment';
 import PaymentSuccessScreen from './src/screens/payment-success';
-import SubscriptionScreen from './src/screens/subscription';
+import SubscriptionIndexScreen from './src/screens/tabs/subscription/index';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -41,42 +47,70 @@ function AuthNavigator() {
       <AuthStack.Screen name="/auth/login" component={LoginScreen} />
       <AuthStack.Screen name="/auth/signup" component={SignupScreen} />
       <AuthStack.Screen name="/auth/otp" component={OtpScreen} />
+      <AuthStack.Screen name="/auth/verify-upi" component={VerifyUPIScreen} />
+      <AuthStack.Screen name="/auth/forgot-password" component={ForgotPasswordScreen} />
     </AuthStack.Navigator>
   );
 }
 
+import { useWindowDimensions, View } from 'react-native';
+import Sidebar from './src/components/layout/Sidebar';
+import { useAppTheme } from './src/theme';
+
 function TabNavigator() {
   const { user } = useAuthStore();
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 1024;
+  const { colors } = useAppTheme();
   
   return (
-    <Tab.Navigator
-      screenOptions={({ route }) => ({
-        headerShown: false,
-        tabBarIcon: ({ focused, color, size }) => {
-          let iconName = 'home';
-          if (route.name === '/tabs/dashboard') iconName = focused ? 'home' : 'home-outline';
-          else if (route.name === '/tabs/transactions') iconName = focused ? 'list' : 'list-outline';
-          else if (route.name === '/tabs/customers') iconName = focused ? 'people' : 'people-outline';
-          else if (route.name === '/tabs/settings') iconName = focused ? 'settings' : 'settings-outline';
-          else if (route.name === '/tabs/profile') iconName = focused ? 'person' : 'person-outline';
-          return <Ionicons name={iconName} size={size} color={color} />;
-        },
-        tabBarActiveTintColor: '#6366f1',
-        tabBarInactiveTintColor: 'gray',
-      })}
-    >
-      <Tab.Screen name="/tabs/dashboard" component={DashboardScreen} options={{ tabBarLabel: 'Home' }} />
-      <Tab.Screen name="/tabs/transactions" component={TransactionsScreen} options={{ tabBarLabel: 'Transactions' }} />
-      {user?.userType === 'BUSINESS' && (
-        <Tab.Screen name="/tabs/customers" component={CustomersScreen} options={{ tabBarLabel: 'Customers' }} />
-      )}
-      <Tab.Screen name="/tabs/settings" component={SettingsScreen} options={{ tabBarLabel: 'Settings' }} />
-      <Tab.Screen name="/tabs/profile" component={ProfileScreen} options={{ tabBarLabel: 'Profile' }} />
-    </Tab.Navigator>
+    <View style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column', backgroundColor: colors.background }}>
+      {isDesktop && <Sidebar />}
+      <View style={{ flex: 1 }}>
+        <Tab.Navigator
+          screenOptions={({ route }) => ({
+            headerShown: false,
+            tabBarStyle: { display: isDesktop ? 'none' : 'flex' },
+            tabBarIcon: ({ focused, color, size }) => {
+              let iconName = 'home';
+              if (route.name === '/tabs/dashboard') iconName = focused ? 'home' : 'home-outline';
+              else if (route.name === '/tabs/transactions') iconName = focused ? 'list' : 'list-outline';
+              else if (route.name === '/tabs/customers') iconName = focused ? 'people' : 'people-outline';
+              else if (route.name === '/tabs/settings') iconName = focused ? 'settings' : 'settings-outline';
+              else if (route.name === '/tabs/profile') iconName = focused ? 'person' : 'person-outline';
+              return <Ionicons name={iconName} size={size} color={color} />;
+            },
+            tabBarActiveTintColor: '#6366f1',
+            tabBarInactiveTintColor: 'gray',
+          })}
+        >
+          <Tab.Screen name="/tabs/dashboard" component={DashboardScreen} options={{ tabBarLabel: 'Home' }} />
+          <Tab.Screen name="/tabs/transactions" component={TransactionsScreen} options={{ tabBarLabel: 'Transactions' }} />
+          {user?.userType === 'BUSINESS' && (
+            <Tab.Screen name="/tabs/customers" component={CustomersScreen} options={{ tabBarLabel: 'Customers' }} />
+          )}
+          <Tab.Screen name="/tabs/settings" component={SettingsScreen} options={{ tabBarLabel: 'Settings' }} />
+          <Tab.Screen name="/tabs/profile" component={ProfileScreen} options={{ tabBarLabel: 'Profile', tabBarItemStyle: { display: 'none' }, tabBarButton: () => null }} />
+          <Tab.Screen name="/tabs/subscription" component={SubscriptionIndexScreen} options={{ tabBarLabel: 'Subscriptions', tabBarItemStyle: { display: 'none' }, tabBarButton: () => null }} />
+        </Tab.Navigator>
+      </View>
+    </View>
   );
 }
 
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    Poppins_600SemiBold,
+    Poppins_700Bold,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_700Bold,
+  });
+
+  if (!fontsLoaded) {
+    return null;
+  }
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
@@ -89,7 +123,6 @@ export default function App() {
                 <Stack.Screen name="/tabs" component={TabNavigator} />
                 <Stack.Screen name="/payment" component={PaymentScreen} />
                 <Stack.Screen name="/payment-success" component={PaymentSuccessScreen} />
-                <Stack.Screen name="/subscription" component={SubscriptionScreen} />
               </Stack.Navigator>
             </NavigationContainer>
           </AuthProvider>

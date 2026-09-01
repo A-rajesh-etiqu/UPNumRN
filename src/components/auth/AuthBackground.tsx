@@ -14,7 +14,7 @@ export default function AuthBackground({ type = "login" }: AuthBackgroundProps) 
             {/* Top Wave (Login Only) */}
             {type === "login" && (
                 <View style={styles.topLeftWave}>
-                    <Svg width={width} height={width * 0.8} viewBox="0 0 375 300" preserveAspectRatio="none">
+                    <Svg width="100%" height={width * 0.8} viewBox="0 0 375 300" preserveAspectRatio="none">
                         <Path
                             d="M 0 0 L 375 0 L 375 40 C 250 -40, 150 200, 0 100 Z"
                             fill="#F3E8FF"
@@ -58,7 +58,6 @@ export default function AuthBackground({ type = "login" }: AuthBackgroundProps) 
                         <Path 
                             d="M 44 48 L 56 48 L 56 56 L 44 56 Z" 
                             fill="#FFFFFF" 
-                            rx="2"
                         />
                         {/* Lock hook */}
                         <Path 
@@ -86,7 +85,7 @@ export default function AuthBackground({ type = "login" }: AuthBackgroundProps) 
 
             {/* Bottom Wave (Both) */}
             <View style={styles.bottomWave}>
-                <Svg width={width} height={200} viewBox="0 0 375 200" preserveAspectRatio="none">
+                <Svg width="100%" height={200} viewBox="0 0 375 200" preserveAspectRatio="none">
                     <Path
                         d="M 0 200 L 375 200 L 375 50 C 250 150, 100 0, 0 100 Z"
                         fill="#F3E8FF"

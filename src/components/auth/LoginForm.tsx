@@ -32,7 +32,7 @@ export default function LoginForm() {
         formState: { errors },
     } = useForm<LoginFormType>({
         resolver: zodResolver(loginSchema),
-        defaultValues: { email: "", password: "" },
+        defaultValues: { mobile: "", password: "" },
     });
 
     const onSubmit = async (data: LoginFormType) => {
@@ -46,14 +46,14 @@ export default function LoginForm() {
         } catch (err: any) {
             console.error(err);
             if (err.message === "Network Error" || err.code === "ERR_NETWORK") {
-                const isAdmin = data.email.toLowerCase().includes("admin");
+                const isAdmin = data.mobile === "9999999999";
                 const mockUser = {
                     id: isAdmin ? "admin-1" : "user-1",
                     firstName: isAdmin ? "Super" : "Amit",
                     lastName: isAdmin ? "Admin" : "Sharma",
                     fullName: isAdmin ? "Super Admin" : "Amit Sharma",
-                    email: data.email,
-                    mobile: "9999999999",
+                    email: isAdmin ? "admin@upnum.com" : "amit@example.com",
+                    mobile: data.mobile,
                     role: isAdmin ? "ADMIN" : "USER",
                     isVerified: true,
                     subscription: { id: "lifetime", name: "Lifetime Plan", price: 10, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: true },
@@ -112,28 +112,29 @@ export default function LoginForm() {
             {/* Form Inputs */}
             <Controller
                 control={control}
-                name="email"
+                name="mobile"
                 render={({ field: { value, onChange } }) => (
-                    <View style={[styles.inputContainer, errors.email && styles.inputError]}>
+                    <View style={[styles.inputContainer, errors.mobile && styles.inputError]}>
                         <View style={styles.iconBox}>
-                            <Ionicons name="mail-outline" size={20} color="#6D28D9" />
+                            <Ionicons name="call-outline" size={20} color="#6D28D9" />
                         </View>
                         <View style={styles.inputInner}>
-                            <Text style={styles.inputLabelFloating}>Email Address</Text>
+                            <Text style={styles.inputLabelFloating}>Mobile Number</Text>
                             <TextInput
-                                placeholder="Enter your email address"
+                                placeholder="Enter your mobile number"
                                 placeholderTextColor="#94A3B8"
                                 value={value}
                                 onChangeText={onChange}
                                 autoCapitalize="none"
-                                keyboardType="email-address"
+                                keyboardType="phone-pad"
+                                maxLength={10}
                                 style={styles.textInput}
                             />
                         </View>
                     </View>
                 )}
             />
-            {errors.email && <Text style={styles.errorText}>{errors.email.message}</Text>}
+            {errors.mobile && <Text style={styles.errorText}>{errors.mobile.message}</Text>}
 
             <Controller
                 control={control}

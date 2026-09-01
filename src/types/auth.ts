@@ -16,6 +16,7 @@ export interface SubscriptionPlan {
     billingCycle: BillingCycle;
     isLifetimeOffer: boolean;
     expiresAt?: string | null;
+    status?: string;
 }
 
 export interface User {
@@ -34,6 +35,7 @@ export interface User {
     userType: "PERSONAL" | "BUSINESS";
 
     isVerified: boolean;
+    isUpiVerified: boolean;
 
     subscription: SubscriptionPlan;
 
@@ -46,7 +48,7 @@ export interface User {
 =========================================== */
 
 export interface LoginRequest {
-    email: string;
+    mobile: string;
     password: string;
 }
 
@@ -105,11 +107,12 @@ export interface VerifyOtpResponse {
 =========================================== */
 
 export interface ForgotPasswordRequest {
-    email: string;
+    mobile: string;
 }
 
 export interface ForgotPasswordResponse {
     message: string;
+    otp?: string;
 }
 
 /* ===========================================
@@ -117,9 +120,9 @@ export interface ForgotPasswordResponse {
 =========================================== */
 
 export interface ResetPasswordRequest {
-    token: string;
-    password: string;
-    confirmPassword: string;
+    mobile: string;
+    otp: string;
+    newPassword: string;
 }
 
 export interface ResetPasswordResponse {

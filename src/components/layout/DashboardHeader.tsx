@@ -194,7 +194,7 @@ export default function DashboardHeader({
                                     color={colors.textSecondary}
                                     style={{ marginRight: 8 }}
                                 />
-                                <Text style={[styles.dropdownItemText, { color: colors.text }]}>Profile</Text>
+                                <Text style={[styles.dropdownItemText, { color: colors.text }]}>Edit Profile</Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity

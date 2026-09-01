@@ -1,9 +1,9 @@
 import { z } from "zod";
 
 export const loginSchema = z.object({
-    email: z
+    mobile: z
         .string()
-        .min(1, "Email or Mobile is required"),
+        .regex(/^[0-9]{10}$/, "Please enter a valid 10-digit mobile number"),
 
     password: z
         .string()

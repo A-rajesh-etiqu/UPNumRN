@@ -81,9 +81,13 @@ export default function PaymentSuccessScreen() {
 
                 <TouchableOpacity
                     style={[styles.button, { backgroundColor: colors.primary }]}
-                    onPress={() =>
-                        router.replace("/(tabs)")
-                    }
+                    onPress={() => {
+                        const { user, updateUser } = require("../store/auth.store").useAuthStore.getState();
+                        if (user && user.subscription) {
+                            updateUser({ ...user, subscription: { ...user.subscription, status: "ACTIVE" } });
+                        }
+                        router.replace("/tabs/dashboard");
+                    }}
                 >
                     <Text style={styles.buttonText}>
                         Continue to Dashboard
