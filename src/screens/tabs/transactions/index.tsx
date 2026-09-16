@@ -11,7 +11,9 @@ import {
     ActivityIndicator,
     Image,
     Modal,
+    Alert,
 } from "react-native";
+import * as DocumentPicker from "expo-document-picker";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import Svg, { Path } from "react-native-svg";
 import { useAppTheme } from "../../../theme";
@@ -132,12 +134,73 @@ const MOCK_DATA = [
 export default function TransactionsScreen() {
     const { colors, isDark } = useAppTheme();
     const { user, logout } = useAuthStore();
-    const { transactions, loading, loadTransactions } = useTransactionStore();
+    const { transactions, loading, loadTransactions, addTransaction } = useTransactionStore();
     const [activeTab, setActiveTab] = useState<TabType>("All");
     const [search, setSearch] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
     const [isProfileMenuVisible, setIsProfileMenuVisible] = useState(false);
+    
+    // Import Transaction State
+    const [isImportMenuVisible, setIsImportMenuVisible] = useState(false);
+    const [isImportModalVisible, setIsImportModalVisible] = useState(false);
+    const [isImporting, setIsImporting] = useState(false);
+    const [importForm, setImportForm] = useState({ title: '', category: '', amount: '', type: 'expense' as 'expense' | 'income' });
+    const { uploadBulkTransactions } = useTransactionStore();
+    
     const ITEMS_PER_PAGE = 10;
+    
+    const handleImportSubmit = async () => {
+        if (!importForm.title || !importForm.amount || !importForm.category) return;
+        setIsImporting(true);
+        const success = await addTransaction({
+            userId: user?.id,
+            title: importForm.title,
+            category: importForm.category,
+            amount: parseFloat(importForm.amount),
+            type: importForm.type,
+            date_time: new Date().toISOString()
+        });
+        setIsImporting(false);
+        if (success) {
+            setIsImportModalVisible(false);
+            setImportForm({ title: '', category: '', amount: '', type: 'expense' });
+        }
+    };
+
+    const handleFileUpload = async () => {
+        setIsImportMenuVisible(false);
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: ['text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+                copyToCacheDirectory: true,
+            });
+
+            if (result.canceled || !result.assets || result.assets.length === 0) return;
+
+            const file = result.assets[0];
+            
+            setIsImporting(true);
+            const formData = new FormData();
+            formData.append("userId", user?.id || "user-1");
+            formData.append("file", {
+                uri: file.uri,
+                name: file.name,
+                type: file.mimeType || "application/octet-stream",
+            } as any);
+
+            const success = await uploadBulkTransactions(formData, user?.id);
+            setIsImporting(false);
+            if (success) {
+                Alert.alert("Success", "Transactions imported successfully!");
+            } else {
+                Alert.alert("Error", "Failed to upload file");
+            }
+        } catch (error) {
+            console.error("File upload error:", error);
+            setIsImporting(false);
+            Alert.alert("Error", "An unexpected error occurred during upload");
+        }
+    };
 
     useEffect(() => {
         loadTransactions(user?.id);
@@ -154,6 +217,12 @@ export default function TransactionsScreen() {
     const getInitials = (name: string) => {
         return name ? name.charAt(0).toUpperCase() : "T";
     };
+
+    // KPI Stats computations
+    const totalTxCount = transactions.length;
+    const successCount = transactions.filter(tx => !tx.status || tx.status.toLowerCase() === "success" || tx.status.toLowerCase() === "successful").length;
+    const failedCount = transactions.filter(tx => tx.status?.toLowerCase() === "failed").length;
+    const pendingCount = transactions.filter(tx => tx.status?.toLowerCase() === "pending").length;
 
     // Filter transactions
     const filteredTransactions = transactions.filter(tx => {
@@ -219,33 +288,43 @@ export default function TransactionsScreen() {
             {/* Top Filters Row */}
             <View style={styles.topFiltersRow}>
                 <View style={styles.leftFilters}>
-                    <TouchableOpacity style={styles.filterBox} activeOpacity={0.8}>
+                    <TouchableOpacity style={[styles.filterBox, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]} activeOpacity={0.8}>
                         <Ionicons name="calendar-outline" size={16} color="#64748B" style={{ marginRight: 8 }} />
-                        <Text style={styles.filterText}>01 May, 2024 - 31 May, 2024</Text>
+                        <Text style={[styles.filterText, { color: isDark ? colors.text : "#1E293B" }]}>01 May, 2024 - 31 May, 2024</Text>
                         <Ionicons name="chevron-down" size={14} color="#64748B" style={{ marginLeft: 8 }} />
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.filterBox} activeOpacity={0.8}>
+                    <TouchableOpacity style={[styles.filterBox, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]} activeOpacity={0.8}>
                         <Ionicons name="funnel-outline" size={16} color="#64748B" style={{ marginRight: 8 }} />
-                        <Text style={styles.filterText}>Filter</Text>
+                        <Text style={[styles.filterText, { color: isDark ? colors.text : "#1E293B" }]}>Filter</Text>
                         <Ionicons name="chevron-down" size={14} color="#64748B" style={{ marginLeft: 8 }} />
                     </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity style={styles.downloadBtn} activeOpacity={0.8}>
-                    <Ionicons name="download-outline" size={18} color="#64748B" />
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <TouchableOpacity 
+                        style={[styles.downloadBtn, { backgroundColor: colors.primary, borderColor: colors.primary, paddingHorizontal: 12 }]} 
+                        activeOpacity={0.8}
+                        onPress={() => setIsImportMenuVisible(true)}
+                    >
+                        <Ionicons name="add-outline" size={20} color="#FFFFFF" />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={[styles.downloadBtn, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]} activeOpacity={0.8}>
+                        <Ionicons name="download-outline" size={18} color="#64748B" />
+                    </TouchableOpacity>
+                </View>
             </View>
 
             {/* KPIs Row */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.kpiRow} style={{ flexGrow: 0, marginBottom: 20 }}>
                 {/* Total Transactions */}
-                <View style={[styles.kpiCard, { borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                <View style={[styles.kpiCard, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
                     <View style={[styles.iconCircle, { backgroundColor: "#F5F3FF" }]}>
                         <Ionicons name="swap-horizontal" size={18} color="#8B5CF6" />
                     </View>
                     <Text style={styles.kpiTitle}>Total Transactions</Text>
-                    <Text style={[styles.kpiValue, { color: colors.text }]}>1,248</Text>
+                    <Text style={[styles.kpiValue, { color: colors.text }]}>{totalTxCount}</Text>
                     <View style={styles.kpiTrendRow}>
                         <Ionicons name="arrow-up" size={12} color="#22C55E" />
                         <Text style={styles.kpiTrendGreen}>12.4%</Text>
@@ -254,12 +333,12 @@ export default function TransactionsScreen() {
                 </View>
 
                 {/* Successful */}
-                <View style={[styles.kpiCard, { borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                <View style={[styles.kpiCard, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
                     <View style={[styles.iconCircle, { backgroundColor: "#DCFCE7" }]}>
                         <Ionicons name="checkmark-circle-outline" size={18} color="#22C55E" />
                     </View>
                     <Text style={styles.kpiTitle}>Successful</Text>
-                    <Text style={[styles.kpiValue, { color: colors.text }]}>1,180</Text>
+                    <Text style={[styles.kpiValue, { color: colors.text }]}>{successCount}</Text>
                     <View style={styles.kpiTrendRow}>
                         <Ionicons name="arrow-up" size={12} color="#22C55E" />
                         <Text style={styles.kpiTrendGreen}>94.6%</Text>
@@ -267,13 +346,13 @@ export default function TransactionsScreen() {
                 </View>
 
                 {/* Failed */}
-                <View style={[styles.kpiCard, { borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                <View style={[styles.kpiCard, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
                     <View style={[styles.iconCircle, { backgroundColor: "#FEF2F2", position: 'relative' }]}>
                         <Ionicons name="close-circle-outline" size={18} color="#EF4444" />
                         <View style={{position: 'absolute', top: 0, right: 0, width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444', borderWidth: 1, borderColor: '#FEF2F2'}} />
                     </View>
                     <Text style={styles.kpiTitle}>Failed</Text>
-                    <Text style={[styles.kpiValue, { color: colors.text }]}>48</Text>
+                    <Text style={[styles.kpiValue, { color: colors.text }]}>{failedCount}</Text>
                     <View style={styles.kpiTrendRow}>
                         <Ionicons name="arrow-down" size={12} color="#EF4444" />
                         <Text style={styles.kpiTrendRed}>3.8%</Text>
@@ -281,12 +360,12 @@ export default function TransactionsScreen() {
                 </View>
 
                 {/* Pending */}
-                <View style={[styles.kpiCard, { borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                <View style={[styles.kpiCard, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
                     <View style={[styles.iconCircle, { backgroundColor: "#F0F9FF" }]}>
                         <Ionicons name="time-outline" size={18} color="#3B82F6" />
                     </View>
                     <Text style={styles.kpiTitle}>Pending</Text>
-                    <Text style={[styles.kpiValue, { color: colors.text }]}>20</Text>
+                    <Text style={[styles.kpiValue, { color: colors.text }]}>{pendingCount}</Text>
                     <View style={styles.kpiTrendRow}>
                         <Ionicons name="arrow-up" size={12} color="#3B82F6" />
                         <Text style={styles.kpiTrendBlue}>1.6%</Text>
@@ -334,11 +413,11 @@ export default function TransactionsScreen() {
             </View>
 
             {/* Main Table Content */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={[styles.tableContainer, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: "100%" }} contentContainerStyle={{ flexGrow: 1 }}>
+                <View style={[styles.tableContainer, { flex: 1, backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
                     
                     {/* Table Header */}
-                    <View style={[styles.tableHeader, { borderBottomColor: isDark ? colors.border : "#F1F5F9" }]}>
+                    <View style={[styles.tableHeader, { backgroundColor: isDark ? colors.background : "#F8FAFC", borderBottomColor: isDark ? colors.border : "#F1F5F9" }]}>
                         <Text style={[styles.thText, { flex: 2, minWidth: 200 }]}>Transaction</Text>
                         <Text style={[styles.thText, { flex: 1.2, minWidth: 100 }]}>Type</Text>
                         <Text style={[styles.thText, { flex: 1.5, minWidth: 140 }]}>Amount</Text>
@@ -402,7 +481,7 @@ export default function TransactionsScreen() {
                 
                 <View style={styles.pageControls}>
                     <TouchableOpacity 
-                        style={[styles.pageBtn, { borderColor: isDark ? colors.border : "#F1F5F9", opacity: currentPage === 1 ? 0.5 : 1 }]}
+                        style={[styles.pageBtn, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9", opacity: currentPage === 1 ? 0.5 : 1 }]}
                         disabled={currentPage === 1}
                         onPress={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                     >
@@ -414,15 +493,15 @@ export default function TransactionsScreen() {
                     </TouchableOpacity>
                     
                     <View style={styles.pageDots}>
-                        <Text style={styles.pageText}>of</Text>
+                        <Text style={[styles.pageText, { color: isDark ? colors.text : "#0F172A" }]}>of</Text>
                     </View>
                     
-                    <TouchableOpacity style={[styles.pageBtn, { borderColor: isDark ? colors.border : "#F1F5F9" }]}>
-                        <Text style={styles.pageText}>{totalPages}</Text>
+                    <TouchableOpacity style={[styles.pageBtn, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                        <Text style={[styles.pageText, { color: isDark ? colors.text : "#0F172A" }]}>{totalPages}</Text>
                     </TouchableOpacity>
                     
                     <TouchableOpacity 
-                        style={[styles.pageBtn, { borderColor: isDark ? colors.border : "#F1F5F9", opacity: currentPage === totalPages ? 0.5 : 1 }]}
+                        style={[styles.pageBtn, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9", opacity: currentPage === totalPages ? 0.5 : 1 }]}
                         disabled={currentPage === totalPages}
                         onPress={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                     >
@@ -431,6 +510,125 @@ export default function TransactionsScreen() {
                 </View>
             </View>
 
+            {/* Import Menu Modal */}
+            <Modal
+                visible={isImportMenuVisible}
+                transparent={true}
+                animationType="fade"
+            >
+                <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }} activeOpacity={1} onPress={() => setIsImportMenuVisible(false)}>
+                    <View style={{ width: 280, backgroundColor: isDark ? colors.surface : "#FFF", borderRadius: 16, overflow: 'hidden', ...Platform.select({ ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12 }, android: { elevation: 8 }, web: { boxShadow: "0 4px 12px rgba(0,0,0,0.1)" } as any }) }}>
+                        <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border, alignItems: 'center' }}>
+                            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>Import Transactions</Text>
+                            <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>Choose an import method</Text>
+                        </View>
+                        
+                        <TouchableOpacity 
+                            style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}
+                            onPress={() => { setIsImportMenuVisible(false); setIsImportModalVisible(true); }}
+                        >
+                            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: isDark ? '#1e3a8a' : '#E0F2FE', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                                <Ionicons name="create-outline" size={18} color="#0284C7" />
+                            </View>
+                            <View>
+                                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>Add Manually</Text>
+                                <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>Enter one transaction at a time</Text>
+                            </View>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                            style={{ flexDirection: 'row', alignItems: 'center', padding: 16 }}
+                            onPress={handleFileUpload}
+                        >
+                            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: isDark ? '#064e3b' : '#DCFCE7', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                                <Ionicons name="document-text-outline" size={18} color="#16A34A" />
+                            </View>
+                            <View>
+                                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>Upload File</Text>
+                                <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>CSV or Excel (.xls, .xlsx)</Text>
+                            </View>
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+
+            {/* Import Transaction Modal */}
+            <Modal
+                visible={isImportModalVisible}
+                transparent={true}
+                animationType="fade"
+            >
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
+                    <View style={{ width: 340, backgroundColor: isDark ? colors.surface : "#FFF", borderRadius: 12, padding: 20, borderWidth: 1, borderColor: colors.border }}>
+                        <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 16 }}>Import Transaction</Text>
+                        
+                        <View style={{ marginBottom: 12 }}>
+                            <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Title</Text>
+                            <TextInput 
+                                style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 10, color: colors.text }}
+                                placeholder="e.g. Amazon Purchase"
+                                placeholderTextColor={colors.textSecondary}
+                                value={importForm.title}
+                                onChangeText={t => setImportForm({...importForm, title: t})}
+                            />
+                        </View>
+                        
+                        <View style={{ marginBottom: 12 }}>
+                            <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Amount (₹)</Text>
+                            <TextInput 
+                                style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 10, color: colors.text }}
+                                placeholder="0.00"
+                                placeholderTextColor={colors.textSecondary}
+                                keyboardType="numeric"
+                                value={importForm.amount}
+                                onChangeText={t => setImportForm({...importForm, amount: t})}
+                            />
+                        </View>
+                        
+                        <View style={{ marginBottom: 12 }}>
+                            <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Category</Text>
+                            <TextInput 
+                                style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 10, color: colors.text }}
+                                placeholder="e.g. Shopping"
+                                placeholderTextColor={colors.textSecondary}
+                                value={importForm.category}
+                                onChangeText={t => setImportForm({...importForm, category: t})}
+                            />
+                        </View>
+                        
+                        <View style={{ marginBottom: 20, flexDirection: 'row', gap: 10 }}>
+                            <TouchableOpacity 
+                                style={{ flex: 1, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: importForm.type === 'expense' ? '#EF4444' : colors.border, backgroundColor: importForm.type === 'expense' ? (isDark ? '#451a1a' : '#FEE2E2') : 'transparent', alignItems: 'center' }}
+                                onPress={() => setImportForm({...importForm, type: 'expense'})}
+                            >
+                                <Text style={{ color: importForm.type === 'expense' ? '#EF4444' : colors.text }}>Expense</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                                style={{ flex: 1, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: importForm.type === 'income' ? '#22C55E' : colors.border, backgroundColor: importForm.type === 'income' ? (isDark ? '#1a3320' : '#DCFCE7') : 'transparent', alignItems: 'center' }}
+                                onPress={() => setImportForm({...importForm, type: 'income'})}
+                            >
+                                <Text style={{ color: importForm.type === 'income' ? '#22C55E' : colors.text }}>Income</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <View style={{ flexDirection: 'row', gap: 12 }}>
+                            <TouchableOpacity 
+                                style={{ flex: 1, padding: 12, borderRadius: 8, alignItems: 'center', backgroundColor: colors.border }}
+                                onPress={() => setIsImportModalVisible(false)}
+                            >
+                                <Text style={{ color: colors.text }}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                                style={{ flex: 1, padding: 12, borderRadius: 8, alignItems: 'center', backgroundColor: colors.primary }}
+                                onPress={handleImportSubmit}
+                                disabled={isImporting || !importForm.title || !importForm.amount || !importForm.category}
+                            >
+                                {isImporting ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={{ color: "#FFF", fontWeight: '600' }}>Add</Text>}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </ScrollView>
     );
 }

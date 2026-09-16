@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     View,
     Text,
@@ -17,7 +17,7 @@ import Svg, { Rect, Path, Ellipse, Circle } from "react-native-svg";
 import { useAppTheme, Radius, Spacing, Shadows, Typography } from "../../../theme";
 import { useAuthStore } from "../../../store/auth.store";
 
-const PLAN_FEATURES = [
+const PLAN_FEATURES_FALLBACK = [
     "All Dashboard Features",
     "AI Insights & Suggestions",
     "Unlimited Transactions",
@@ -31,6 +31,22 @@ export default function SubscriptionIndexScreen() {
     const isDesktop = width >= 900;
     const { user } = useAuthStore();
     const { colors, isDark } = useAppTheme();
+
+    const [plans, setPlans] = useState<any[]>([]);
+    const [loadingPlans, setLoadingPlans] = useState(true);
+
+    useEffect(() => {
+        fetch("http://localhost:8085/api/plans")
+            .then(res => res.json())
+            .then(data => {
+                setPlans(data);
+                setLoadingPlans(false);
+            })
+            .catch(err => {
+                console.error("Fetch plans error:", err);
+                setLoadingPlans(false);
+            });
+    }, []);
 
     const handleSubscribe = (planId: string) => {
         router.push("/payment", { planId });
@@ -139,94 +155,82 @@ export default function SubscriptionIndexScreen() {
                 <View style={styles.mainContent}>
                     {/* Plan Grid */}
                     <View style={[styles.planGrid, isDesktop && styles.rowLayout]}>
-                        {/* Standard Plan (MOST POPULAR) */}
-                        <View style={[styles.planCard, styles.planCardPurpleBorder, { backgroundColor: colors.surface, borderColor: isDark ? colors.border : "#E9D5FF" }]}>
-                            <View style={[styles.popularBadge, { backgroundColor: colors.primary }]}>
-                                <Text style={styles.popularBadgeText}>MOST POPULAR</Text>
-                            </View>
-                            <Text style={[styles.planCardTitle, { color: colors.text }]}>Standard Plan</Text>
-                            <Text style={[styles.planCardDesc, { color: colors.textSecondary }]}>Perfect for small businesses</Text>
+                        {loadingPlans ? (
+                            <Text style={{ color: colors.textSecondary, padding: 20 }}>Loading active plans...</Text>
+                        ) : plans.length === 0 ? (
+                            <Text style={{ color: colors.textSecondary, padding: 20 }}>No active plans available.</Text>
+                        ) : (
+                            plans.map((plan, idx) => {
+                                const isOdd = idx % 2 !== 0;
+                                const currentBorderClass = isOdd ? styles.planCardOrangeBorder : styles.planCardPurpleBorder;
+                                const badgeBg = isOdd ? colors.secondary : colors.primary;
+                                const badgeText = isOdd ? "LIMITED TIME OFFER" : "MOST POPULAR";
+                                const gradientColors = isOdd 
+                                    ? (isDark ? ["#FB923C", "#EA580C"] : ["#F97316", "#EA580C"])
+                                    : (isDark ? ["#A78BFA", "#7C3AED"] : ["#8B5CF6", "#6D28D9"]);
+                                const iconColor = isOdd ? colors.secondary : colors.primary;
+                                const cardBorderColor = isOdd 
+                                    ? (isDark ? colors.border : "#FED7AA")
+                                    : (isDark ? colors.border : "#E9D5FF");
 
-                            <View style={styles.priceRow}>
-                                <Text style={[styles.priceSymbol, { color: colors.text }]}>₹</Text>
-                                <Text style={[styles.priceValue, { color: colors.text }]}>{billingCycle === "monthly" ? "50" : "40"}</Text>
-                                <Text style={[styles.pricePeriod, { color: colors.textSecondary }]}>/month</Text>
-                            </View>
+                                const monthlyPrice = parseFloat(plan.price) || 0;
+                                const displayPrice = billingCycle === "monthly" 
+                                    ? monthlyPrice 
+                                    : Math.floor(monthlyPrice * 0.8); // 20% discount
+                                const totalYearlyPrice = Math.floor(monthlyPrice * 12 * 0.8);
 
-                            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                                return (
+                                    <View key={plan.id} style={[styles.planCard, currentBorderClass, { backgroundColor: colors.surface, borderColor: cardBorderColor }]}>
+                                        <View style={[styles.popularBadge, { backgroundColor: badgeBg }]}>
+                                            <Text style={styles.popularBadgeText}>{badgeText}</Text>
+                                        </View>
+                                        <Text style={[styles.planCardTitle, { color: colors.text }]}>{plan.name}</Text>
+                                        <Text style={[styles.planCardDesc, { color: colors.textSecondary }]}>{plan.type || "Perfect for businesses"}</Text>
 
-                            {/* Features */}
-                            <View style={styles.featuresList}>
-                                {PLAN_FEATURES.map((feat, idx) => (
-                                    <View key={idx} style={styles.featureItem}>
-                                        <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
-                                        <Text style={[styles.featureText, { color: colors.text }]}>{feat}</Text>
+                                        <View style={styles.priceRow}>
+                                            <Text style={[styles.priceSymbol, { color: colors.text }]}>₹</Text>
+                                            <Text style={[styles.priceValue, { color: colors.text }]}>{displayPrice}</Text>
+                                            <Text style={[styles.pricePeriod, { color: colors.textSecondary }]}>/month</Text>
+                                        </View>
+                                        {isOdd && (
+                                            <Text style={styles.pricePromoText}>For 1st 1000 users only</Text>
+                                        )}
+
+                                        <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+                                        {/* Features */}
+                                        <View style={styles.featuresList}>
+                                            {(plan.description ? plan.description.split(',') : PLAN_FEATURES_FALLBACK).map((feat: string, fIdx: number) => (
+                                                <View key={fIdx} style={styles.featureItem}>
+                                                    <Ionicons name="checkmark-circle" size={16} color={iconColor} />
+                                                    <Text style={[styles.featureText, { color: colors.text }]}>{feat.trim()}</Text>
+                                                </View>
+                                            ))}
+                                        </View>
+
+                                        <TouchableOpacity
+                                            activeOpacity={0.9}
+                                            onPress={() => handleSubscribe(plan.id.toString())}
+                                            style={styles.subscribeBtnWrapper}
+                                        >
+                                            <LinearGradient
+                                                colors={gradientColors}
+                                                start={{ x: 0, y: 0 }}
+                                                end={{ x: 1, y: 0 }}
+                                                style={styles.subscribeBtn}
+                                            >
+                                                <Text style={styles.subscribeBtnText}>
+                                                    Subscribe for ₹{billingCycle === "monthly" ? displayPrice : totalYearlyPrice}
+                                                </Text>
+                                            </LinearGradient>
+                                        </TouchableOpacity>
+                                        <Text style={[styles.cardFooter, { color: colors.textSecondary }]}>
+                                            {isOdd ? "One-time offer. Limited seats!" : `Billed ${billingCycle} via UPI`}
+                                        </Text>
                                     </View>
-                                ))}
-                            </View>
-
-                            <TouchableOpacity
-                                activeOpacity={0.9}
-                                onPress={() => handleSubscribe("standard")}
-                                style={styles.subscribeBtnWrapper}
-                            >
-                                <LinearGradient
-                                    colors={isDark ? ["#A78BFA", "#7C3AED"] : ["#8B5CF6", "#6D28D9"]}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 0 }}
-                                    style={styles.subscribeBtn}
-                                >
-                                    <Text style={styles.subscribeBtnText}>
-                                        Subscribe for ₹{billingCycle === "monthly" ? "50" : "480"}
-                                    </Text>
-                                </LinearGradient>
-                            </TouchableOpacity>
-                            <Text style={[styles.cardFooter, { color: colors.textSecondary }]}>Billed monthly via UPI</Text>
-                        </View>
-
-                        {/* Lifetime Plan (LIMITED TIME OFFER) */}
-                        <View style={[styles.planCard, styles.planCardOrangeBorder, { backgroundColor: colors.surface, borderColor: isDark ? colors.border : "#FED7AA" }]}>
-                            <View style={[styles.popularBadge, { backgroundColor: colors.secondary }]}>
-                                <Text style={styles.popularBadgeText}>LIMITED TIME OFFER</Text>
-                            </View>
-                            <Text style={[styles.planCardTitle, { color: colors.text }]}>Lifetime Plan</Text>
-                            <Text style={[styles.planCardDesc, { color: colors.textSecondary }]}>One-time offer for early users</Text>
-
-                            <View style={styles.priceRow}>
-                                <Text style={[styles.priceSymbol, { color: colors.text }]}>₹</Text>
-                                <Text style={[styles.priceValue, { color: colors.text }]}>10</Text>
-                                <Text style={[styles.pricePeriod, { color: colors.textSecondary }]}>/month</Text>
-                            </View>
-                            <Text style={styles.pricePromoText}>For 1st 1000 users only</Text>
-
-                            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-                            {/* Features */}
-                            <View style={styles.featuresList}>
-                                {PLAN_FEATURES.map((feat, idx) => (
-                                    <View key={idx} style={styles.featureItem}>
-                                        <Ionicons name="checkmark-circle" size={16} color={colors.secondary} />
-                                        <Text style={[styles.featureText, { color: colors.text }]}>{feat}</Text>
-                                    </View>
-                                ))}
-                            </View>
-
-                            <TouchableOpacity
-                                activeOpacity={0.9}
-                                onPress={() => handleSubscribe("lifetime")}
-                                style={styles.subscribeBtnWrapper}
-                            >
-                                <LinearGradient
-                                    colors={isDark ? ["#FB923C", "#EA580C"] : ["#F97316", "#EA580C"]}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 0 }}
-                                    style={styles.subscribeBtn}
-                                >
-                                    <Text style={styles.subscribeBtnText}>Subscribe for ₹10</Text>
-                                </LinearGradient>
-                            </TouchableOpacity>
-                            <Text style={[styles.cardFooter, { color: colors.textSecondary }]}>One-time offer. Limited seats!</Text>
-                        </View>
+                                );
+                            })
+                        )}
                     </View>
 
                     {/* Why Upgrade Section */}

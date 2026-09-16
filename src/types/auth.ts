@@ -28,6 +28,10 @@ export interface User {
     email: string;
     mobile: string;
 
+    businessName?: string | null;
+    category?: string | null;
+    city?: string | null;
+
     profileImage?: string | null;
 
     role: UserRole;
@@ -113,6 +117,7 @@ export interface ForgotPasswordRequest {
 export interface ForgotPasswordResponse {
     message: string;
     otp?: string;
+    email?: string;
 }
 
 /* ===========================================

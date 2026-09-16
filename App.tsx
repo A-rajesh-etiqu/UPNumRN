@@ -24,6 +24,9 @@ import SignupScreen from './src/screens/auth/signup';
 import OtpScreen from './src/screens/auth/otp';
 import VerifyUPIScreen from './src/screens/auth/verify-upi';
 import ForgotPasswordScreen from './src/screens/auth/forgot-password';
+// Admin
+import AdminScreen from './src/screens/admin/index';
+import AdminLayout from './src/screens/admin/_layout';
 // Tabs
 import DashboardScreen from './src/screens/tabs/dashboard/index';
 import TransactionsScreen from './src/screens/tabs/transactions/index';
@@ -34,6 +37,8 @@ import ProfileScreen from './src/screens/tabs/profile/index';
 import PaymentScreen from './src/screens/payment';
 import PaymentSuccessScreen from './src/screens/payment-success';
 import SubscriptionIndexScreen from './src/screens/tabs/subscription/index';
+import SubscriptionHistoryScreen from './src/screens/tabs/subscription/history';
+import AiInsightsScreen from './src/screens/tabs/dashboard/ai-insights';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -92,11 +97,19 @@ function TabNavigator() {
           <Tab.Screen name="/tabs/settings" component={SettingsScreen} options={{ tabBarLabel: 'Settings' }} />
           <Tab.Screen name="/tabs/profile" component={ProfileScreen} options={{ tabBarLabel: 'Profile', tabBarItemStyle: { display: 'none' }, tabBarButton: () => null }} />
           <Tab.Screen name="/tabs/subscription" component={SubscriptionIndexScreen} options={{ tabBarLabel: 'Subscriptions', tabBarItemStyle: { display: 'none' }, tabBarButton: () => null }} />
+          <Tab.Screen name="/tabs/subscription/history" component={SubscriptionHistoryScreen} options={{ tabBarLabel: 'Billing History', tabBarItemStyle: { display: 'none' }, tabBarButton: () => null }} />
+          <Tab.Screen name="/tabs/dashboard/ai-insights" component={AiInsightsScreen} options={{ tabBarLabel: 'AI Insights', tabBarItemStyle: { display: 'none' }, tabBarButton: () => null }} />
         </Tab.Navigator>
       </View>
     </View>
   );
 }
+
+const AdminRoute = () => (
+  <AdminLayout>
+    <AdminScreen />
+  </AdminLayout>
+);
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -121,6 +134,7 @@ export default function App() {
                 <Stack.Screen name="/" component={IndexScreen} />
                 <Stack.Screen name="/auth" component={AuthNavigator} />
                 <Stack.Screen name="/tabs" component={TabNavigator} />
+                <Stack.Screen name="/admin" component={AdminRoute} />
                 <Stack.Screen name="/payment" component={PaymentScreen} />
                 <Stack.Screen name="/payment-success" component={PaymentSuccessScreen} />
               </Stack.Navigator>

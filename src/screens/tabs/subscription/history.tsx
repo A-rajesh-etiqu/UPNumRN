@@ -7,6 +7,7 @@ import {
     TouchableOpacity,
     useWindowDimensions,
     Platform,
+    Alert,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
@@ -22,6 +23,7 @@ export default function SubscriptionHistoryScreen() {
 
     const { user } = useAuthStore();
     const [invoices, setInvoices] = useState<any[]>([]);
+    const [subscription, setSubscription] = useState<any>(null);
 
     useEffect(() => {
         const fetchHistory = async () => {
@@ -29,15 +31,13 @@ export default function SubscriptionHistoryScreen() {
                 const response = await apiClient.get("/billing/history", {
                     params: { userId: user?.id }
                 });
-                setInvoices(response.data);
+                setInvoices(response.data.history || []);
+                setSubscription(response.data.subscription || null);
             } catch (err: any) {
                 console.warn("Failed to load billing history, falling back to mock:", err.message);
                 setInvoices([
-                    { date: "01 May, 2024", time: "10:23 AM", plan: "Lifetime Plan", rate: "₹10 / month", amount: "₹10.00", status: "Success", upi: "you@upi" },
-                    { date: "01 Apr, 2024", time: "10:23 AM", plan: "Lifetime Plan", rate: "₹10 / month", amount: "₹10.00", status: "Success", upi: "you@upi" },
-                    { date: "01 Mar, 2024", time: "10:23 AM", plan: "Lifetime Plan", rate: "₹10 / month", amount: "₹10.00", status: "Success", upi: "you@upi" },
-                    { date: "01 Feb, 2024", time: "10:23 AM", plan: "Lifetime Plan", rate: "₹10 / month", amount: "₹10.00", status: "Success", upi: "you@upi" },
-                    { date: "01 Jan, 2024", time: "10:23 AM", plan: "Lifetime Plan", rate: "₹10 / month", amount: "₹10.00", status: "Success", upi: "you@upi" },
+                    { date: "01 May, 2024", time: "10:23 AM", plan: "Lifetime Plan", rate: "₹10 / month", amount: "₹10.00", status: "Success", upi: "you@upi", invoiceNo: "INV-2024-MOCK1" },
+                    { date: "01 Apr, 2024", time: "10:23 AM", plan: "Lifetime Plan", rate: "₹10 / month", amount: "₹10.00", status: "Success", upi: "you@upi", invoiceNo: "INV-2024-MOCK2" },
                 ]);
             }
         };
@@ -45,6 +45,16 @@ export default function SubscriptionHistoryScreen() {
             fetchHistory();
         }
     }, [user?.id]);
+
+    const handleResendInvoice = async (invoiceNo: string) => {
+        if (!invoiceNo) return;
+        try {
+            await apiClient.post("/billing/resend", { userId: user?.id, invoiceNo });
+            Alert.alert("Success", `Invoice ${invoiceNo} resent successfully to your email!`);
+        } catch (err) {
+            Alert.alert("Error", "Failed to resend invoice. Please try again.");
+        }
+    };
 
     const totalAmt = invoices.reduce((sum, item) => {
         const parsed = parseFloat(item.amount.replace("₹", ""));
@@ -178,9 +188,13 @@ export default function SubscriptionHistoryScreen() {
                                             </View>
 
                                             {/* Invoice Download */}
-                                            <TouchableOpacity style={[styles.downloadBtn, { width: 90 }]} activeOpacity={0.8}>
+                                            <TouchableOpacity 
+                                                style={[styles.downloadBtn, { width: 90 }]} 
+                                                activeOpacity={0.8}
+                                                onPress={() => handleResendInvoice(row.invoiceNo)}
+                                            >
                                                 <Ionicons name="download-outline" size={14} color={colors.primary} />
-                                                <Text style={[styles.downloadText, { color: colors.primary }]}>Download</Text>
+                                                <Text style={[styles.downloadText, { color: colors.primary }]}>Resend</Text>
                                             </TouchableOpacity>
                                         </View>
                                     ))
@@ -227,10 +241,14 @@ export default function SubscriptionHistoryScreen() {
                             <View style={isDesktop && { marginRight: 16 }}>
                                 <Text style={[styles.invoiceCheckText, { color: colors.text }]}>Invoice Not Received?</Text>
                                 <Text style={[styles.invoiceCheckSub, { color: colors.textSecondary }]}>
-                                    Click <Text style={[styles.inlineLink, { color: colors.primary }]}>here</Text> to resend invoice to your email.
+                                    Click <Text style={[styles.inlineLink, { color: colors.primary }]}>here</Text> to resend latest invoice to your email.
                                 </Text>
                             </View>
-                            <TouchableOpacity style={[styles.resendBtn, { backgroundColor: colors.surface, borderColor: colors.primary }, isDesktop && { marginTop: 0 }]} activeOpacity={0.8}>
+                            <TouchableOpacity 
+                                style={[styles.resendBtn, { backgroundColor: colors.surface, borderColor: colors.primary }, isDesktop && { marginTop: 0 }]} 
+                                activeOpacity={0.8}
+                                onPress={() => invoices.length > 0 && handleResendInvoice(invoices[0].invoiceNo)}
+                            >
                                 <Text style={[styles.resendBtnText, { color: colors.primary }]}>Resend Invoice</Text>
                             </TouchableOpacity>
                         </View>
@@ -248,29 +266,31 @@ export default function SubscriptionHistoryScreen() {
                         
                         <View style={styles.planStatusRow}>
                             <View style={styles.translucentPlanBadge}>
-                                <Text style={styles.translucentPlanText}>Lifetime Plan</Text>
+                                <Text style={styles.translucentPlanText}>{subscription?.planName || "Lifetime Plan"}</Text>
                             </View>
                             <View style={styles.translucentGreenBadge}>
-                                <Text style={styles.translucentGreenText}>Active</Text>
+                                <Text style={styles.translucentGreenText}>{subscription?.status || "Active"}</Text>
                             </View>
                         </View>
 
                         <View style={styles.planRateRow}>
-                            <Text style={styles.planRateValueWhite}>₹10</Text>
+                            <Text style={styles.planRateValueWhite}>₹{subscription?.price ?? 10}</Text>
                             <Text style={styles.planRatePeriodWhite}>/month</Text>
                         </View>
 
                         {/* Next billing date */}
-                        <View style={styles.billingDateRow}>
-                            <View style={styles.billingDateItem}>
-                                <Ionicons name="calendar-outline" size={14} color="rgba(255, 255, 255, 0.7)" style={{ marginRight: 6 }} />
-                                <Text style={styles.billingDateText}>Next billing date</Text>
+                        {subscription?.nextBillingDate && (
+                            <View style={styles.billingDateRow}>
+                                <View style={styles.billingDateItem}>
+                                    <Ionicons name="calendar-outline" size={14} color="rgba(255, 255, 255, 0.7)" style={{ marginRight: 6 }} />
+                                    <Text style={styles.billingDateText}>Next billing date</Text>
+                                </View>
+                                <View style={styles.billingDateItem}>
+                                    <Ionicons name="calendar-outline" size={14} color="rgba(255, 255, 255, 0.7)" style={{ marginRight: 6 }} />
+                                    <Text style={styles.billingDateText}>{new Date(subscription.nextBillingDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Text>
+                                </View>
                             </View>
-                            <View style={styles.billingDateItem}>
-                                <Ionicons name="calendar-outline" size={14} color="rgba(255, 255, 255, 0.7)" style={{ marginRight: 6 }} />
-                                <Text style={styles.billingDateText}>01 Jun, 2024</Text>
-                            </View>
-                        </View>
+                        )}
 
                         <View style={styles.purpleDivider} />
 

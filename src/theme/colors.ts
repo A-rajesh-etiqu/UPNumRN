@@ -5,10 +5,10 @@ export const LightColors = {
     primary: "#6C2CF4", // Primary Violet
     primaryDark: "#2A0A6E", // Deep Purple
     secondary: "#FF7A00", // Action Orange
-    accent: "#FF4D6D", // Gradient End / Accent
-    success: "#00C853", // Success Green
-    warning: "#FFC107", // Warning Yellow
-    danger: "#FF5252", // Error / Danger Red
+    accent: "#FF4D6D", // Gradient End
+    success: "#00C853", // Success
+    warning: "#FFC107", // Warning
+    danger: "#FF5252", // Error
     error: "#FF5252",
     info: "#3B82F6",
     background: "#F8F9FC", // Background
@@ -26,7 +26,7 @@ export const LightColors = {
     gradient: {
         start: "#2A0A6E",
         middle: "#6C2CF4",
-        end: "#FF7A00",
+        end: "#FF4D6D",
     },
 
     card: "#FFFFFF",
@@ -35,31 +35,31 @@ export const LightColors = {
 };
 
 export const DarkColors = {
-    primary: "#A78BFA", // Lighter violet for dark mode contrast
-    primaryDark: "#1E1B4B",
-    secondary: "#F97316",
-    accent: "#FB7185",
-    success: "#22C55E",
-    warning: "#F59E0B",
-    danger: "#EF4444",
-    error: "#EF4444",
+    primary: "#6C2CF4", // Brand Primary Violet
+    primaryDark: "#2A0A6E", // Brand Deep Purple
+    secondary: "#FF7A00", // Brand Action Orange
+    accent: "#FF4D6D", // Brand Gradient End
+    success: "#00C853", // Success
+    warning: "#FFC107", // Warning
+    danger: "#FF5252", // Error
+    error: "#FF5252",
     info: "#3B82F6",
-    background: "#090D1A", // Very dark navy/slate background
-    sidebarDark: "#030712", // Slate 950 for sidebar
+    background: "#090D1A", // Dark theme background
+    sidebarDark: "#18003F", // Brand Sidebar Dark
 
-    surface: "#111827", // Slate 900 for cards/sections
-    text: "#F3F4F6", // Light gray text
-    textSecondary: "#9CA3AF", // Medium gray text
-    placeholder: "#4B5563", // Dark gray placeholder
-    border: "#1F2937", // Slate 800 border
+    surface: "#111827", // Cards/sections background
+    text: "#F3F4F6", // Light text for dark mode
+    textSecondary: "#9CA3AF", // Dimmed text
+    placeholder: "#4B5563",
+    border: "#1F2937",
     inputBackground: "#1F2937",
     white: "#FFFFFF",
     black: "#000000",
 
     gradient: {
-        start: "#030712",
-        middle: "#111827",
-        end: "#1E1B4B",
+        start: "#2A0A6E",
+        middle: "#6C2CF4",
+        end: "#FF4D6D",
     },
 
     card: "#111827",

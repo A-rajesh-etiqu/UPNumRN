@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
     ActivityIndicator,
     StyleSheet,
@@ -12,17 +12,52 @@ import {
     Alert,
     TextInput
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import Ionicons from "react-native-vector-icons/Ionicons";
+import { router, useLocalSearchParams } from "../../../navigation/RootNavigation";
 import { LineChart, PieChart } from "react-native-gifted-charts";
 
 import DashboardLayout from "../../../components/layout/DashboardLayout";
 import { useDashboardStore } from "../../../store/dashboard.store";
 import { useAppTheme } from "../../../theme";
+import Typography from "../../../theme/typography";
 import { useAuthStore } from "../../../store/auth.store";
-import { router, useLocalSearchParams } from "../../../navigation/RootNavigation";
 import { setuService } from "../../../services/setu.service";
 import apiClient from "../../../api/apiClient";
 import { openBrowserAuth } from "../../../utils/browser";
+
+// Helper to calculate nice chart boundaries
+const calculateNiceYAxis = (data: any[], data2?: any[]) => {
+    let max = Math.max(...data.map((item: any) => item.value || 0), 100);
+    if (data2) {
+        const max2 = Math.max(...data2.map((item: any) => item.value || 0), 100);
+        max = Math.max(max, max2);
+    }
+    const rawStep = max / 5;
+    const stepExponent = Math.floor(Math.log10(rawStep));
+    const stepPower = Math.pow(10, stepExponent);
+    const stepFraction = rawStep / stepPower;
+    
+    let niceStepFraction;
+    if (stepFraction <= 1) niceStepFraction = 1;
+    else if (stepFraction <= 2) niceStepFraction = 2;
+    else if (stepFraction <= 2.5) niceStepFraction = 2.5;
+    else if (stepFraction <= 5) niceStepFraction = 5;
+    else niceStepFraction = 10;
+
+    const stepValue = niceStepFraction * stepPower;
+    const maxValue = stepValue * 5;
+    return { maxValue, stepValue, noOfSections: 5 };
+};
+
+const formatYAxisLabel = (label: string) => {
+    const val = Number(label);
+    if (isNaN(val)) return label;
+    if (val >= 10000000) return `${(val / 10000000).toFixed(1).replace(/\.0$/, '')}Cr`;
+    if (val >= 100000) return `${(val / 100000).toFixed(1).replace(/\.0$/, '')}L`;
+    if (val >= 1000) return `${(val / 1000).toFixed(1).replace(/\.0$/, '')}k`;
+    return val.toString();
+};
 
 // Reusable Components
 const SectionCard = ({ children, style }: any) => {
@@ -38,7 +73,7 @@ const SectionHeader = ({ title, icon }: any) => {
     const { colors } = useAppTheme();
     return (
         <View style={styles.sectionHeaderRow}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text, ...Typography.h3, fontSize: 18 }]}>{title}</Text>
             {icon && <Ionicons name={icon} size={16} color={colors.textSecondary} />}
         </View>
     );
@@ -52,6 +87,10 @@ export default function DashboardScreen() {
     const { data, loading, loadDashboard } = useDashboardStore();
 
     const [isProfileMenuVisible, setIsProfileMenuVisible] = useState(false);
+    const [isNotifMenuVisible, setIsNotifMenuVisible] = useState(false);
+    const [notifications, setNotifications] = useState<any[]>([]);
+    const [isFilterMenuVisible, setIsFilterMenuVisible] = useState(false);
+    const [filterPeriod, setFilterPeriod] = useState("This Month");
     const [isSyncModalVisible, setIsSyncModalVisible] = useState(false);
     const [phoneNumber, setPhoneNumber] = useState("");
     const [isSyncing, setIsSyncing] = useState(false);
@@ -59,6 +98,32 @@ export default function DashboardScreen() {
     
     // Determine user type
     const isBusiness = user?.userType === "BUSINESS";
+
+    useEffect(() => {
+        if (user?.id) {
+            fetchNotifications();
+        }
+    }, [user?.id]);
+
+    const fetchNotifications = async () => {
+        try {
+            const res = await apiClient.get(`/users/${user?.id}/notifications`);
+            setNotifications(res.data);
+        } catch (err: any) {
+            console.warn("Failed to fetch user notifications:", err.message);
+        }
+    };
+
+    const handleReadNotification = async (notifId: number) => {
+        try {
+            await apiClient.put(`/users/${user?.id}/notifications/${notifId}/read`);
+            setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, is_read: 1 } : n));
+        } catch (err: any) {
+            console.warn("Failed to mark notification as read:", err.message);
+        }
+    };
+
+    const unreadCount = notifications.filter(n => !n.is_read).length;
 
     const handleSyncSubmit = async () => {
         if (!phoneNumber) {
@@ -127,8 +192,8 @@ export default function DashboardScreen() {
     }, [params.id]);
 
     useEffect(() => {
-        loadDashboard(user?.id);
-    }, [user?.id]);
+        loadDashboard(user?.id, filterPeriod);
+    }, [user?.id, filterPeriod]);
 
     if (loading) {
         return (
@@ -145,20 +210,50 @@ export default function DashboardScreen() {
             {/* Header Section */}
             <View style={styles.headerContainer}>
                 <View style={{ flex: 1 }}>
-                    <Text style={[styles.greetingText, { color: colors.text }]}>Good afternoon, {userName} 👋</Text>
-                    <Text style={[styles.subGreetingText, { color: colors.textSecondary }]}>
+                    <Text style={[styles.greetingText, { color: colors.text, ...Typography.h2 }]}>Good afternoon, {userName} 👋</Text>
+                    <Text style={[styles.subGreetingText, { color: colors.textSecondary, ...Typography.body }]}>
                         Here's your {isBusiness ? "business" : "financial"} overview
                     </Text>
                 </View>
                 
                 <View style={styles.headerRightActions}>
-                    <TouchableOpacity style={[styles.iconButton, { borderColor: colors.border }]}>
-                        <Ionicons name="notifications-outline" size={20} color={colors.text} />
-                        <View style={styles.notificationBadge} />
-                    </TouchableOpacity>
+                    <View style={{ position: "relative" }}>
+                        <TouchableOpacity style={[styles.iconButton, { borderColor: colors.border }]} onPress={() => { setIsNotifMenuVisible(!isNotifMenuVisible); setIsProfileMenuVisible(false); }}>
+                            <Ionicons name="notifications-outline" size={20} color={colors.text} />
+                            {unreadCount > 0 && <View style={styles.notificationBadge}><Text style={{ color: '#FFF', fontSize: 8, fontWeight: 'bold' }}>{unreadCount}</Text></View>}
+                        </TouchableOpacity>
+
+                        <Modal visible={isNotifMenuVisible} transparent={true} animationType="fade">
+                            <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setIsNotifMenuVisible(false)}>
+                                <View style={[styles.profileDropdown, { backgroundColor: colors.surface, borderColor: colors.border, width: 300, right: 60, padding: 0 }]}>
+                                    <Text style={{ padding: 12, color: colors.text, borderBottomWidth: 1, borderBottomColor: colors.border, ...Typography.title, fontSize: 16 }}>Notifications</Text>
+                                    <ScrollView style={{ maxHeight: 300 }}>
+                                        {notifications.length === 0 ? (
+                                            <Text style={{ padding: 16, color: colors.textSecondary, textAlign: 'center', ...Typography.body }}>No notifications</Text>
+                                        ) : (
+                                            notifications.map((n, idx) => (
+                                                <TouchableOpacity 
+                                                    key={idx} 
+                                                    style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: n.is_read ? 'transparent' : colors.primary + '10' }}
+                                                    onPress={() => !n.is_read && handleReadNotification(n.id)}
+                                                >
+                                                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                                                        <Text style={{ color: colors.text, flex: 1, ...(n.is_read ? Typography.bodyMedium : Typography.bodyBold) }} numberOfLines={1}>{n.title}</Text>
+                                                        {!n.is_read && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary, marginTop: 4 }} />}
+                                                    </View>
+                                                    <Text style={{ color: colors.textSecondary, ...Typography.caption }} numberOfLines={2}>{n.message}</Text>
+                                                    <Text style={{ color: colors.textSecondary, marginTop: 4, ...Typography.caption, fontSize: 10 }}>{new Date(n.created_at).toLocaleString()}</Text>
+                                                </TouchableOpacity>
+                                            ))
+                                        )}
+                                    </ScrollView>
+                                </View>
+                            </TouchableOpacity>
+                        </Modal>
+                    </View>
                     
                     <View style={{ position: "relative" }}>
-                        <TouchableOpacity onPress={() => setIsProfileMenuVisible(true)} style={[styles.avatarCircle, { backgroundColor: colors.primary }]}>
+                        <TouchableOpacity onPress={() => { setIsProfileMenuVisible(true); setIsNotifMenuVisible(false); }} style={[styles.avatarCircle, { backgroundColor: colors.primary }]}>
                             <Ionicons name="person" size={20} color="#FFF" />
                         </TouchableOpacity>
 
@@ -182,22 +277,44 @@ export default function DashboardScreen() {
                 </View>
             </View>
 
-            {/* Global Filter & Sync Data */}
-            <View style={{ marginBottom: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <TouchableOpacity style={[styles.monthFilter, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.monthFilterText, { color: colors.text }]}>This Month</Text>
-                    <Ionicons name="chevron-down" size={16} color={colors.textSecondary} />
-                </TouchableOpacity>
+            <View style={{ marginBottom: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', zIndex: 9999, elevation: 10 }}>
+                <View style={{ position: "relative", zIndex: 100 }}>
+                    <TouchableOpacity 
+                        style={[styles.monthFilter, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                        onPress={() => setIsFilterMenuVisible(!isFilterMenuVisible)}
+                    >
+                        <Text style={[styles.monthFilterText, { color: colors.text, ...Typography.bodyBold, fontSize: 13 }]}>{filterPeriod}</Text>
+                        <Ionicons name="chevron-down" size={16} color={colors.textSecondary} />
+                    </TouchableOpacity>
 
-                <TouchableOpacity style={styles.syncBtn} onPress={() => setIsSyncModalVisible(true)}>
-                    <Text style={styles.syncBtnText}>Sync Data</Text>
+                    {/* Filter Dropdown */}
+                    {isFilterMenuVisible && (
+                        <View style={{ position: "absolute", top: 40, left: 0, width: 160, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 12, padding: 8, zIndex: 1000, ...Platform.select({ web: { boxShadow: '0 4px 12px rgba(0,0,0,0.1)' } as any, default: { elevation: 5, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } } }) }}>
+                            {["This Week", "This Month", "Last Month", "This Year", "All Time"].map((period) => (
+                                <TouchableOpacity 
+                                    key={period}
+                                    style={styles.dropdownItem} 
+                                    onPress={() => { 
+                                        setFilterPeriod(period); 
+                                        setIsFilterMenuVisible(false); 
+                                    }}
+                                >
+                                    <Text style={[styles.dropdownText, { color: filterPeriod === period ? colors.primary : colors.text, ...(filterPeriod === period ? Typography.bodyBold : Typography.bodyMedium) }]}>{period}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    )}
+                </View>
+
+                <TouchableOpacity style={[styles.syncBtn, { backgroundColor: colors.primary }]} onPress={() => setIsSyncModalVisible(true)}>
+                    <Text style={[styles.syncBtnText, { ...Typography.button, fontSize: 13, fontWeight: "600" }]}>Sync Data</Text>
                     <Ionicons name="refresh-outline" size={14} color="#FFF" />
                 </TouchableOpacity>
             </View>
 
             {/* Conditionally Render Dashboards */}
             {isBusiness ? (
-                <BusinessDashboard recentTransactions={data?.recentTransactions || []} />
+                <BusinessDashboard data={data} recentTransactions={data?.recentTransactions || []} />
             ) : (
                 <PersonalDashboard data={data} recentTransactions={data?.recentTransactions || []} />
             )}
@@ -260,35 +377,30 @@ function PersonalDashboard({ data, recentTransactions }: { data: any, recentTran
 
     const [chartWidth, setChartWidth] = useState(width - 80);
 
-    // Use dynamic data if available, otherwise mock to match screenshot
-    const income = data?.income || 85400;
-    const expenses = data?.expenses || 52350;
-    const savings = data?.savings || 33050;
-    const txCount = data?.transactionsCount || 124;
+    // Use dynamic data if available
+    const income = data?.income ?? 0;
+    const expenses = data?.expenses ?? 0;
+    const savings = data?.savings ?? 0;
+    const txCount = data?.transactionsCount ?? 0;
 
-    const chartDataIncome = [
-        { value: 15000 }, { value: 30000 }, { value: 26000 }, { value: 40000 }, { value: 38000 }, { value: 50000 },
-    ];
-    const chartDataExpense = [
-        { value: 10000 }, { value: 12000 }, { value: 22000 }, { value: 18000 }, { value: 25000 }, { value: 28000 },
-    ];
+    const incomeChange = data?.incomeChange ?? 0;
+    const expenseChange = data?.expenseChange ?? 0;
+    const savingsChange = data?.savingsChange ?? 0;
 
-    const pieData = [
-        { value: 30, color: '#6C2CF4' },
-        { value: 25, color: '#3B82F6' },
-        { value: 15, color: '#10B981' },
-        { value: 10, color: '#F59E0B' },
-        { value: 10, color: '#EAB308' },
-        { value: 10, color: '#94A3B8' },
-    ];
+    const chartDataIncome = (data?.chartDataIncome?.length ? data.chartDataIncome : [{ value: 0 }]).map((item: any) => ({
+        ...item,
+        label: item.month || ""
+    }));
+    const chartDataExpense = (data?.chartDataExpense?.length ? data.chartDataExpense : [{ value: 0 }]).map((item: any) => ({
+        ...item,
+        label: item.month || ""
+    }));
 
-    const topCategories = [
-        { label: "Food & Dining", percent: 30, amount: 15705, color: "#6C2CF4" },
-        { label: "Shopping", percent: 25, amount: 13118, color: "#6C2CF4" },
-        { label: "Transport", percent: 15, amount: 7853, color: "#6C2CF4" },
-        { label: "Entertainment", percent: 10, amount: 5235, color: "#6C2CF4" },
-        { label: "Bills & Utilities", percent: 10, amount: 5235, color: "#6C2CF4" },
-    ];
+    const chartAxisProps = calculateNiceYAxis(chartDataIncome, chartDataExpense);
+
+    const pieData = data?.pieData?.length ? data.pieData : [{ value: 100, color: '#E2E8F0' }];
+
+    const topCategories = data?.topCategories || [];
     
     // Add missing styles inline
     const localStyles = {
@@ -307,12 +419,14 @@ function PersonalDashboard({ data, recentTransactions }: { data: any, recentTran
                         <View style={[localStyles.iconCircle, { backgroundColor: "#DCFCE7" }]}>
                             <Ionicons name="arrow-down-outline" size={20} color="#16A34A" />
                         </View>
-                        <View style={{ marginLeft: 12 }}>
-                            <Text style={styles.kpiLabel}>Income</Text>
-                            <Text style={[styles.kpiValue, { color: colors.text, fontSize: 20 }]}>₹{income.toLocaleString('en-IN')}</Text>
+                        <View style={{ marginLeft: 12, flex: 1 }}>
+                            <Text style={[styles.kpiLabel, { color: colors.textSecondary, ...Typography.bodyMedium }]}>Income</Text>
+                            <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.kpiValue, { color: colors.text, fontSize: 20 }]}>₹{income.toLocaleString('en-IN')}</Text>
                         </View>
                     </View>
-                    <Text style={[styles.kpiTrendUp, { marginTop: 8 }]}>↑ 12.5% <Text style={{color: colors.textSecondary, fontWeight: "normal"}}>vs Last Month</Text></Text>
+                    <Text style={[styles.kpiTrendUp, { marginTop: 8, color: incomeChange >= 0 ? "#16A34A" : "#EF4444" }]}>
+                        {incomeChange >= 0 ? "↑" : "↓"} {Math.abs(incomeChange)}% <Text style={{color: colors.textSecondary, fontWeight: "normal"}}>vs Last Month</Text>
+                    </Text>
                 </View>
                 
                 {/* Expenses */}
@@ -321,12 +435,14 @@ function PersonalDashboard({ data, recentTransactions }: { data: any, recentTran
                         <View style={[localStyles.iconCircle, { backgroundColor: "#FEE2E2" }]}>
                             <Ionicons name="arrow-up-outline" size={20} color="#EF4444" />
                         </View>
-                        <View style={{ marginLeft: 12 }}>
-                            <Text style={styles.kpiLabel}>Expenses</Text>
-                            <Text style={[styles.kpiValue, { color: colors.text, fontSize: 20 }]}>₹{expenses.toLocaleString('en-IN')}</Text>
+                        <View style={{ marginLeft: 12, flex: 1 }}>
+                            <Text style={[styles.kpiLabel, { color: colors.textSecondary, ...Typography.bodyMedium }]}>Expenses</Text>
+                            <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.kpiValue, { color: colors.text, fontSize: 20 }]}>₹{expenses.toLocaleString('en-IN')}</Text>
                         </View>
                     </View>
-                    <Text style={[styles.kpiTrendUp, { color: "#EF4444", marginTop: 8 }]}>↑ 8.2% <Text style={{color: colors.textSecondary, fontWeight: "normal"}}>vs Last Month</Text></Text>
+                    <Text style={[styles.kpiTrendUp, { marginTop: 8, color: expenseChange >= 0 ? "#EF4444" : "#16A34A" }]}>
+                        {expenseChange >= 0 ? "↑" : "↓"} {Math.abs(expenseChange)}% <Text style={{color: colors.textSecondary, fontWeight: "normal"}}>vs Last Month</Text>
+                    </Text>
                 </View>
 
                 {/* Savings */}
@@ -335,12 +451,14 @@ function PersonalDashboard({ data, recentTransactions }: { data: any, recentTran
                         <View style={[localStyles.iconCircle, { backgroundColor: "#F3E8FF" }]}>
                             <Ionicons name="wallet-outline" size={20} color="#6C2CF4" />
                         </View>
-                        <View style={{ marginLeft: 12 }}>
-                            <Text style={styles.kpiLabel}>Savings</Text>
-                            <Text style={[styles.kpiValue, { color: colors.text, fontSize: 20 }]}>₹{savings.toLocaleString('en-IN')}</Text>
+                        <View style={{ marginLeft: 12, flex: 1 }}>
+                            <Text style={[styles.kpiLabel, { color: colors.textSecondary, ...Typography.bodyMedium }]}>Savings</Text>
+                            <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.kpiValue, { color: colors.text, fontSize: 20 }]}>₹{savings.toLocaleString('en-IN')}</Text>
                         </View>
                     </View>
-                    <Text style={[styles.kpiTrendUp, { color: "#16A34A", marginTop: 8 }]}>↑ 38.7% <Text style={{color: colors.textSecondary, fontWeight: "normal"}}>vs Last Month</Text></Text>
+                    <Text style={[styles.kpiTrendUp, { marginTop: 8, color: savingsChange >= 0 ? "#16A34A" : "#EF4444" }]}>
+                        {savingsChange >= 0 ? "↑" : "↓"} {Math.abs(savingsChange)}% <Text style={{color: colors.textSecondary, fontWeight: "normal"}}>vs Last Month</Text>
+                    </Text>
                 </View>
 
                 {/* Transactions */}
@@ -349,9 +467,9 @@ function PersonalDashboard({ data, recentTransactions }: { data: any, recentTran
                         <View style={[localStyles.iconCircle, { backgroundColor: "#E0F2FE" }]}>
                             <Ionicons name="document-text-outline" size={20} color="#0284C7" />
                         </View>
-                        <View style={{ marginLeft: 12 }}>
-                            <Text style={styles.kpiLabel}>Transactions</Text>
-                            <Text style={[styles.kpiValue, { color: colors.text, fontSize: 20 }]}>{txCount}</Text>
+                        <View style={{ marginLeft: 12, flex: 1 }}>
+                            <Text style={[styles.kpiLabel, { color: colors.textSecondary, ...Typography.bodyMedium }]}>Transactions</Text>
+                            <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.kpiValue, { color: colors.text, fontSize: 20 }]}>{txCount}</Text>
                         </View>
                     </View>
                     <Text style={[styles.kpiTrendUp, { color: "#16A34A", marginTop: 8 }]}>↑ 15.6% <Text style={{color: colors.textSecondary, fontWeight: "normal"}}>vs Last Month</Text></Text>
@@ -382,6 +500,10 @@ function PersonalDashboard({ data, recentTransactions }: { data: any, recentTran
                                 dataPointsColor2="#EF4444"
                                 thickness1={2}
                                 thickness2={2}
+                                maxValue={chartAxisProps.maxValue}
+                                stepValue={chartAxisProps.stepValue}
+                                noOfSections={chartAxisProps.noOfSections}
+                                formatYLabel={formatYAxisLabel}
                                 yAxisColor="transparent"
                                 xAxisColor="transparent"
                                 hideRules={false}
@@ -415,7 +537,7 @@ function PersonalDashboard({ data, recentTransactions }: { data: any, recentTran
                                 />
                             </View>
                             <View style={{ flex: 1, paddingLeft: isDesktop ? 20 : 0, width: "100%" }}>
-                                {topCategories.map((cat, i) => (
+                                {topCategories.map((cat: any, i: number) => (
                                     <View key={i} style={[styles.listItemRow, { borderBottomWidth: 0, paddingVertical: 8 }]}>
                                         <View style={{ flexDirection: "row", alignItems: "center", width: 140 }}>
                                             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: pieData[i].color, marginRight: 8 }} />
@@ -475,7 +597,7 @@ function PersonalDashboard({ data, recentTransactions }: { data: any, recentTran
                     <SectionCard>
                         <SectionHeader title="Top Categories" />
                         <View style={styles.listContainer}>
-                            {topCategories.map((cat, index) => (
+                            {topCategories.map((cat: any, index: number) => (
                                 <View key={index} style={{ marginBottom: 16 }}>
                                     <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                                         <Text style={[styles.listLabelText, { color: colors.text }]}>{cat.label}</Text>
@@ -502,37 +624,50 @@ function PersonalDashboard({ data, recentTransactions }: { data: any, recentTran
 // -----------------------------------------------------------------------------
 // BUSINESS DASHBOARD
 // -----------------------------------------------------------------------------
-function BusinessDashboard({ recentTransactions }: { recentTransactions: any[] }) {
+function BusinessDashboard({ data, recentTransactions }: { data: any, recentTransactions: any[] }) {
     const { colors, isDark } = useAppTheme();
     const { width } = useWindowDimensions();
+    const isDesktop = width >= 1024;
 
-    const chartDataSales = [
-        { value: 50000 }, { value: 75000 }, { value: 65000 }, { value: 100000 }, { value: 125000 }, { value: 110000 },
-    ];
+    const chartDataSales = (data?.salesChart?.length ? data.salesChart : [{ value: 0 }]).map((item: any) => ({
+        ...item,
+        label: item.month || ""
+    }));
+
+    const chartAxisProps = calculateNiceYAxis(chartDataSales);
+
+    const sales = data?.income ?? 0;
+    const expenses = data?.expenses ?? 0;
+    const cashflow = data?.savings ?? 0;
+    const txCount = data?.transactionsCount ?? 0;
+
+    const incomeChange = data?.incomeChange ?? 0;
+    const expenseChange = data?.expenseChange ?? 0;
+    const savingsChange = data?.savingsChange ?? 0;
 
     return (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
             {/* KPI Grid */}
-            <View style={styles.kpiGrid}>
-                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>Sales</Text>
-                    <Text style={[styles.kpiValue, { color: colors.text }]}>₹2,45,980</Text>
-                    <Text style={styles.kpiTrendUp}>↑ 18.6%</Text>
+            <View style={[styles.kpiGrid, isDesktop && { flexWrap: "nowrap", gap: 16 }]}>
+                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }, isDesktop && { width: "23%", marginBottom: 0 }]}>
+                    <Text style={[styles.kpiLabel, { color: colors.textSecondary, ...Typography.bodyMedium }]}>Sales</Text>
+                    <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.kpiValue, { color: colors.text, ...Typography.h2, fontSize: 20 }]}>₹{sales.toLocaleString('en-IN')}</Text>
+                    <Text style={[styles.kpiTrendUp, { color: incomeChange >= 0 ? "#16A34A" : "#EF4444" }]}>{incomeChange >= 0 ? "↑" : "↓"} {Math.abs(incomeChange)}%</Text>
                 </View>
-                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>Expenses</Text>
-                    <Text style={[styles.kpiValue, { color: colors.text }]}>₹1,32,450</Text>
-                    <Text style={styles.kpiTrendUp}>↑ 7.4%</Text>
+                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }, isDesktop && { width: "23%", marginBottom: 0 }]}>
+                    <Text style={[styles.kpiLabel, { color: colors.textSecondary, ...Typography.bodyMedium }]}>Expenses</Text>
+                    <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.kpiValue, { color: colors.text, ...Typography.h2, fontSize: 20 }]}>₹{expenses.toLocaleString('en-IN')}</Text>
+                    <Text style={[styles.kpiTrendUp, { color: expenseChange >= 0 ? "#EF4444" : "#16A34A" }]}>{expenseChange >= 0 ? "↑" : "↓"} {Math.abs(expenseChange)}%</Text>
                 </View>
-                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>Net Cashflow</Text>
-                    <Text style={[styles.kpiValue, { color: colors.text }]}>₹1,13,530</Text>
-                    <Text style={styles.kpiTrendUp}>↑ 24.2%</Text>
+                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }, isDesktop && { width: "23%", marginBottom: 0 }]}>
+                    <Text style={[styles.kpiLabel, { color: colors.textSecondary, ...Typography.bodyMedium }]}>Net Cashflow</Text>
+                    <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.kpiValue, { color: colors.text, ...Typography.h2, fontSize: 20 }]}>₹{cashflow.toLocaleString('en-IN')}</Text>
+                    <Text style={[styles.kpiTrendUp, { color: savingsChange >= 0 ? "#16A34A" : "#EF4444" }]}>{savingsChange >= 0 ? "↑" : "↓"} {Math.abs(savingsChange)}%</Text>
                 </View>
-                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>Transactions</Text>
-                    <Text style={[styles.kpiValue, { color: colors.text }]}>842</Text>
-                    <Text style={styles.kpiTrendUp}>+12.5%</Text>
+                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }, isDesktop && { width: "23%", marginBottom: 0 }]}>
+                    <Text style={[styles.kpiLabel, { color: colors.textSecondary, ...Typography.bodyMedium }]}>Transactions</Text>
+                    <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.kpiValue, { color: colors.text, ...Typography.h2, fontSize: 20 }]}>{txCount}</Text>
+                    <Text style={styles.kpiTrendUp}></Text>
                 </View>
             </View>
 
@@ -548,6 +683,10 @@ function BusinessDashboard({ recentTransactions }: { recentTransactions: any[] }
                         color1="#6C2CF4"
                         dataPointsColor1="#6C2CF4"
                         thickness1={3}
+                        maxValue={chartAxisProps.maxValue}
+                        stepValue={chartAxisProps.stepValue}
+                        noOfSections={chartAxisProps.noOfSections}
+                        formatYLabel={formatYAxisLabel}
                         yAxisColor="transparent"
                         xAxisColor="transparent"
                         hideRules={false}
@@ -790,7 +929,7 @@ const styles = StyleSheet.create({
         marginBottom: 8,
     },
     kpiCard: {
-        width: "48%",
+        width: "100%",
         borderRadius: 16,
         borderWidth: 1,
         padding: 16,

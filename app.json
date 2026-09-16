@@ -1,4 +1,7 @@
 {
   "name": "UpNumRN",
-  "displayName": "UpNumRN"
+  "displayName": "UpNumRN",
+  "expo": {
+    "userInterfaceStyle": "automatic"
+  }
 }

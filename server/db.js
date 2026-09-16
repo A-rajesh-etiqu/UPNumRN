@@ -149,6 +149,54 @@ async function createTables() {
             );
         `);
 
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS plans (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                type VARCHAR(50) NOT NULL,
+                price DECIMAL(10,2) NOT NULL,
+                billing VARCHAR(50) NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'Active',
+                subscribers INT DEFAULT 0,
+                description TEXT
+            );
+        `);
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS offers (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                type VARCHAR(50) NOT NULL,
+                discount VARCHAR(100) NOT NULL,
+                usage_count INT DEFAULT 0,
+                valid_from VARCHAR(50),
+                valid_to VARCHAR(50),
+                status VARCHAR(20) NOT NULL DEFAULT 'Active'
+            );
+        `);
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS notifications (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                message TEXT NOT NULL,
+                target_type VARCHAR(20) NOT NULL DEFAULT 'ALL',
+                target_users TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS user_notifications_read (
+                user_id VARCHAR(50) NOT NULL,
+                notification_id INT NOT NULL,
+                read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, notification_id),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE
+            );
+        `);
+
         console.log("Database schema validated successfully (tables exist).");
     } catch (err) {
         console.error("Error migrating tables schema:", err);
@@ -319,6 +367,35 @@ async function seedDatabase() {
                 INSERT IGNORE INTO invoices (invoice_no, payment_id, amount, invoice_url, created_at)
                 VALUES (?, ?, 10.00, 'http://example.com/invoice.pdf', ?);
             `, [p.inv, p.id, p.date]);
+        }
+
+        // Seed Plans
+        const plans = [
+            { id: 1, name: "Free Tier", type: "Basic Features", price: 0, billing: "Monthly", status: "Active", subscribers: 12543, description: "Basic Dashboard Features,100 Transactions/mo,Community Support,Standard Data Backups" },
+            { id: 2, name: "Standard Plan", type: "Advanced Features", price: 50, billing: "Monthly", status: "Active", subscribers: 5234, description: "All Dashboard Features,AI Insights & Suggestions,Unlimited Transactions,Priority Support,Secure Data & Backups" },
+            { id: 3, name: "Premium Plan", type: "All Features", price: 150, billing: "Monthly", status: "Active", subscribers: 1845, description: "All Dashboard Features,AI Insights & Suggestions,Unlimited Transactions,24/7 Dedicated Support,Secure Data & Backups,API Access" },
+            { id: 4, name: "Lifetime Plan", type: "One-time Offer", price: 10, billing: "Monthly", status: "Active", subscribers: 980, description: "All Dashboard Features,AI Insights & Suggestions,Unlimited Transactions,Priority Support,Secure Data & Backups" }
+        ];
+        for (const p of plans) {
+            await connection.query(`
+                INSERT IGNORE INTO plans (id, name, type, price, billing, status, subscribers, description)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+            `, [p.id, p.name, p.type, p.price, p.billing, p.status, p.subscribers, p.description]);
+        }
+
+        // Seed Offers
+        const offers = [
+            { id: 1, name: "WELCOME10", type: "Coupon", discount: "10% OFF", usage_count: 845, valid_from: "01 May 2024", valid_to: "31 May 2024", status: "Active" },
+            { id: 2, name: "FREEMONTH", type: "Coupon", discount: "1 Month Free", usage_count: 1245, valid_from: "01 May 2024", valid_to: "30 Jun 2024", status: "Active" },
+            { id: 3, name: "REFER50", type: "Coupon", discount: "₹50 Cashback", usage_count: 623, valid_from: "01 Apr 2024", valid_to: "30 Jun 2024", status: "Active" },
+            { id: 4, name: "FOUNDER10", type: "Special", discount: "₹10 / month", usage_count: 978, valid_from: "01 May 2024", valid_to: "-", status: "Active" },
+            { id: 5, name: "SUMMER20", type: "Coupon", discount: "20% OFF", usage_count: 290, valid_from: "01 May 2024", valid_to: "31 May 2024", status: "Inactive" }
+        ];
+        for (const o of offers) {
+            await connection.query(`
+                INSERT IGNORE INTO offers (id, name, type, discount, usage_count, valid_from, valid_to, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+            `, [o.id, o.name, o.type, o.discount, o.usage_count, o.valid_from, o.valid_to, o.status]);
         }
 
         console.log("Mock data validated/inserted successfully.");

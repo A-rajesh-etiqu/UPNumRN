@@ -67,7 +67,11 @@ export default function AuthProvider({
                 searchStr = gWindow.location.search;
             }
 
-            router.replace(`/tabs/dashboard${searchStr}`);
+            if (user.role === "ADMIN") {
+                router.replace(`/admin${searchStr}`);
+            } else {
+                router.replace(`/tabs/dashboard${searchStr}`);
+            }
         } catch (err) {
             console.error("Auth restore error:", err);
             await secureStorage.clearSession();

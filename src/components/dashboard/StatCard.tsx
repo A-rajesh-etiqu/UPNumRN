@@ -82,11 +82,11 @@ export default function StatCard({
                 </View>
             </View>
 
-            <Text style={[styles.value, { color: colors.text }]}>
+            <Text style={[styles.value, { color: colors.text, ...Typography.h2, fontSize: 28 }]}>
                 {stat.value}
             </Text>
 
-            <Text style={[styles.title, { color: colors.textSecondary }]}>
+            <Text style={[styles.title, { color: colors.textSecondary, ...Typography.body }]}>
                 {stat.title}
             </Text>
         </View>

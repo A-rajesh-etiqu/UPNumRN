@@ -14,7 +14,7 @@ interface DashboardStore {
 
     loading: boolean;
 
-    loadDashboard: (userId?: string) => Promise<void>;
+    loadDashboard: (userId?: string, period?: string) => Promise<void>;
 
 }
 
@@ -25,14 +25,14 @@ export const useDashboardStore =
 
         loading: false,
 
-        loadDashboard: async (userId) => {
+        loadDashboard: async (userId, period) => {
 
             set({
                 loading: true,
             });
 
             const data =
-                await dashboardService.getDashboard(userId);
+                await dashboardService.getDashboard(userId, period);
 
             set({
 

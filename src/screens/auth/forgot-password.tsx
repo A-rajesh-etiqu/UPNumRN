@@ -10,6 +10,7 @@ import { Colors } from "../../theme";
 export default function ForgotPasswordScreen() {
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [mobile, setMobile] = useState("");
+    const [email, setEmail] = useState("");
     const [otp, setOtp] = useState("");
     const [newPassword, setNewPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
@@ -26,7 +27,8 @@ export default function ForgotPasswordScreen() {
         setError(null);
         try {
             const response = await authApi.forgotPassword(mobile);
-            Alert.alert("OTP Sent", `Your OTP is: ${response.otp} (For demo purposes)`);
+            if (response.email) setEmail(response.email);
+            Alert.alert("OTP Sent", `An OTP has been sent to your email address.`);
             setStep(2);
         } catch (err: any) {
             setError(err.response?.data?.error || "Failed to send OTP");
@@ -80,7 +82,7 @@ export default function ForgotPasswordScreen() {
                     <Text style={styles.title}>Forgot Password</Text>
                     <Text style={styles.subtitle}>
                         {step === 1 && "Enter your registered mobile number to receive an OTP."}
-                        {step === 2 && `Enter the OTP sent to ${mobile}.`}
+                        {step === 2 && `Enter the OTP sent to your email ${email || mobile}.`}
                         {step === 3 && "Create a new strong password."}
                     </Text>
 

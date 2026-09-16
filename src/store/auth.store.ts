@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { User } from "../types/auth";
+import { secureStorage } from "../services/secureStorage";
 
 interface AuthState {
     user: User | null;
@@ -86,10 +87,12 @@ export const useAuthStore = create<AuthState>((set) => ({
             rememberMe,
         }),
 
-    updateUser: (user) =>
+    updateUser: (user) => {
+        secureStorage.saveUser(user).catch(err => console.error("Failed to save user to secure storage", err));
         set({
             user,
-        }),
+        });
+    },
 
     updateAccessToken: (token) =>
         set({

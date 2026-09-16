@@ -254,7 +254,11 @@ async function createConsent({
 
         consentMode: "VIEW",
 
-        fetchType: "ONETIME",
+        fetchType: "PERIODIC",
+        frequency: {
+            unit: "DAY",
+            value: 1
+        },
 
         consentTypes: [
             "TRANSACTIONS",

@@ -10,6 +10,7 @@ import {
     SafeAreaView,
     Platform,
     ActivityIndicator,
+    Alert,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
@@ -19,42 +20,39 @@ import { router } from "../../navigation/RootNavigation";
 import { useAuthStore } from "../../store/auth.store";
 import apiClient from "../../api/apiClient";
 
+declare var window: any;
+
 const ADMIN_MENU_MAIN = [
-    { title: "Dashboard", icon: "grid-outline" as const },
-    { title: "Users", icon: "people-outline" as const },
-    { title: "Businesses", icon: "briefcase-outline" as const },
-    { title: "Transactions", icon: "swap-horizontal-outline" as const },
-    { title: "Subscriptions", icon: "card-outline" as const },
-    { title: "Payments", icon: "wallet-outline" as const },
+    { title: "Overview", icon: "home-outline" as const },
+    { title: "Users", icon: "person-outline" as const },
+    { title: "Businesses", icon: "business-outline" as const },
+    { title: "Plans", icon: "card-outline" as const },
+    { title: "Payments", icon: "cash-outline" as const },
+    { title: "Disputes", icon: "scale-outline" as const },
+    { title: "Offers", icon: "gift-outline" as const },
     { title: "Reports", icon: "bar-chart-outline" as const },
-    { title: "Disputes & Refunds", icon: "alert-circle-outline" as const },
-    { title: "Announcements", icon: "megaphone-outline" as const },
+    { title: "Notifications", icon: "notifications-outline" as const },
 ];
 
 const ADMIN_MENU_SYSTEM = [
-    { title: "Plans & Pricing", icon: "cash-outline" as const },
-    { title: "Features", icon: "list-outline" as const },
-    { title: "Coupons & Offers", icon: "pricetag-outline" as const },
-    { title: "Taxes & Fees", icon: "receipt-outline" as const },
-    { title: "Integrations", icon: "git-branch-outline" as const },
-    { title: "System Logs", icon: "terminal-outline" as const },
+    { title: "System Health", icon: "desktop-outline" as const },
 ];
 
 const ADMIN_MENU_SETTINGS = [
-    { title: "Admins & Roles", icon: "shield-outline" as const },
-    { title: "General Settings", icon: "settings-outline" as const },
+    { title: "Settings", icon: "settings-outline" as const },
 ];
 
 export default function PlatformAdminDashboard() {
     const { width } = useWindowDimensions();
     const isDesktop = width >= 1024;
-    const { logout } = useAuthStore();
+    const { user, logout } = useAuthStore();
     const { colors, isDark } = useAppTheme();
 
-    const [activeTab, setActiveTab] = useState("Dashboard");
+    const [activeTab, setActiveTab] = useState("Overview");
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedStatus, setSelectedStatus] = useState("All");
     const [selectedUser, setSelectedUser] = useState<any>(null);
+    const [showProfileMenu, setShowProfileMenu] = useState(false);
 
     // Edit user form fields state
     const [editName, setEditName] = useState("");
@@ -62,9 +60,67 @@ export default function PlatformAdminDashboard() {
     const [editMobile, setEditMobile] = useState("");
     const [editPlan, setEditPlan] = useState("");
     const [editStatus, setEditStatus] = useState("");
+    const [editUserType, setEditUserType] = useState("PERSONAL");
 
     const [users, setUsers] = useState<any[]>([]);
     const [loadingUsers, setLoadingUsers] = useState(false);
+
+    const [stats, setStats] = useState<any>(null);
+    const [loadingStats, setLoadingStats] = useState(false);
+
+    const [plans, setPlans] = useState<any[]>([]);
+    const [loadingPlans, setLoadingPlans] = useState(false);
+
+    const [offers, setOffers] = useState<any[]>([]);
+    const [loadingOffers, setLoadingOffers] = useState(false);
+
+    // Plan Edit Modal state
+    const [showPlanModal, setShowPlanModal] = useState(false);
+    const [editingPlan, setEditingPlan] = useState<any>(null);
+    const [editPlanName, setEditPlanName] = useState("");
+    const [editPlanType, setEditPlanType] = useState("Paid");
+    const [editPlanPrice, setEditPlanPrice] = useState("0");
+    const [editPlanBilling, setEditPlanBilling] = useState("Monthly");
+    const [editPlanStatus, setEditPlanStatus] = useState("Active");
+    const [editPlanDescription, setEditPlanDescription] = useState("");
+
+    // Offer Edit Modal state
+    const [showOfferModal, setShowOfferModal] = useState(false);
+    const [editingOffer, setEditingOffer] = useState<any>(null);
+    const [editOfferName, setEditOfferName] = useState("");
+    const [editOfferType, setEditOfferType] = useState("Coupon");
+    const [editOfferDiscount, setEditOfferDiscount] = useState("");
+    const [editOfferValidFrom, setEditOfferValidFrom] = useState("");
+    const [editOfferValidTo, setEditOfferValidTo] = useState("");
+    const [editOfferStatus, setEditOfferStatus] = useState("Active");
+
+    // Notifications state
+    const [adminNotifications, setAdminNotifications] = useState<any[]>([]);
+    const [notifTitle, setNotifTitle] = useState("");
+    const [notifMessage, setNotifMessage] = useState("");
+    const [notifTargetType, setNotifTargetType] = useState("ALL");
+    const [notifTargetUsers, setNotifTargetUsers] = useState(""); // Comma separated user IDs
+
+    const fetchDashboardStats = async () => {
+        setLoadingStats(true);
+        try {
+            const response = await apiClient.get("/admin/dashboard");
+            setStats(response.data);
+        } catch (err: any) {
+            console.warn("Failed to fetch admin dashboard stats:", err.message);
+        } finally {
+            setLoadingStats(false);
+        }
+    };
+
+    const fetchAdminNotifications = async () => {
+        try {
+            const res = await apiClient.get("/admin/notifications");
+            setAdminNotifications(res.data);
+        } catch (err: any) {
+            console.warn("Failed to fetch notifications:", err.message);
+        }
+    };
 
     const fetchUsers = async () => {
         setLoadingUsers(true);
@@ -86,8 +142,36 @@ export default function PlatformAdminDashboard() {
         }
     };
 
+    const fetchPlans = async () => {
+        setLoadingPlans(true);
+        try {
+            const response = await apiClient.get("/admin/plans");
+            setPlans(response.data);
+        } catch (err: any) {
+            console.warn("Failed to fetch plans:", err.message);
+        } finally {
+            setLoadingPlans(false);
+        }
+    };
+
+    const fetchOffers = async () => {
+        setLoadingOffers(true);
+        try {
+            const response = await apiClient.get("/admin/offers");
+            setOffers(response.data);
+        } catch (err: any) {
+            console.warn("Failed to fetch offers:", err.message);
+        } finally {
+            setLoadingOffers(false);
+        }
+    };
+
     useEffect(() => {
         fetchUsers();
+        fetchDashboardStats();
+        fetchPlans();
+        fetchOffers();
+        fetchAdminNotifications();
     }, []);
 
     const handleLogout = () => {
@@ -103,6 +187,7 @@ export default function PlatformAdminDashboard() {
         setEditMobile(user.mobile);
         setEditPlan(user.plan);
         setEditStatus(user.status);
+        setEditUserType(user.user_type || "PERSONAL");
     };
 
     const toggleUserStatus = async (userId: string) => {
@@ -116,12 +201,13 @@ export default function PlatformAdminDashboard() {
                 mobile: u.mobile,
                 status: nextStatus,
                 plan: u.plan,
-                planStatus: u.planStatus
+                planStatus: u.planStatus,
+                user_type: u.user_type
             });
             fetchUsers();
         } catch (err: any) {
             console.error("Toggle User Status Error:", err);
-            alert("Failed to toggle status: " + err.message);
+            Alert.alert("Failed to toggle status: " + err.message);
         }
     };
 
@@ -134,15 +220,215 @@ export default function PlatformAdminDashboard() {
                 mobile: editMobile,
                 status: editStatus,
                 plan: editPlan,
-                planStatus: editPlan === "free-trial" ? "TRIAL" : "ACTIVE"
+                planStatus: editPlan === "free-trial" ? "TRIAL" : "ACTIVE",
+                user_type: editUserType
             });
 
             await fetchUsers();
             setSelectedUser(null);
-            alert("User profile and subscription modified successfully!");
+            Alert.alert("Success", "User profile and subscription modified successfully!");
         } catch (err: any) {
             console.error("Save Changes Error:", err);
-            alert("Failed to save changes: " + err.message);
+            Alert.alert("Failed to save changes: " + err.message);
+        }
+    };
+    const handleDeleteUser = async (id: string) => {
+        if (Platform.OS === 'web') {
+            const confirmed = (window as any).confirm("Are you sure you want to delete this user?");
+            if (!confirmed) return;
+            try {
+                await apiClient.delete(`/admin/users/${id}`);
+                setUsers(users.filter((u: any) => u.id !== id));
+                (window as any).alert("User deleted successfully");
+            } catch (err: any) {
+                console.error("Delete user error:", err);
+                (window as any).alert("Failed to delete user. Make sure your server is restarted.");
+            }
+        } else {
+            Alert.alert("Confirm Delete", "Are you sure you want to delete this user?", [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Delete", style: "destructive", onPress: async () => {
+                        try {
+                            await apiClient.delete(`/admin/users/${id}`);
+                            setUsers(users.filter((u: any) => u.id !== id));
+                            Alert.alert("Success", "User deleted successfully");
+                        } catch (err: any) {
+                            console.error("Delete user error:", err);
+                            Alert.alert("Error", "Failed to delete user");
+                        }
+                    }
+                }
+            ]);
+        }
+    };
+
+    const handleOpenPlanModal = (plan?: any) => {
+        if (plan) {
+            setEditingPlan(plan);
+            setEditPlanName(plan.name);
+            setEditPlanType(plan.type);
+            setEditPlanPrice(String(plan.price));
+            setEditPlanBilling(plan.billing);
+            setEditPlanStatus(plan.status);
+            setEditPlanDescription(plan.description || "");
+        } else {
+            setEditingPlan(null);
+            setEditPlanName("");
+            setEditPlanType("Paid");
+            setEditPlanPrice("0");
+            setEditPlanBilling("Monthly");
+            setEditPlanStatus("Active");
+            setEditPlanDescription("");
+        }
+        setShowPlanModal(true);
+    };
+
+    const handleSavePlan = async () => {
+        try {
+            const payload = {
+                name: editPlanName,
+                type: editPlanType,
+                price: parseFloat(editPlanPrice),
+                billing: editPlanBilling,
+                status: editPlanStatus,
+                description: editPlanDescription
+            };
+            if (editingPlan) {
+                await apiClient.put(`/admin/plans/${editingPlan.id}`, payload);
+            } else {
+                await apiClient.post(`/admin/plans`, payload);
+            }
+            setShowPlanModal(false);
+            fetchPlans();
+        } catch (err: any) {
+            console.error("Save plan error", err);
+            if (Platform.OS === 'web') (window as any).alert("Failed to save plan");
+            else Alert.alert("Error", "Failed to save plan");
+        }
+    };
+
+    const handleDeletePlan = async (id: number) => {
+        if (Platform.OS === 'web') {
+            if (!(window as any).confirm("Are you sure you want to delete this plan?")) return;
+            try {
+                await apiClient.delete(`/admin/plans/${id}`);
+                fetchPlans();
+            } catch (err: any) {
+                (window as any).alert("Failed to delete plan");
+            }
+        } else {
+            Alert.alert("Confirm", "Delete this plan?", [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Delete", style: "destructive", onPress: async () => {
+                        try {
+                            await apiClient.delete(`/admin/plans/${id}`);
+                            fetchPlans();
+                        } catch (err: any) {
+                            Alert.alert("Error", "Failed to delete plan");
+                        }
+                    }
+                }
+            ]);
+        }
+    };
+
+    const handleOpenOfferModal = (offer?: any) => {
+        if (offer) {
+            setEditingOffer(offer);
+            setEditOfferName(offer.name);
+            setEditOfferType(offer.type);
+            setEditOfferDiscount(offer.discount);
+            setEditOfferValidFrom(offer.valid_from);
+            setEditOfferValidTo(offer.valid_to);
+            setEditOfferStatus(offer.status);
+        } else {
+            setEditingOffer(null);
+            setEditOfferName("");
+            setEditOfferType("Coupon");
+            setEditOfferDiscount("");
+            setEditOfferValidFrom("");
+            setEditOfferValidTo("");
+            setEditOfferStatus("Active");
+        }
+        setShowOfferModal(true);
+    };
+
+    const handleSaveOffer = async () => {
+        try {
+            const payload = {
+                name: editOfferName,
+                type: editOfferType,
+                discount: editOfferDiscount,
+                valid_from: editOfferValidFrom,
+                valid_to: editOfferValidTo,
+                status: editOfferStatus
+            };
+            if (editingOffer) {
+                await apiClient.put(`/admin/offers/${editingOffer.id}`, payload);
+            } else {
+                await apiClient.post(`/admin/offers`, payload);
+            }
+            setShowOfferModal(false);
+            fetchOffers();
+        } catch (err: any) {
+            console.error("Save offer error", err);
+            if (Platform.OS === 'web') (window as any).alert("Failed to save offer");
+            else Alert.alert("Error", "Failed to save offer");
+        }
+    };
+
+    const handleDeleteOffer = async (id: number) => {
+        if (Platform.OS === 'web') {
+            if (!(window as any).confirm("Are you sure you want to delete this offer?")) return;
+            try {
+                await apiClient.delete(`/admin/offers/${id}`);
+                fetchOffers();
+            } catch (err: any) {
+                (window as any).alert("Failed to delete offer");
+            }
+        } else {
+            Alert.alert("Confirm", "Delete this offer?", [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Delete", style: "destructive", onPress: async () => {
+                        try {
+                            await apiClient.delete(`/admin/offers/${id}`);
+                            fetchOffers();
+                        } catch (err: any) {
+                            Alert.alert("Error", "Failed to delete offer");
+                        }
+                    }
+                }
+            ]);
+        }
+    };
+
+    const handleCreateNotification = async () => {
+        if (!notifTitle || !notifMessage) {
+            Alert.alert("Error", "Title and Message are required");
+            return;
+        }
+        try {
+            let targetUsersArray: string[] = [];
+            if (notifTargetType !== 'ALL' && notifTargetUsers.trim() !== '') {
+                targetUsersArray = notifTargetUsers.split(",").map(u => u.trim()).filter(u => u);
+            }
+            await apiClient.post("/admin/notifications", {
+                title: notifTitle,
+                message: notifMessage,
+                target_type: notifTargetType,
+                target_users: targetUsersArray
+            });
+            Alert.alert("Success", "Notification sent successfully!");
+            setNotifTitle("");
+            setNotifMessage("");
+            setNotifTargetUsers("");
+            fetchAdminNotifications();
+        } catch (err: any) {
+            console.error("Create notification err:", err);
+            Alert.alert("Error", "Failed to create notification");
         }
     };
 
@@ -260,346 +546,348 @@ export default function PlatformAdminDashboard() {
                     <Text style={styles.statusBoxTime}>Last checked: 2 mins ago</Text>
                 </View>
 
-                {/* Logout Button */}
-                <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn} activeOpacity={0.8}>
-                    <Ionicons name="log-out-outline" size={16} color="#FF5252" />
-                    <Text style={styles.logoutBtnText}>Log Out</Text>
-                </TouchableOpacity>
+                {/* Logout Button Removed */}
             </View>
         </View>
     );
 
     // Main dashboard view content
-    const renderDashboardTab = () => (
-        <View style={{ flex: 1 }}>
-            {/* Mobile Welcome Text (Hidden on desktop as it's in the main header) */}
-            {!isDesktop && (
-                <View style={{ marginBottom: 20 }}>
-                    <Text style={[styles.headerTitle, { color: colors.text, fontSize: 22 }]}>Welcome back, Admin!</Text>
-                    <Text style={[styles.headerSubtitle, { color: colors.textSecondary, marginTop: 4 }]}>Here's what's happening on UP Num.</Text>
-                </View>
-            )}
+    const renderDashboardTab = () => {
+        const svgW = 450;
+        const svgH = 160;
 
-            {/* Filters & Export Row */}
-            <View style={[styles.filtersExportRow, isDesktop ? styles.rowLayout : { flexDirection: "column", gap: 12 }]}>
-                <View style={{ flexDirection: isDesktop ? "row" : "row", gap: 10, flexWrap: "wrap" }}>
-                    <TouchableOpacity style={[styles.filterDropdownBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.8}>
-                        <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
-                        <Text style={[styles.filterDropdownText, { color: colors.text }]}>01 May, 2024 - 31 May, 2024</Text>
-                        <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.filterDropdownBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.8}>
-                        <Text style={[styles.filterDropdownText, { color: colors.text }]}>Compare: Previous Period</Text>
-                        <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                </View>
-                <TouchableOpacity style={[styles.exportReportBtn, { width: isDesktop ? "auto" : "100%" }]} activeOpacity={0.8}>
-                    <Ionicons name="download-outline" size={16} color="#FFFFFF" />
-                    <Text style={styles.exportReportText}>Export Report</Text>
-                </TouchableOpacity>
-            </View>
+        let revPath = "M 0,140 L 450,140";
+        let revPoints: { x: number, y: number }[] = [];
+        let revLabels: { x: number, label: string }[] = [];
+        if (stats?.revenueTrend?.length > 0) {
+            const data = stats.revenueTrend;
+            const maxAmt = Math.max(...data.map((d: any) => parseFloat(d.amount)), 1);
+            const spacing = svgW / Math.max(data.length - 1, 1);
+            revPath = "M ";
+            data.forEach((d: any, i: number) => {
+                const x = i * spacing;
+                const h = (parseFloat(d.amount) / maxAmt) * (svgH - 40);
+                const y = 140 - h;
+                revPath += `${i === 0 ? "" : " L "}${x},${y}`;
+                revPoints.push({ x, y });
+            });
+            const numLabels = Math.min(5, data.length);
+            for (let i = 0; i < numLabels; i++) {
+                const idx = Math.floor(i * (data.length - 1) / Math.max(numLabels - 1, 1));
+                const dt = new Date(data[idx].date);
+                revLabels.push({ x: idx * spacing, label: `${dt.getDate().toString().padStart(2, '0')} ${dt.toLocaleString('en-US', { month: 'short' })}` });
+            }
+        }
 
-            {/* Top KPIs Row */}
-            <View style={[styles.kpisRow, isDesktop ? styles.rowLayout : { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }]}>
-                {[
-                    { title: "Total Users", value: "24,568", change: "+12.4%", desc: "vs Apr 01 - Apr 30", color: "#6C2CF4", bg: "#F5F3FF", icon: "people-outline" as const },
-                    { title: "Total Businesses", value: "3,245", change: "+15.7%", desc: "vs Apr 01 - Apr 30", color: "#3B82F6", bg: "#EFF6FF", icon: "briefcase-outline" as const },
-                    { title: "Total Transactions", value: "1,24,86,312", change: "+18.6%", desc: "vs Apr 01 - Apr 30", color: "#00C853", bg: "#ECFDF5", icon: "shield-checkmark-outline" as const },
-                    { title: "Total Volume (₹)", value: "₹ 320.45 Cr", change: "+21.3%", desc: "vs Apr 01 - Apr 30", color: "#FF7A00", bg: "#FFF7ED", icon: "cash-outline" as const },
-                    { title: "Total Revenue (₹)", value: "₹ 48.75 Lakh", change: "+16.2%", desc: "vs Apr 01 - Apr 30", color: "#EF4444", bg: "#FEF2F2", icon: "card-outline" as const },
-                ].map((kpi, idx) => (
-                    <View key={idx} style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border, width: isDesktop ? 190 : "48%" }]}>
-                        <View style={styles.kpiCardHeader}>
-                            <View style={[styles.kpiIconCircle, { backgroundColor: kpi.bg }]}>
-                                <Ionicons name={kpi.icon} size={20} color={kpi.color} />
-                            </View>
-                            <View style={styles.kpiTrendBadge}>
-                                <Ionicons name="trending-up" size={10} color="#00C853" />
-                                <Text style={styles.kpiTrendText}>{kpi.change}</Text>
-                            </View>
-                        </View>
-                        <Text style={[styles.kpiCardValue, { color: colors.text }]}>{kpi.value}</Text>
-                        <Text style={[styles.kpiCardTitle, { color: colors.textSecondary }]}>{kpi.title}</Text>
-                        <Text style={styles.kpiCardDesc}>{kpi.desc}</Text>
+        let newUsersBars: { x: number, y: number, h: number }[] = [];
+        let nuLabels: { x: number, label: string }[] = [];
+        if (stats?.newUsersTrend?.length > 0) {
+            const data = stats.newUsersTrend;
+            const maxCount = Math.max(...data.map((d: any) => parseInt(d.count)), 1);
+            const spacing = svgW / data.length;
+            const barW = 6;
+            data.forEach((d: any, i: number) => {
+                const x = (i * spacing) + (spacing / 2) - (barW / 2);
+                const h = (parseInt(d.count) / maxCount) * (svgH - 40);
+                newUsersBars.push({ x, y: 140 - h, h });
+            });
+            const numLabels = Math.min(5, data.length);
+            for (let i = 0; i < numLabels; i++) {
+                const idx = Math.floor(i * (data.length - 1) / Math.max(numLabels - 1, 1));
+                const dt = new Date(data[idx].date);
+                nuLabels.push({ x: (idx * spacing) + (spacing / 2), label: `${dt.getDate().toString().padStart(2, '0')} ${dt.toLocaleString('en-US', { month: 'short' })}` });
+            }
+        }
+
+        const subCounts = stats?.subscriptions || { free: 0, standard: 0, lifetime: 0 };
+        const totalSubs = Math.max((subCounts.free || 0) + (subCounts.standard || 0) + (subCounts.lifetime || 0), 1);
+        const freePct = ((subCounts.free || 0) / totalSubs) * 100;
+        const stdPct = ((subCounts.standard || 0) / totalSubs) * 100;
+        const lifePct = ((subCounts.lifetime || 0) / totalSubs) * 100;
+
+        const dispCounts = stats?.disputeStatus || { OPEN: 0, RESOLVED: 0, REJECTED: 0 };
+        const totalDisp = Math.max((dispCounts.OPEN || 0) + (dispCounts.RESOLVED || 0) + (dispCounts.REJECTED || 0), 1);
+        const openPct = ((dispCounts.OPEN || 0) / totalDisp) * 100;
+        const resPct = ((dispCounts.RESOLVED || 0) / totalDisp) * 100;
+        const rejPct = ((dispCounts.REJECTED || 0) / totalDisp) * 100;
+
+        return (
+            <View style={{ flex: 1 }}>
+                {/* Mobile Welcome Text (Hidden on desktop as it's in the main header) */}
+                {!isDesktop && (
+                    <View style={{ marginBottom: 20 }}>
+                        <Text style={[styles.headerTitle, { color: colors.text, fontSize: 22 }]}>Welcome back, Admin!</Text>
+                        <Text style={[styles.headerSubtitle, { color: colors.textSecondary, marginTop: 4 }]}>Here's what's happening on UP Num.</Text>
                     </View>
-                ))}
-            </View>
+                )}
 
-            {/* Charts & Status Section */}
-            <View style={[styles.gridRow, isDesktop ? styles.rowLayout : styles.columnLayout]}>
-                {/* Left: Transactions Overview Line Chart */}
-                <View style={[styles.gridCard, { flex: 1.6, backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <View style={styles.cardHeader}>
-                        <Text style={[styles.cardTitle, { color: colors.text }]}>Transactions Overview</Text>
-                        <TouchableOpacity style={[styles.timeDropdownBtn, { borderColor: colors.border }]} activeOpacity={0.8}>
-                            <Text style={[styles.timeDropdownText, { color: colors.textSecondary }]}>Daily</Text>
-                            <Ionicons name="chevron-down" size={12} color={colors.textSecondary} />
+                {/* Filters & Export Row */}
+                <View style={[styles.filtersExportRow, isDesktop ? styles.rowLayout : { flexDirection: "column", gap: 12 }]}>
+                    <View style={{ flexDirection: isDesktop ? "row" : "row", gap: 10, flexWrap: "wrap" }}>
+                        <TouchableOpacity style={[styles.filterDropdownBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.8}>
+                            <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
+                            <Text style={[styles.filterDropdownText, { color: colors.text }]}>01 May, 2024 - 31 May, 2024</Text>
+                            <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.filterDropdownBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.8}>
+                            <Text style={[styles.filterDropdownText, { color: colors.text }]}>Compare: Previous Period</Text>
+                            <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
                         </TouchableOpacity>
                     </View>
-                    <View style={styles.legendRow}>
-                        <View style={styles.legendItem}>
-                            <View style={[styles.legendDot, { backgroundColor: "#6C2CF4" }]} />
-                            <Text style={[styles.legendLabel, { color: colors.textSecondary }]}>Volume (₹)</Text>
-                        </View>
-                        <View style={styles.legendItem}>
-                            <View style={[styles.legendDot, { backgroundColor: "#FF7A00" }]} />
-                            <Text style={[styles.legendLabel, { color: colors.textSecondary }]}>Transactions</Text>
-                        </View>
-                    </View>
-                    <View style={styles.chartWrapper}>
-                        <Svg height="100%" width="100%" viewBox="0 0 450 160">
-                            <Line x1="0" y1="20" x2="450" y2="20" stroke={colors.border} strokeWidth="1" />
-                            <Line x1="0" y1="50" x2="450" y2="50" stroke={colors.border} strokeWidth="1" />
-                            <Line x1="0" y1="85" x2="450" y2="85" stroke={colors.border} strokeWidth="1" />
-                            <Line x1="0" y1="120" x2="450" y2="120" stroke={colors.border} strokeWidth="1" />
-                            <Line x1="0" y1="150" x2="450" y2="150" stroke={colors.border} strokeWidth="1.5" />
-
-                            <SvgText x="10" y="170" fill={colors.textSecondary} fontSize="9">01 May</SvgText>
-                            <SvgText x="85" y="170" fill={colors.textSecondary} fontSize="9">06 May</SvgText>
-                            <SvgText x="160" y="170" fill={colors.textSecondary} fontSize="9">11 May</SvgText>
-                            <SvgText x="235" y="170" fill={colors.textSecondary} fontSize="9">16 May</SvgText>
-                            <SvgText x="310" y="170" fill={colors.textSecondary} fontSize="9">21 May</SvgText>
-                            <SvgText x="385" y="170" fill={colors.textSecondary} fontSize="9">26 May</SvgText>
-                            <SvgText x="430" y="170" fill={colors.textSecondary} fontSize="9">31 May</SvgText>
-
-                            <Path d="M 0,110 C 40,80 60,95 100,60 C 140,40 170,110 210,65 C 250,30 280,15 320,40 C 360,70 400,10 450,5" fill="none" stroke="#6C2CF4" strokeWidth="3" />
-                            <Path d="M 0,135 C 40,105 60,115 100,90 C 140,75 170,125 210,95 C 250,65 280,45 320,70 C 360,95 400,50 450,35" fill="none" stroke="#FF7A00" strokeWidth="2.5" strokeDasharray="3 3" />
-                        </Svg>
-                    </View>
+                    <TouchableOpacity style={[styles.exportReportBtn, { width: isDesktop ? "auto" : "100%" }]} activeOpacity={0.8}>
+                        <Ionicons name="download-outline" size={16} color="#FFFFFF" />
+                        <Text style={styles.exportReportText}>Export Report</Text>
+                    </TouchableOpacity>
                 </View>
 
-                {/* Center: Donut Chart - User by Type */}
-                <View style={[styles.gridCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.cardTitle, { color: colors.text }]}>User By Type</Text>
-                    <View style={styles.donutWrapper}>
-                        <Svg width="110" height="110" viewBox="0 0 36 36">
-                            <Circle cx="18" cy="18" r="15.915" fill="none" stroke={colors.border} strokeWidth="3.5" />
-                            <Circle cx="18" cy="18" r="15.915" fill="none" stroke="#6C2CF4" strokeWidth="3.5" strokeDasharray="74.3 25.7" strokeDashoffset="100" />
-                            <Circle cx="18" cy="18" r="15.915" fill="none" stroke="#3B82F6" strokeWidth="3.5" strokeDasharray="24.4 75.6" strokeDashoffset="25.7" />
-                            <Circle cx="18" cy="18" r="15.915" fill="none" stroke="#FF7A00" strokeWidth="3.5" strokeDasharray="1.3 98.7" strokeDashoffset="1.3" />
-                        </Svg>
-                        <View style={styles.donutLabels}>
-                            <Text style={[styles.donutVal, { color: colors.text }]}>24,568</Text>
-                            <Text style={[styles.donutSub, { color: colors.textSecondary }]}>Total Users</Text>
-                        </View>
-                    </View>
-                    <View style={styles.donutLegends}>
-                        <View style={styles.donutLegendItem}>
-                            <View style={[styles.legendDot, { backgroundColor: "#6C2CF4" }]} />
-                            <Text style={[styles.donutLegendLabel, { color: colors.textSecondary }]}>Individual</Text>
-                            <Text style={[styles.donutLegendVal, { color: colors.text }]}>18,245 (74.3%)</Text>
-                        </View>
-                        <View style={styles.donutLegendItem}>
-                            <View style={[styles.legendDot, { backgroundColor: "#3B82F6" }]} />
-                            <Text style={[styles.donutLegendLabel, { color: colors.textSecondary }]}>Business</Text>
-                            <Text style={[styles.donutLegendVal, { color: colors.text }]}>5,987 (24.4%)</Text>
-                        </View>
-                        <View style={styles.donutLegendItem}>
-                            <View style={[styles.legendDot, { backgroundColor: "#FF7A00" }]} />
-                            <Text style={[styles.donutLegendLabel, { color: colors.textSecondary }]}>Admin</Text>
-                            <Text style={[styles.donutLegendVal, { color: colors.text }]}>336 (1.3%)</Text>
-                        </View>
-                    </View>
-                </View>
-
-                {/* Right: Subscription Status */}
-                <View style={[styles.gridCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.cardTitle, { color: colors.text }]}>Subscription Status</Text>
-                    <View style={styles.subStatusList}>
-                        {[
-                            { label: "Active", count: "21,452", pct: "87.3%", color: "#00C853" },
-                            { label: "Trial", count: "2,156", pct: "8.8%", color: "#6C2CF4" },
-                            { label: "Expired", count: "568", pct: "2.3%", color: "#FFC107" },
-                            { label: "Cancelled", count: "392", pct: "1.6%", color: "#FF5252" },
-                        ].map((item, idx) => (
-                            <View key={idx} style={styles.subStatusRow}>
-                                <View style={styles.subStatusDotRow}>
-                                    <View style={[styles.legendDot, { backgroundColor: item.color }]} />
-                                    <Text style={[styles.subStatusLabel, { color: colors.textSecondary }]}>{item.label}</Text>
+                {/* Top KPIs Row */}
+                <View style={[styles.kpisRow, isDesktop ? styles.rowLayout : { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }]}>
+                    {[
+                        { title: "Total Users", value: stats?.totalUsers?.toLocaleString() || "0", change: "+12.5%", desc: "vs Apr 2024", color: "#6C2CF4", bg: "#F5F3FF", icon: "people-outline" as const, positive: true },
+                        { title: "Active Businesses", value: stats?.activeBusinesses?.toLocaleString() || "0", change: "+9.4%", desc: "vs Apr 2024", color: "#3B82F6", bg: "#EFF6FF", icon: "briefcase-outline" as const, positive: true },
+                        { title: "Total Revenue", value: `₹${stats?.mrr?.toLocaleString("en-IN") || "0"}`, change: "+18.7%", desc: "vs Apr 2024", color: "#00C853", bg: "#ECFDF5", icon: "cash-outline" as const, positive: true },
+                        { title: "Successful Payments", value: stats?.successfulPayments?.toLocaleString() || "0", change: "+14.2%", desc: "vs Apr 2024", color: "#FF7A00", bg: "#FFF7ED", icon: "card-outline" as const, positive: true },
+                        { title: "Disputes", value: stats?.disputes?.toLocaleString() || "0", change: "+6.3%", desc: "vs Apr 2024", color: "#EF4444", bg: "#FEF2F2", icon: "shield-half-outline" as const, positive: false },
+                        { title: "Conversion Rate", value: `${stats?.conversionRate?.toFixed(2) || "0"}%`, change: "+3.1%", desc: "vs Apr 2024", color: "#8B5CF6", bg: "#F5F3FF", icon: "trending-up-outline" as const, positive: true },
+                    ].map((kpi, idx) => (
+                        <View key={idx} style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border, flex: isDesktop ? 1 : 0, minWidth: isDesktop ? 0 : "48%", maxWidth: isDesktop ? "16%" : "48%" }]}>
+                            <View style={styles.kpiCardHeader}>
+                                <View style={[styles.kpiIconCircle, { backgroundColor: kpi.bg }]}>
+                                    <Ionicons name={kpi.icon} size={20} color={kpi.color} />
                                 </View>
-                                <Text style={[styles.subStatusVal, { color: colors.text }]}>{item.count} <Text style={{ color: "#94A3B8" }}>({item.pct})</Text></Text>
-                            </View>
-                        ))}
-                    </View>
-                    <TouchableOpacity onPress={() => setActiveTab("Subscriptions")} style={[styles.viewAllBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.8}>
-                        <Text style={[styles.viewAllBtnText, { color: colors.text }]}>View All</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-
-            {/* Bottom Users table & revenue segment */}
-            <View style={[styles.gridRow, isDesktop ? styles.rowLayout : styles.columnLayout]}>
-                {/* Left: Recent Users */}
-                <View style={[styles.gridCard, { flex: 1.6, backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <View style={styles.cardHeader}>
-                        <Text style={[styles.cardTitle, { color: colors.text }]}>Recent Users</Text>
-                        <TouchableOpacity onPress={() => setActiveTab("Users")} activeOpacity={0.8}>
-                            <Text style={styles.blueLinkText}>View All Users</Text>
-                        </TouchableOpacity>
-                    </View>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: "100%" }}>
-                        <View style={styles.adminTable}>
-                            <View style={[styles.adminTableHeader, { borderBottomColor: colors.border }]}>
-                                <Text style={[styles.tableHeadCell, { width: 120 }]}>User</Text>
-                                <Text style={[styles.tableHeadCell, { width: 90 }]}>Type</Text>
-                                <Text style={[styles.tableHeadCell, { width: 150 }]}>Email</Text>
-                                <Text style={[styles.tableHeadCell, { width: 100 }]}>Joined On</Text>
-                                <Text style={[styles.tableHeadCell, { width: 70, textAlign: "right" }]}>Status</Text>
-                            </View>
-                            {loadingUsers ? (
-                                <ActivityIndicator size="small" color={colors.primary} style={{ margin: 20 }} />
-                            ) : (
-                                users.slice(0, 5).map((row, idx) => (
-                                    <View key={idx} style={[styles.adminTableRow, { borderBottomColor: colors.border }]}>
-                                        <View style={[styles.avatarNameCell, { width: 120 }]}>
-                                            <View style={[styles.smallAvatar, { backgroundColor: colors.primary + "15", justifyContent: "center", alignItems: "center" }]}>
-                                                <Text style={{ color: colors.primary, fontSize: 10, fontWeight: "700" }}>{row.name[0]}</Text>
-                                            </View>
-                                            <Text style={[styles.tableNameText, { color: colors.text }]}>{row.name}</Text>
-                                        </View>
-                                        <Text style={[styles.tableCellText, { width: 90, color: colors.text }]}>{row.type}</Text>
-                                        <Text style={[styles.tableCellText, { width: 150, color: colors.textSecondary }]}>{row.email}</Text>
-                                        <Text style={[styles.tableCellText, { width: 100, color: colors.text }]}>{row.joined}</Text>
-                                        <View style={{ width: 70, alignItems: "flex-end" }}>
-                                            <View style={[styles.miniStatusBadge, row.status === "Blocked" ? styles.bgWarning : styles.bgSuccess]}>
-                                                <Text style={[styles.miniStatusText, row.status === "Blocked" ? styles.txtWarning : styles.txtSuccess]}>
-                                                    {row.status}
-                                                </Text>
-                                            </View>
-                                        </View>
-                                    </View>
-                                ))
-                            )}
-                        </View>
-                    </ScrollView>
-                </View>
-
-                {/* Center: Revenue Overview */}
-                <View style={[styles.gridCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <View style={styles.cardHeader}>
-                        <Text style={[styles.cardTitle, { color: colors.text }]}>Revenue Overview</Text>
-                        <TouchableOpacity onPress={() => setActiveTab("Reports")} activeOpacity={0.8}>
-                            <Text style={styles.blueLinkText}>View Report</Text>
-                        </TouchableOpacity>
-                    </View>
-                    <View style={{ gap: 14 }}>
-                        <View>
-                            <Text style={[styles.revenueTitle, { color: colors.textSecondary }]}>Total Revenue</Text>
-                            <View style={styles.revValRow}>
-                                <Text style={[styles.revenueAmt, { color: colors.text }]}>₹ 48.75 Lakh</Text>
-                                <View style={styles.revTrendBadge}>
-                                    <Ionicons name="trending-up" size={10} color="#00C853" />
-                                    <Text style={styles.revTrendText}>16.2%</Text>
+                                <View style={styles.kpiTrendBadge}>
+                                    <Ionicons name={kpi.positive ? "arrow-up" : "arrow-down"} size={10} color={kpi.positive ? "#00C853" : "#EF4444"} />
+                                    <Text style={[styles.kpiTrendText, { color: kpi.positive ? "#00C853" : "#EF4444" }]}>{kpi.change}</Text>
                                 </View>
                             </View>
-                            <Text style={styles.revenueSub}>vs Apr 01 - Apr 30</Text>
+                            <Text style={[styles.kpiCardValue, { color: colors.text }]}>{kpi.value}</Text>
+                            <Text style={[styles.kpiCardTitle, { color: colors.textSecondary }]}>{kpi.title}</Text>
+                            <Text style={styles.kpiCardDesc}>{kpi.desc}</Text>
                         </View>
-                        <View style={{ height: 40 }}>
-                            <Svg width="100%" height="40" viewBox="0 0 200 40">
-                                <Path d="M 0,35 C 30,25 50,30 80,15 C 110,8 140,25 170,12 L 200,5" fill="none" stroke="#6C2CF4" strokeWidth="2.5" />
+                    ))}
+                </View>
+
+                {/* Charts & Activity Row */}
+                <View style={[styles.gridRow, isDesktop ? styles.rowLayout : styles.columnLayout]}>
+                    {/* 1. Revenue Over Time (Line Chart) */}
+                    <View style={[styles.gridCard, { flex: 1.5, backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <View style={styles.cardHeader}>
+                            <Text style={[styles.cardTitle, { color: colors.text }]}>Revenue Over Time</Text>
+                            <TouchableOpacity style={[styles.timeDropdownBtn, { borderColor: colors.border }]} activeOpacity={0.8}>
+                                <Text style={[styles.timeDropdownText, { color: colors.textSecondary }]}>Daily</Text>
+                                <Ionicons name="chevron-down" size={12} color={colors.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={[styles.revenueAmt, { color: colors.text, marginTop: 10, fontSize: 22 }]}>
+                            ₹{stats?.mrr?.toLocaleString("en-IN") || "0"}
+                        </Text>
+                        <Text style={styles.kpiTrendText}>
+                            <Text style={{ color: "#00C853" }}>↑ 18.7%</Text> <Text style={{ color: colors.textSecondary }}>vs Apr 2024</Text>
+                        </Text>
+                        <View style={[styles.chartWrapper, { height: 160, marginTop: 20 }]}>
+                            <Svg height="100%" width="100%" viewBox="0 0 450 160">
+                                <Line x1="0" y1="20" x2="450" y2="20" stroke={colors.border} strokeWidth="1" />
+                                <Line x1="0" y1="60" x2="450" y2="60" stroke={colors.border} strokeWidth="1" />
+                                <Line x1="0" y1="100" x2="450" y2="100" stroke={colors.border} strokeWidth="1" />
+                                <Line x1="0" y1="140" x2="450" y2="140" stroke={colors.border} strokeWidth="1" />
+
+                                {revLabels.map((l, i) => (
+                                    <SvgText key={i} x={l.x} y="155" fill={colors.textSecondary} fontSize="9" textAnchor="middle">{l.label}</SvgText>
+                                ))}
+
+                                <Path d={revPath} fill="none" stroke="#6C2CF4" strokeWidth="3" />
+                                {revPoints.map((p, i) => (
+                                    <Circle key={i} cx={p.x} cy={p.y} r="4" fill="#6C2CF4" stroke={colors.surface} strokeWidth="2" />
+                                ))}
                             </Svg>
                         </View>
-                        <View style={[styles.revSplitRow, { borderTopColor: colors.border }]}>
-                            <View style={{ flex: 1 }}>
-                                <Text style={[styles.splitLabel, { color: colors.textSecondary }]}>From Subscriptions</Text>
-                                <Text style={[styles.splitValue, { color: colors.text }]}>₹ 42.10 Lakh</Text>
-                                <Text style={styles.splitTrend}>↑ 14.8%</Text>
-                            </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={[styles.splitLabel, { color: colors.textSecondary }]}>From Other Sources</Text>
-                                <Text style={[styles.splitValue, { color: colors.text }]}>₹ 6.65 Lakh</Text>
-                                <Text style={[styles.splitTrend, { color: "#00C853" }]}>↑ 22.1%</Text>
-                            </View>
+                    </View>
+
+                    {/* 2. New Users (Bar Chart) */}
+                    <View style={[styles.gridCard, { flex: 1.5, backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <View style={styles.cardHeader}>
+                            <Text style={[styles.cardTitle, { color: colors.text }]}>New Users</Text>
+                            <TouchableOpacity style={[styles.timeDropdownBtn, { borderColor: colors.border }]} activeOpacity={0.8}>
+                                <Text style={[styles.timeDropdownText, { color: colors.textSecondary }]}>Daily</Text>
+                                <Ionicons name="chevron-down" size={12} color={colors.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={[styles.revenueAmt, { color: colors.text, marginTop: 10, fontSize: 22 }]}>
+                            {stats?.totalUsers?.toLocaleString() || "0"}
+                        </Text>
+                        <Text style={styles.kpiTrendText}>
+                            <Text style={{ color: "#00C853" }}>↑ 12.5%</Text> <Text style={{ color: colors.textSecondary }}>vs Apr 2024</Text>
+                        </Text>
+                        <View style={[styles.chartWrapper, { height: 160, marginTop: 20 }]}>
+                            <Svg height="100%" width="100%" viewBox="0 0 450 160">
+                                {newUsersBars.map((bar, i) => (
+                                    <Rect key={i} x={bar.x} y={bar.y} width="6" height={bar.h} fill="#6C2CF4" rx="3" />
+                                ))}
+
+                                {nuLabels.map((l, i) => (
+                                    <SvgText key={i} x={l.x} y="155" fill={colors.textSecondary} fontSize="9" textAnchor="middle">{l.label}</SvgText>
+                                ))}
+                            </Svg>
+                        </View>
+                    </View>
+
+                    {/* 3. Recent Activities */}
+                    <View style={[styles.gridCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <View style={styles.cardHeader}>
+                            <Text style={[styles.cardTitle, { color: colors.text }]}>Recent Activities</Text>
+                            <TouchableOpacity activeOpacity={0.8}>
+                                <Text style={styles.blueLinkText}>View All</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <View style={{ marginTop: 10, gap: 16 }}>
+                            {stats?.recentActivities?.slice(0, 5).map((act: any, idx: number) => {
+                                let icon = "information"; let bg = "#F5F3FF"; let c = "#6C2CF4";
+                                if (act.type === 'user') { icon = "person-outline"; bg = "#F5F3FF"; c = "#6C2CF4"; }
+                                if (act.type === 'payment') { icon = "cash-outline"; bg = "#ECFDF5"; c = "#00C853"; }
+                                if (act.type === 'business') { icon = "business-outline"; bg = "#EFF6FF"; c = "#3B82F6"; }
+                                if (act.type === 'dispute') { icon = "shield-half-outline"; bg = "#FFF7ED"; c = "#FF7A00"; }
+                                if (act.type === 'plan') { icon = "star-outline"; bg = "#F5F3FF"; c = "#8B5CF6"; }
+
+                                const diffMins = Math.floor((new Date().getTime() - new Date(act.timestamp).getTime()) / 60000);
+                                const timeStr = diffMins < 60 ? `${diffMins}m ago` : `${Math.floor(diffMins / 60)}h ago`;
+
+                                return (
+                                    <View key={idx} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                                        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                                            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: bg, justifyContent: "center", alignItems: "center" }}>
+                                                <Ionicons name={icon} size={18} color={c} />
+                                            </View>
+                                            <View>
+                                                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.text }}>{act.title}</Text>
+                                                <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>{act.subtitle}</Text>
+                                            </View>
+                                        </View>
+                                        <Text style={{ fontSize: 11, color: colors.textSecondary }}>{timeStr}</Text>
+                                    </View>
+                                );
+                            })}
                         </View>
                     </View>
                 </View>
 
-                {/* Right: Top UPI Apps */}
-                <View style={[styles.gridCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.cardTitle, { color: colors.text }]}>Top UPI Apps <Text style={{ fontSize: 10, color: "#94A3B8" }}>(By Volume)</Text></Text>
-                    <View style={styles.topAppsList}>
-                        {[
-                            { name: "Google Pay", vol: "₹ 125.40 Cr", share: "39.1%", color: "#6C2CF4" },
-                            { name: "PhonePe", vol: "₹ 110.32 Cr", share: "34.4%", color: "#3B82F6" },
-                            { name: "Paytm", vol: "₹ 52.18 Cr", share: "16.3%", color: "#00C853" },
-                            { name: "BHIM", vol: "₹ 20.31 Cr", share: "6.3%", color: "#FF7A00" },
-                            { name: "Amazon Pay", vol: "₹ 12.24 Cr", share: "3.9%", color: "#FF4D6D" },
-                        ].map((app, idx) => (
-                            <View key={idx} style={styles.appVolumeRow}>
-                                <View style={styles.appVolumeLeft}>
-                                    <View style={[styles.appColorCircle, { backgroundColor: app.color }]} />
-                                    <Text style={[styles.appNameLabel, { color: colors.text }]}>{app.name}</Text>
-                                </View>
-                                <View style={{ alignItems: "flex-end" }}>
-                                    <Text style={[styles.appVolumeAmt, { color: colors.text }]}>{app.vol}</Text>
-                                    <Text style={[styles.appVolumeShare, { color: colors.textSecondary }]}>{app.share}</Text>
-                                </View>
+                {/* Bottom Widgets Row */}
+                <View style={[styles.gridRow, isDesktop ? styles.rowLayout : styles.columnLayout]}>
+                    {/* 1. Subscription Overview */}
+                    <View style={[styles.gridCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <Text style={[styles.cardTitle, { color: colors.text }]}>Subscription Overview</Text>
+                        <View style={[styles.donutWrapper, { height: 120 }]}>
+                            <Svg width="120" height="120" viewBox="0 0 36 36">
+                                <Circle cx="18" cy="18" r="15.915" fill="none" stroke={colors.border} strokeWidth="4" />
+                                <Circle cx="18" cy="18" r="15.915" fill="none" stroke="#6C2CF4" strokeWidth="4" strokeDasharray={`${freePct} ${100 - freePct}`} strokeDashoffset="25" />
+                                <Circle cx="18" cy="18" r="15.915" fill="none" stroke="#3B82F6" strokeWidth="4" strokeDasharray={`${stdPct} ${100 - stdPct}`} strokeDashoffset={`${100 - freePct + 25}`} />
+                                <Circle cx="18" cy="18" r="15.915" fill="none" stroke="#FF7A00" strokeWidth="4" strokeDasharray={`${lifePct} ${100 - lifePct}`} strokeDashoffset={`${100 - freePct - stdPct + 25}`} />
+                            </Svg>
+                        </View>
+                        <View style={styles.donutLegends}>
+                            <View style={styles.donutLegendItem}>
+                                <View style={[styles.legendDot, { backgroundColor: "#6C2CF4" }]} />
+                                <Text style={[styles.donutLegendLabel, { color: colors.textSecondary }]}>Free</Text>
+                                <Text style={[styles.donutLegendVal, { color: colors.text }]}>{freePct.toFixed(1)}%</Text>
                             </View>
-                        ))}
+                            <View style={styles.donutLegendItem}>
+                                <View style={[styles.legendDot, { backgroundColor: "#3B82F6" }]} />
+                                <Text style={[styles.donutLegendLabel, { color: colors.textSecondary }]}>Standard</Text>
+                                <Text style={[styles.donutLegendVal, { color: colors.text }]}>{stdPct.toFixed(1)}%</Text>
+                            </View>
+                            <View style={styles.donutLegendItem}>
+                                <View style={[styles.legendDot, { backgroundColor: "#FF7A00" }]} />
+                                <Text style={[styles.donutLegendLabel, { color: colors.textSecondary }]}>Premium</Text>
+                                <Text style={[styles.donutLegendVal, { color: colors.text }]}>{lifePct.toFixed(1)}%</Text>
+                            </View>
+                        </View>
                     </View>
-                    <TouchableOpacity onPress={() => setActiveTab("Payments")} style={[styles.viewAllBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.8}>
-                        <Text style={[styles.viewAllBtnText, { color: colors.text }]}>View All</Text>
-                    </TouchableOpacity>
+
+                    {/* 2. Payment Success Rate */}
+                    <View style={[styles.gridCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <Text style={[styles.cardTitle, { color: colors.text }]}>Payment Success Rate</Text>
+                        <View style={{ alignItems: "center", justifyContent: "center", flex: 1, paddingVertical: 20 }}>
+                            <Text style={{ fontSize: 42, fontWeight: "800", color: colors.text }}>
+                                {stats?.paymentSuccessRate?.toFixed(1) || "98.2"}%
+                            </Text>
+                            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 8 }}>Overall success rate</Text>
+                        </View>
+                    </View>
+
+                    {/* 3. Top Payment Methods */}
+                    <View style={[styles.gridCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <Text style={[styles.cardTitle, { color: colors.text }]}>Top Payment Methods</Text>
+                        <View style={{ marginTop: 20, gap: 16 }}>
+                            {stats?.paymentMethods?.length > 0 ? stats.paymentMethods.map((pm: any, idx: number) => (
+                                <View key={idx} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                                        <View style={[styles.appColorCircle, { backgroundColor: "#FF7A00" }]} />
+                                        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.text }}>{pm.payment_method}</Text>
+                                    </View>
+                                    <Text style={{ fontSize: 13, fontWeight: "700", color: colors.text }}>
+                                        {((pm.count / stats.successfulPayments) * 100).toFixed(1)}%
+                                    </Text>
+                                </View>
+                            )) : (
+                                <>
+                                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                                        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                                            <View style={[styles.appColorCircle, { backgroundColor: "#FF7A00" }]} />
+                                            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.text }}>UPI</Text>
+                                        </View>
+                                        <Text style={{ fontSize: 13, fontWeight: "700", color: colors.text }}>76.5%</Text>
+                                    </View>
+                                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                                        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                                            <View style={[styles.appColorCircle, { backgroundColor: "#6C2CF4" }]} />
+                                            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.text }}>Cards</Text>
+                                        </View>
+                                        <Text style={{ fontSize: 13, fontWeight: "700", color: colors.text }}>14.2%</Text>
+                                    </View>
+                                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                                        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                                            <View style={[styles.appColorCircle, { backgroundColor: "#3B82F6" }]} />
+                                            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.text }}>Net Banking</Text>
+                                        </View>
+                                        <Text style={{ fontSize: 13, fontWeight: "700", color: colors.text }}>9.3%</Text>
+                                    </View>
+                                </>
+                            )}
+                        </View>
+                    </View>
+
+                    {/* 4. Dispute Status */}
+                    <View style={[styles.gridCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <Text style={[styles.cardTitle, { color: colors.text }]}>Dispute Status</Text>
+                        <View style={[styles.donutWrapper, { height: 120 }]}>
+                            <Svg width="120" height="120" viewBox="0 0 36 36">
+                                <Circle cx="18" cy="18" r="15.915" fill="none" stroke={colors.border} strokeWidth="4" />
+                                <Circle cx="18" cy="18" r="15.915" fill="none" stroke="#FF7A00" strokeWidth="4" strokeDasharray={`${openPct} ${100 - openPct}`} strokeDashoffset="25" />
+                                <Circle cx="18" cy="18" r="15.915" fill="none" stroke="#6C2CF4" strokeWidth="4" strokeDasharray={`${resPct} ${100 - resPct}`} strokeDashoffset={`${100 - openPct + 25}`} />
+                                <Circle cx="18" cy="18" r="15.915" fill="none" stroke="#EF4444" strokeWidth="4" strokeDasharray={`${rejPct} ${100 - rejPct}`} strokeDashoffset={`${100 - openPct - resPct + 25}`} />
+                            </Svg>
+                        </View>
+                        <View style={styles.donutLegends}>
+                            <View style={styles.donutLegendItem}>
+                                <View style={[styles.legendDot, { backgroundColor: "#FF7A00" }]} />
+                                <Text style={[styles.donutLegendLabel, { color: colors.textSecondary }]}>Open</Text>
+                                <Text style={[styles.donutLegendVal, { color: colors.text }]}>{dispCounts.OPEN || 0} ({openPct.toFixed(1)}%)</Text>
+                            </View>
+                            <View style={styles.donutLegendItem}>
+                                <View style={[styles.legendDot, { backgroundColor: "#6C2CF4" }]} />
+                                <Text style={[styles.donutLegendLabel, { color: colors.textSecondary }]}>Resolved</Text>
+                                <Text style={[styles.donutLegendVal, { color: colors.text }]}>{dispCounts.RESOLVED || 0} ({resPct.toFixed(1)}%)</Text>
+                            </View>
+                            <View style={styles.donutLegendItem}>
+                                <View style={[styles.legendDot, { backgroundColor: "#EF4444" }]} />
+                                <Text style={[styles.donutLegendLabel, { color: colors.textSecondary }]}>Rejected</Text>
+                                <Text style={[styles.donutLegendVal, { color: colors.text }]}>{dispCounts.REJECTED || 0} ({rejPct.toFixed(1)}%)</Text>
+                            </View>
+                        </View>
+                    </View>
                 </View>
             </View>
-
-            {/* System Overview Footer Block */}
-            <View style={[styles.systemOverviewCard, { backgroundColor: colors.surface, borderColor: colors.border, paddingHorizontal: isDesktop ? 20 : 0, paddingVertical: 20, borderWidth: isDesktop ? 1 : 0, borderRadius: isDesktop ? 16 : 0 }]}>
-                <Text style={[styles.cardTitle, { color: colors.text, paddingHorizontal: isDesktop ? 0 : 16 }]}>System Overview</Text>
-                {isDesktop ? (
-                    <View style={styles.systemOverviewGrid}>
-                        {[
-                            { label: "Total Admins", val: "12", sub: "View All", icon: "shield-outline" as const, tab: "Admins & Roles" },
-                            { label: "Active Admins", val: "9", sub: "View All", icon: "pulse-outline" as const, tab: "Admins & Roles" },
-                            { label: "System Uptime", val: "99.98%", sub: "View Logs", icon: "hardware-chip-outline" as const, tab: "System Logs" },
-                            { label: "Failed Transactions", val: "2,345", sub: "View Details", icon: "alert-circle-outline" as const, tab: "Transactions" },
-                            { label: "Disputes Raised", val: "1,234", sub: "View Details", icon: "chatbubble-ellipses-outline" as const, tab: "Disputes & Refunds" },
-                            { label: "Refunds Processed", val: "₹ 8.65 Lakh", sub: "View Details", icon: "refresh-outline" as const, tab: "Disputes & Refunds" },
-                        ].map((sys, idx) => (
-                            <View key={idx} style={[styles.systemCell, { width: "30%", minWidth: 140 }]}>
-                                <View style={[styles.systemIconCircle, { backgroundColor: isDark ? colors.border : "#F5F3FF" }]}>
-                                    <Ionicons name={sys.icon} size={18} color="#6C2CF4" />
-                                </View>
-                                <View>
-                                    <Text style={[styles.systemCellLabel, { color: colors.textSecondary }]}>{sys.label}</Text>
-                                    <Text style={[styles.systemCellVal, { color: colors.text }]}>{sys.val}</Text>
-                                    <TouchableOpacity onPress={() => setActiveTab(sys.tab)} activeOpacity={0.8}>
-                                        <Text style={styles.systemCellSub}>{sys.sub}</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        ))}
-                    </View>
-                ) : (
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
-                        {[
-                            { label: "Total Admins", val: "12", sub: "View All", icon: "shield-outline" as const, tab: "Admins & Roles", color: "#3B82F6", bg: "#EFF6FF" },
-                            { label: "Active Admins", val: "9", sub: "View All", icon: "pulse-outline" as const, tab: "Admins & Roles", color: "#00C853", bg: "#ECFDF5" },
-                            { label: "System Uptime", val: "99.98%", sub: "View Logs", icon: "hardware-chip-outline" as const, tab: "System Logs", color: "#00C853", bg: "#ECFDF5" },
-                            { label: "Failed Transactions", val: "2,345", sub: "View Details", icon: "alert-circle-outline" as const, tab: "Transactions", color: "#EF4444", bg: "#FEF2F2" },
-                            { label: "Disputes Raised", val: "1,234", sub: "View Details", icon: "chatbubble-ellipses-outline" as const, tab: "Disputes & Refunds", color: "#FF7A00", bg: "#FFF7ED" },
-                            { label: "Refunds Processed", val: "₹ 8.65 Lakh", sub: "View Details", icon: "refresh-outline" as const, tab: "Disputes & Refunds", color: "#6C2CF4", bg: "#F5F3FF" },
-                        ].map((sys, idx) => (
-                            <View key={idx} style={[styles.systemCell, { width: 150, padding: 16, backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, ...Shadows.sm }]}>
-                                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-                                    <View style={[styles.systemIconCircle, { backgroundColor: isDark ? colors.border : sys.bg }]}>
-                                        <Ionicons name={sys.icon} size={18} color={sys.color} />
-                                    </View>
-                                </View>
-                                <View>
-                                    <Text style={[styles.systemCellLabel, { color: colors.textSecondary }]}>{sys.label}</Text>
-                                    <Text style={[styles.systemCellVal, { color: colors.text }]}>{sys.val}</Text>
-                                    <TouchableOpacity onPress={() => setActiveTab(sys.tab)} activeOpacity={0.8} style={{ marginTop: 8 }}>
-                                        <Text style={[styles.systemCellSub, { color: "#6C2CF4" }]}>{sys.sub}</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        ))}
-                    </ScrollView>
-                )}
-            </View>
-        </View>
-    );
+        );
+    };
 
     // Users access management tab
     const renderUsersTab = () => (
@@ -641,16 +929,16 @@ export default function PlatformAdminDashboard() {
 
             {/* Users grid card list */}
             <View style={[styles.gridCard, { flex: 1, padding: 0, overflow: "hidden", backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <View style={{ minWidth: 900 }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1 }}>
+                    <View style={{ minWidth: 900, flex: 1 }}>
                         {/* Header row */}
                         <View style={[styles.tableHeaderRow, { borderBottomColor: colors.border, paddingHorizontal: 16 }]}>
-                            <Text style={[styles.tableHeadCell, { width: 180, color: colors.textSecondary }]}>User</Text>
-                            <Text style={[styles.tableHeadCell, { width: 220, color: colors.textSecondary }]}>Email</Text>
-                            <Text style={[styles.tableHeadCell, { width: 120, color: colors.textSecondary }]}>Type</Text>
-                            <Text style={[styles.tableHeadCell, { width: 140, color: colors.textSecondary }]}>Plan</Text>
-                            <Text style={[styles.tableHeadCell, { width: 120, color: colors.textSecondary }]}>Total Volume</Text>
-                            <Text style={[styles.tableHeadCell, { width: 100, color: colors.textSecondary }]}>Status</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1.5, color: colors.textSecondary }]}>User</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 2, color: colors.textSecondary }]}>Email</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Type</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Plan</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Total Volume</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Status</Text>
                             <Text style={[styles.tableHeadCell, { width: 120, color: colors.textSecondary, textAlign: "right" }]}>Actions</Text>
                         </View>
 
@@ -665,29 +953,29 @@ export default function PlatformAdminDashboard() {
                             filteredUsers.map((user) => (
                                 <View key={user.id} style={[styles.tableRow, { borderBottomColor: colors.border, paddingHorizontal: 16 }]}>
                                     {/* Name + Avatar */}
-                                    <View style={{ width: 180, flexDirection: "row", alignItems: "center", gap: 10 }}>
+                                    <View style={{ flex: 1.5, flexDirection: "row", alignItems: "center", gap: 10, paddingRight: 10 }}>
                                         <View style={[styles.avatarCircle, { backgroundColor: colors.primary + "15" }]}>
                                             <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 12 }}>
                                                 {user.name ? user.name[0] : "U"}
                                             </Text>
                                         </View>
-                                        <Text style={[styles.tableNameText, { color: colors.text }]}>{user.name}</Text>
+                                        <Text style={[styles.tableNameText, { color: colors.text }]} numberOfLines={1}>{user.name}</Text>
                                     </View>
 
                                     {/* Email */}
-                                    <Text style={[styles.tableCellText, { width: 220, color: colors.textSecondary }]}>{user.email}</Text>
+                                    <Text style={[styles.tableCellText, { flex: 2, color: colors.textSecondary, paddingRight: 10 }]} numberOfLines={1}>{user.email}</Text>
 
                                     {/* Type */}
-                                    <Text style={[styles.tableCellText, { width: 120, color: colors.text }]}>{user.type}</Text>
+                                    <Text style={[styles.tableCellText, { flex: 1, color: colors.text, paddingRight: 10 }]} numberOfLines={1}>{(user.user_type === "BUSINESS") ? "Business" : "Personal"}</Text>
 
                                     {/* Plan */}
-                                    <Text style={[styles.tableCellText, { width: 140, color: colors.text }]}>{user.plan}</Text>
+                                    <Text style={[styles.tableCellText, { flex: 1, color: colors.text, paddingRight: 10 }]} numberOfLines={1}>{user.plan}</Text>
 
                                     {/* Volume */}
-                                    <Text style={[styles.tableCellText, { width: 120, color: colors.text, fontWeight: "700" }]}>{user.volume}</Text>
+                                    <Text style={[styles.tableCellText, { flex: 1, color: colors.text, fontWeight: "700", paddingRight: 10 }]} numberOfLines={1}>{user.volume}</Text>
 
                                     {/* Status */}
-                                    <View style={{ width: 100 }}>
+                                    <View style={{ flex: 1, paddingRight: 10, justifyContent: 'center' }}>
                                         <View style={[
                                             styles.miniStatusBadge,
                                             user.status === "Blocked" ? styles.bgWarning : styles.bgSuccess
@@ -728,10 +1016,151 @@ export default function PlatformAdminDashboard() {
                                                 color={user.status === "Blocked" ? colors.success : colors.danger}
                                             />
                                         </TouchableOpacity>
+
+                                        <TouchableOpacity
+                                            onPress={() => handleDeleteUser(user.id)}
+                                            style={[styles.actionBtn, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Ionicons name="trash-outline" size={14} color={colors.danger} />
+                                        </TouchableOpacity>
                                     </View>
                                 </View>
                             ))
                         )}
+                    </View>
+                </ScrollView>
+            </View>
+        </View>
+    );
+
+    const MOCK_PLANS = [
+        { name: "Free", type: "Free", price: "₹0", billing: "Monthly", status: "Active", subscribers: "5,864" },
+        { name: "Standard", type: "Paid", price: "₹50", billing: "Monthly", status: "Active", subscribers: "4,530" },
+        { name: "Pro", type: "Paid", price: "₹199", billing: "Monthly", status: "Active", subscribers: "1,967" },
+        { name: "Enterprise", type: "Paid", price: "₹999", billing: "Monthly", status: "Active", subscribers: "495" }
+    ];
+
+    const MOCK_OFFERS = [
+        { name: "WELCOME10", type: "Coupon", discount: "10% OFF", usage: "845", validFrom: "01 May 2024", validTo: "31 May 2024", status: "Active" },
+        { name: "FREEMONTH", type: "Coupon", discount: "1 Month Free", usage: "1,245", validFrom: "01 May 2024", validTo: "30 Jun 2024", status: "Active" },
+        { name: "REFER50", type: "Coupon", discount: "₹50 Cashback", usage: "623", validFrom: "01 Apr 2024", validTo: "30 Jun 2024", status: "Active" },
+        { name: "FOUNDER10", type: "Special", discount: "₹10 / month", usage: "978", validFrom: "01 May 2024", validTo: "-", status: "Active" },
+        { name: "SUMMER20", type: "Coupon", discount: "20% OFF", usage: "290", validFrom: "01 May 2024", validTo: "31 May 2024", status: "Inactive" }
+    ];
+
+    const renderPlansTab = () => (
+        <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
+                <View>
+                    <Text style={{ fontSize: 24, fontWeight: "700", color: colors.text }}>Plans</Text>
+                    <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 4 }}>Manage subscription plans and features</Text>
+                </View>
+                <View style={{ flexDirection: "row", gap: 12 }}>
+                    <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 16, height: 40, borderRadius: 8 }}>
+                        <Ionicons name="repeat-outline" size={16} color={colors.text} style={{ marginRight: 6 }} />
+                        <Text style={{ color: colors.text, fontWeight: "600", fontSize: 13 }}>Reorder</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleOpenPlanModal()} style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.primary, paddingHorizontal: 16, height: 40, borderRadius: 8 }}>
+                        <Ionicons name="add" size={18} color="#FFF" style={{ marginRight: 4 }} />
+                        <Text style={{ color: "#FFF", fontWeight: "600", fontSize: 13 }}>Add Plan</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+
+            <View style={[styles.gridCard, { flex: 1, padding: 0, overflow: "hidden", backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1 }}>
+                    <View style={{ minWidth: 800, flex: 1 }}>
+                        <View style={[styles.tableHeaderRow, { borderBottomColor: colors.border, paddingHorizontal: 24, height: 50 }]}>
+                            <Text style={[styles.tableHeadCell, { flex: 1.5, color: colors.textSecondary }]}>Plan Name</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Type</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Price</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Billing</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Status</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Subscribers</Text>
+                            <Text style={[styles.tableHeadCell, { width: 80, color: colors.textSecondary, textAlign: "right" }]}>Actions</Text>
+                        </View>
+                        <ScrollView style={{ flex: 1 }}>
+                            {plans.map((plan, idx) => (
+                                <View key={idx} style={[styles.tableRow, { borderBottomColor: colors.border, paddingHorizontal: 24, height: 64 }]}>
+                                    <Text style={[styles.tableCellText, { flex: 1.5, color: colors.text, fontWeight: "600", paddingRight: 10 }]} numberOfLines={1}>{plan.name}</Text>
+                                    <Text style={[styles.tableCellText, { flex: 1, color: colors.textSecondary, paddingRight: 10 }]} numberOfLines={1}>{plan.type}</Text>
+                                    <Text style={[styles.tableCellText, { flex: 1, color: colors.text, paddingRight: 10 }]} numberOfLines={1}>₹{plan.price}</Text>
+                                    <Text style={[styles.tableCellText, { flex: 1, color: colors.textSecondary, paddingRight: 10 }]} numberOfLines={1}>{plan.billing}</Text>
+                                    <View style={{ flex: 1, paddingRight: 10, justifyContent: 'center' }}>
+                                        <View style={[styles.miniStatusBadge, plan.status === "Active" ? styles.bgSuccess : { backgroundColor: colors.danger + "15" }]}>
+                                            <Text style={[styles.miniStatusText, plan.status === "Active" ? styles.txtSuccess : { color: colors.danger }]}>{plan.status}</Text>
+                                        </View>
+                                    </View>
+                                    <Text style={[styles.tableCellText, { flex: 1, color: colors.text, paddingRight: 10 }]} numberOfLines={1}>{plan.subscribers || 0}</Text>
+                                    <View style={{ width: 80, flexDirection: 'row', alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
+                                        <TouchableOpacity onPress={() => handleOpenPlanModal(plan)}>
+                                            <Ionicons name="create-outline" size={18} color={colors.primary} />
+                                        </TouchableOpacity>
+                                        <TouchableOpacity onPress={() => handleDeletePlan(plan.id)}>
+                                            <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            ))}
+                        </ScrollView>
+                    </View>
+                </ScrollView>
+            </View>
+        </View>
+    );
+
+    const renderOffersTab = () => (
+        <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
+                <View>
+                    <Text style={{ fontSize: 24, fontWeight: "700", color: colors.text }}>Offers & Coupons</Text>
+                    <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 4 }}>Manage offers, coupons and promotions</Text>
+                </View>
+                <TouchableOpacity onPress={() => handleOpenOfferModal()} style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.primary, paddingHorizontal: 16, height: 40, borderRadius: 8 }}>
+                    <Ionicons name="add" size={18} color="#FFF" style={{ marginRight: 4 }} />
+                    <Text style={{ color: "#FFF", fontWeight: "600", fontSize: 13 }}>Create Offer</Text>
+                </TouchableOpacity>
+            </View>
+
+            <View style={[styles.gridCard, { flex: 1, padding: 0, overflow: "hidden", backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1 }}>
+                    <View style={{ minWidth: 900, flex: 1 }}>
+                        <View style={[styles.tableHeaderRow, { borderBottomColor: colors.border, paddingHorizontal: 24, height: 50 }]}>
+                            <Text style={[styles.tableHeadCell, { flex: 1.5, color: colors.textSecondary }]}>Offer Name</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Type</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Discount</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Usage</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Valid From</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Valid To</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Status</Text>
+                            <Text style={[styles.tableHeadCell, { width: 80, color: colors.textSecondary, textAlign: "right" }]}>Actions</Text>
+                        </View>
+                        <ScrollView style={{ flex: 1 }}>
+                            {offers.map((offer, idx) => (
+                                <View key={idx} style={[styles.tableRow, { borderBottomColor: colors.border, paddingHorizontal: 24, height: 64 }]}>
+                                    <Text style={[styles.tableCellText, { flex: 1.5, color: colors.text, fontWeight: "600", paddingRight: 10 }]} numberOfLines={1}>{offer.name}</Text>
+                                    <Text style={[styles.tableCellText, { flex: 1, color: colors.textSecondary, paddingRight: 10 }]} numberOfLines={1}>{offer.type}</Text>
+                                    <Text style={[styles.tableCellText, { flex: 1, color: colors.text, paddingRight: 10 }]} numberOfLines={1}>{offer.discount}</Text>
+                                    <Text style={[styles.tableCellText, { flex: 1, color: colors.textSecondary, paddingRight: 10 }]} numberOfLines={1}>{offer.usage_count || offer.usage || 0}</Text>
+                                    <Text style={[styles.tableCellText, { flex: 1, color: colors.textSecondary, paddingRight: 10 }]} numberOfLines={1}>{offer.valid_from}</Text>
+                                    <Text style={[styles.tableCellText, { flex: 1, color: colors.textSecondary, paddingRight: 10 }]} numberOfLines={1}>{offer.valid_to}</Text>
+                                    <View style={{ flex: 1, paddingRight: 10, justifyContent: 'center' }}>
+                                        <View style={[styles.miniStatusBadge, offer.status === "Active" ? styles.bgSuccess : { backgroundColor: colors.danger + "15" }]}>
+                                            <Text style={[styles.miniStatusText, offer.status === "Active" ? styles.txtSuccess : { color: colors.danger }]}>{offer.status}</Text>
+                                        </View>
+                                    </View>
+                                    <View style={{ width: 80, flexDirection: 'row', alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
+                                        <TouchableOpacity onPress={() => handleOpenOfferModal(offer)}>
+                                            <Ionicons name="create-outline" size={18} color={colors.primary} />
+                                        </TouchableOpacity>
+                                        <TouchableOpacity onPress={() => handleDeleteOffer(offer.id)}>
+                                            <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            ))}
+                        </ScrollView>
                     </View>
                 </ScrollView>
             </View>
@@ -746,16 +1175,117 @@ export default function PlatformAdminDashboard() {
             <Text style={{ color: colors.textSecondary, marginTop: 8, textAlign: "center", maxWidth: 400 }}>
                 This section is fully mapped under super admin dashboard permissions. Complete module implementation is coming in the next build.
             </Text>
-            <TouchableOpacity onPress={() => setActiveTab("Dashboard")} style={[styles.exportReportBtn, { marginTop: 20 }]}>
-                <Text style={styles.exportReportText}>Return to Dashboard</Text>
+            <TouchableOpacity onPress={() => setActiveTab("Overview")} style={[styles.exportReportBtn, { marginTop: 20 }]}>
+                <Text style={styles.exportReportText}>Return to Overview</Text>
             </TouchableOpacity>
+        </View>
+    );
+
+    const renderNotificationsTab = () => (
+        <View style={{ flex: 1 }}>
+            <View style={{ marginBottom: 24 }}>
+                <Text style={{ fontSize: 24, fontWeight: "700", color: colors.text }}>Notifications</Text>
+                <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 4 }}>Create and manage alerts sent to users' dashboards</Text>
+            </View>
+
+            <View style={[styles.gridCard, { backgroundColor: colors.surface, borderColor: colors.border, padding: 24, marginBottom: 24 }]}>
+                <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 16 }]}>Send New Notification</Text>
+                
+                <View style={{ gap: 16 }}>
+                    <View>
+                        <Text style={[styles.modalGridLabel, { color: colors.textSecondary, marginBottom: 4 }]}>Notification Title</Text>
+                        <TextInput
+                            value={notifTitle}
+                            onChangeText={setNotifTitle}
+                            placeholder="e.g. System Maintenance"
+                            placeholderTextColor={colors.textSecondary}
+                            style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }]}
+                        />
+                    </View>
+                    <View>
+                        <Text style={[styles.modalGridLabel, { color: colors.textSecondary, marginBottom: 4 }]}>Message Content</Text>
+                        <TextInput
+                            value={notifMessage}
+                            onChangeText={setNotifMessage}
+                            placeholder="Write your message here..."
+                            placeholderTextColor={colors.textSecondary}
+                            multiline
+                            style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground, height: 80, textAlignVertical: "top" }]}
+                        />
+                    </View>
+                    <View>
+                        <Text style={[styles.modalGridLabel, { color: colors.textSecondary, marginBottom: 4 }]}>Target Audience</Text>
+                        <View style={{ flexDirection: "row", gap: 12 }}>
+                            {["ALL", "SINGLE", "MULTIPLE"].map((type) => (
+                                <TouchableOpacity
+                                    key={type}
+                                    onPress={() => setNotifTargetType(type)}
+                                    style={[styles.modalPlanPill, { borderColor: colors.border }, notifTargetType === type && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                                >
+                                    <Text style={[styles.modalPlanText, { color: colors.textSecondary }, notifTargetType === type && { color: "#FFF" }]}>{type}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+                    
+                    {notifTargetType !== "ALL" && (
+                        <View>
+                            <Text style={[styles.modalGridLabel, { color: colors.textSecondary, marginBottom: 4 }]}>Target User IDs (comma separated)</Text>
+                            <TextInput
+                                value={notifTargetUsers}
+                                onChangeText={setNotifTargetUsers}
+                                placeholder="user-1, user-2"
+                                placeholderTextColor={colors.textSecondary}
+                                style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }]}
+                            />
+                        </View>
+                    )}
+
+                    <TouchableOpacity onPress={handleCreateNotification} style={[styles.exportReportBtn, { alignSelf: 'flex-start', marginTop: 8 }]}>
+                        <Ionicons name="send" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
+                        <Text style={styles.exportReportText}>Send Notification</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+
+            <View style={[styles.gridCard, { flex: 1, padding: 0, overflow: "hidden", backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={[styles.tableHeaderRow, { borderBottomColor: colors.border, paddingHorizontal: 24, height: 50 }]}>
+                    <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Date</Text>
+                    <Text style={[styles.tableHeadCell, { flex: 2, color: colors.textSecondary }]}>Title</Text>
+                    <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Target</Text>
+                </View>
+                <ScrollView style={{ flex: 1, minHeight: 200 }}>
+                    {adminNotifications.length === 0 ? (
+                        <View style={{ padding: 24, alignItems: "center" }}>
+                            <Text style={{ color: colors.textSecondary }}>No notifications sent yet.</Text>
+                        </View>
+                    ) : (
+                        adminNotifications.map((notif, idx) => (
+                            <View key={idx} style={[styles.tableRow, { borderBottomColor: colors.border, paddingHorizontal: 24, height: 64 }]}>
+                                <Text style={[styles.tableCellText, { flex: 1, color: colors.textSecondary }]} numberOfLines={1}>
+                                    {new Date(notif.created_at).toLocaleString()}
+                                </Text>
+                                <Text style={[styles.tableCellText, { flex: 2, color: colors.text, fontWeight: "600" }]} numberOfLines={1}>
+                                    {notif.title}
+                                </Text>
+                                <Text style={[styles.tableCellText, { flex: 1, color: colors.textSecondary }]} numberOfLines={1}>
+                                    {notif.target_type}
+                                </Text>
+                            </View>
+                        ))
+                    )}
+                </ScrollView>
+            </View>
         </View>
     );
 
     // Main layout renderer
     const renderAdminDashboardContent = () => {
-        if (activeTab === "Dashboard") return renderDashboardTab();
+        if (activeTab === "Overview") return renderDashboardTab();
         if (activeTab === "Users") return renderUsersTab();
+        if (activeTab === "Plans") return renderPlansTab();
+        if (activeTab === "Offers") return renderOffersTab();
+        if (activeTab === "Notifications") return renderNotificationsTab();
         return renderPlaceholderTab();
     };
 
@@ -866,6 +1396,34 @@ export default function PlatformAdminDashboard() {
                                     })}
                                 </View>
                             </View>
+
+                            {/* User Type Selector Pills */}
+                            <View>
+                                <Text style={[styles.modalGridLabel, { color: colors.textSecondary, marginBottom: 4 }]}>User Type</Text>
+                                <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
+                                    {["PERSONAL", "BUSINESS"].map((typeOption) => {
+                                        const isSelected = editUserType === typeOption;
+                                        return (
+                                            <TouchableOpacity
+                                                key={typeOption}
+                                                onPress={() => setEditUserType(typeOption)}
+                                                style={[
+                                                    styles.statusSelectionPill,
+                                                    { borderColor: colors.border, backgroundColor: colors.surface },
+                                                    isSelected && {
+                                                        backgroundColor: colors.primary,
+                                                        borderColor: colors.primary
+                                                    }
+                                                ]}
+                                            >
+                                                <Text style={{ color: isSelected ? "#FFFFFF" : colors.textSecondary, fontSize: 11, fontWeight: "700" }}>
+                                                    {typeOption}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </View>
+                            </View>
                         </View>
 
                         <View style={[styles.modalDivider, { backgroundColor: colors.border }]} />
@@ -893,16 +1451,134 @@ export default function PlatformAdminDashboard() {
         );
     };
 
+    const renderPlanModal = () => {
+        if (!showPlanModal) return null;
+        return (
+            <View style={styles.modalOverlay}>
+                <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={styles.modalHeader}>
+                        <Text style={[styles.modalTitle, { color: colors.text }]}>{editingPlan ? "Edit Plan" : "Add Plan"}</Text>
+                        <TouchableOpacity onPress={() => setShowPlanModal(false)} style={styles.modalCloseBtn}>
+                            <Ionicons name="close" size={24} color={colors.text} />
+                        </TouchableOpacity>
+                    </View>
+                    <View style={styles.modalBody}>
+                        <View style={{ gap: 12 }}>
+                            <View>
+                                <Text style={[styles.modalGridLabel, { color: colors.textSecondary, marginBottom: 4 }]}>Plan Name</Text>
+                                <TextInput value={editPlanName} onChangeText={setEditPlanName} style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }]} />
+                            </View>
+                            <View>
+                                <Text style={[styles.modalGridLabel, { color: colors.textSecondary, marginBottom: 4 }]}>Type</Text>
+                                <TextInput value={editPlanType} onChangeText={setEditPlanType} style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }]} />
+                            </View>
+                            <View>
+                                <Text style={[styles.modalGridLabel, { color: colors.textSecondary, marginBottom: 4 }]}>Price</Text>
+                                <TextInput value={editPlanPrice} onChangeText={setEditPlanPrice} keyboardType="numeric" style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }]} />
+                            </View>
+                            <View>
+                                <Text style={[styles.modalGridLabel, { color: colors.textSecondary, marginBottom: 4 }]}>Billing</Text>
+                                <TextInput value={editPlanBilling} onChangeText={setEditPlanBilling} style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }]} />
+                            </View>
+                            <View>
+                                <Text style={[styles.modalGridLabel, { color: colors.textSecondary, marginBottom: 4 }]}>Status</Text>
+                                <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
+                                    {["Active", "Inactive"].map((s) => (
+                                        <TouchableOpacity key={s} onPress={() => setEditPlanStatus(s)} style={[styles.modalPlanPill, { borderColor: colors.border }, editPlanStatus === s && { backgroundColor: colors.primary, borderColor: colors.primary }]}>
+                                            <Text style={[styles.modalPlanText, { color: colors.textSecondary }, editPlanStatus === s && { color: "#FFF" }]}>{s}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            </View>
+                            <View>
+                                <Text style={[styles.modalGridLabel, { color: colors.textSecondary, marginBottom: 4 }]}>Description (comma-separated features)</Text>
+                                <TextInput value={editPlanDescription} onChangeText={setEditPlanDescription} style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground, height: 80 }]} multiline />
+                            </View>
+                        </View>
+                    </View>
+                    <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
+                        <TouchableOpacity onPress={() => setShowPlanModal(false)} style={[styles.modalActionBtn, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}>
+                            <Text style={[styles.modalActionText, { color: colors.text }]}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={handleSavePlan} style={[styles.modalActionBtn, { backgroundColor: colors.primary }]}>
+                            <Text style={styles.modalActionTextPrimary}>Save Plan</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </View>
+        );
+    };
+
+    const renderOfferModal = () => {
+        if (!showOfferModal) return null;
+        return (
+            <View style={styles.modalOverlay}>
+                <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={styles.modalHeader}>
+                        <Text style={[styles.modalTitle, { color: colors.text }]}>{editingOffer ? "Edit Offer" : "Create Offer"}</Text>
+                        <TouchableOpacity onPress={() => setShowOfferModal(false)} style={styles.modalCloseBtn}>
+                            <Ionicons name="close" size={24} color={colors.text} />
+                        </TouchableOpacity>
+                    </View>
+                    <View style={styles.modalBody}>
+                        <View style={{ gap: 12 }}>
+                            <View>
+                                <Text style={[styles.modalGridLabel, { color: colors.textSecondary, marginBottom: 4 }]}>Offer Name</Text>
+                                <TextInput value={editOfferName} onChangeText={setEditOfferName} style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }]} />
+                            </View>
+                            <View>
+                                <Text style={[styles.modalGridLabel, { color: colors.textSecondary, marginBottom: 4 }]}>Type</Text>
+                                <TextInput value={editOfferType} onChangeText={setEditOfferType} style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }]} />
+                            </View>
+                            <View>
+                                <Text style={[styles.modalGridLabel, { color: colors.textSecondary, marginBottom: 4 }]}>Discount</Text>
+                                <TextInput value={editOfferDiscount} onChangeText={setEditOfferDiscount} style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }]} />
+                            </View>
+                            <View style={{ flexDirection: 'row', gap: 12 }}>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={[styles.modalGridLabel, { color: colors.textSecondary, marginBottom: 4 }]}>Valid From</Text>
+                                    <TextInput value={editOfferValidFrom} onChangeText={setEditOfferValidFrom} style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }]} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={[styles.modalGridLabel, { color: colors.textSecondary, marginBottom: 4 }]}>Valid To</Text>
+                                    <TextInput value={editOfferValidTo} onChangeText={setEditOfferValidTo} style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }]} />
+                                </View>
+                            </View>
+                            <View>
+                                <Text style={[styles.modalGridLabel, { color: colors.textSecondary, marginBottom: 4 }]}>Status</Text>
+                                <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
+                                    {["Active", "Inactive"].map((s) => (
+                                        <TouchableOpacity key={s} onPress={() => setEditOfferStatus(s)} style={[styles.modalPlanPill, { borderColor: colors.border }, editOfferStatus === s && { backgroundColor: colors.primary, borderColor: colors.primary }]}>
+                                            <Text style={[styles.modalPlanText, { color: colors.textSecondary }, editOfferStatus === s && { color: "#FFF" }]}>{s}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            </View>
+                        </View>
+                    </View>
+                    <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
+                        <TouchableOpacity onPress={() => setShowOfferModal(false)} style={[styles.modalActionBtn, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}>
+                            <Text style={[styles.modalActionText, { color: colors.text }]}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={handleSaveOffer} style={[styles.modalActionBtn, { backgroundColor: colors.primary }]}>
+                            <Text style={styles.modalActionTextPrimary}>Save Offer</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </View>
+        );
+    };
+
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
             <View style={{ flex: 1, flexDirection: isDesktop ? "row" : "column" }}>
                 {isDesktop && renderAdminSidebar()}
 
                 {/* Main Content Pane */}
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, zIndex: 10 }}>
                     {/* Admin Header Panel */}
                     {isDesktop ? (
-                        <View style={[styles.headerRow, { borderBottomColor: colors.border }]}>
+                        <View style={[styles.headerRow, { borderBottomColor: colors.border, zIndex: 50 }]}>
                             <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                                 <View>
                                     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -928,14 +1604,38 @@ export default function PlatformAdminDashboard() {
                                     </View>
                                 </TouchableOpacity>
                                 {/* Profile Box */}
-                                <View style={[styles.profileBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                                    <View style={[styles.avatar, { backgroundColor: colors.primary + "15" }]}>
-                                        <Ionicons name="person" size={16} color={colors.primary} />
-                                    </View>
-                                    <View>
-                                        <Text style={[styles.profileName, { color: colors.text }]}>Amit Sharma</Text>
-                                        <Text style={[styles.profileEmail, { color: colors.textSecondary }]}>you@upi</Text>
-                                    </View>
+                                <View style={{ position: "relative", zIndex: 10 }}>
+                                    <TouchableOpacity
+                                        style={[styles.profileBox, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                                        activeOpacity={0.8}
+                                        onPress={() => setShowProfileMenu(!showProfileMenu)}
+                                    >
+                                        <View style={[styles.avatar, { backgroundColor: colors.primary + "15" }]}>
+                                            <Text style={{ color: colors.primary, fontSize: 14, fontWeight: "700" }}>
+                                                {user?.fullName ? user.fullName.charAt(0).toUpperCase() : "A"}
+                                            </Text>
+                                        </View>
+                                        <View>
+                                            <Text style={[styles.profileName, { color: colors.text }]}>{user?.fullName || "Platform Admin"}</Text>
+                                            <Text style={[styles.profileEmail, { color: colors.textSecondary }]}>{user?.email || "admin@upnum.com"}</Text>
+                                        </View>
+                                        <Ionicons name="chevron-down" size={16} color={colors.textSecondary} style={{ marginLeft: 8 }} />
+                                    </TouchableOpacity>
+
+                                    {showProfileMenu && (
+                                        <View style={[styles.profileDropdown, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                                            <TouchableOpacity
+                                                style={styles.profileDropdownItem}
+                                                onPress={() => {
+                                                    setShowProfileMenu(false);
+                                                    logout();
+                                                }}
+                                            >
+                                                <Ionicons name="log-out-outline" size={18} color={colors.danger} />
+                                                <Text style={[styles.profileDropdownText, { color: colors.danger }]}>Logout</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    )}
                                 </View>
                             </View>
                         </View>
@@ -1007,6 +1707,8 @@ export default function PlatformAdminDashboard() {
                 </View>
             </View>
             {renderDetailModal()}
+            {renderPlanModal()}
+            {renderOfferModal()}
         </SafeAreaView>
     );
 }
@@ -1172,8 +1874,34 @@ const styles = StyleSheet.create({
         marginRight: 8,
     },
     linkBackAppText: {
-        fontSize: 12,
-        fontWeight: "700",
+        fontSize: 13,
+        fontWeight: "600",
+    },
+    profileDropdown: {
+        position: 'absolute',
+        top: 60,
+        right: 0,
+        width: 160,
+        borderRadius: 8,
+        borderWidth: 1,
+        padding: 8,
+        elevation: 5,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 10,
+    },
+    profileDropdownItem: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 6,
+    },
+    profileDropdownText: {
+        fontSize: 14,
+        fontWeight: "600"
     },
     backBtn: {
         width: 36,
@@ -1892,5 +2620,31 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontWeight: "600",
         marginTop: 4,
+    },
+    modalPlanPill: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+        borderWidth: 1,
+    },
+    modalPlanText: {
+        fontSize: 13,
+        fontWeight: "600",
+    },
+    modalFooter: {
+        flexDirection: "row",
+        justifyContent: "flex-end",
+        gap: 12,
+        padding: 24,
+        borderTopWidth: 1,
+    },
+    modalActionText: {
+        fontSize: 14,
+        fontWeight: "600",
+    },
+    modalActionTextPrimary: {
+        color: "#FFF",
+        fontSize: 14,
+        fontWeight: "600",
     },
 });

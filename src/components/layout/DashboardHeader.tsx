@@ -6,8 +6,11 @@ import {
     View,
     useWindowDimensions,
     Image,
+    ScrollView,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
+
+import apiClient from "../../api/apiClient";
 
 import {
     useAppTheme,
@@ -33,9 +36,38 @@ export default function DashboardHeader({
     const isDesktop = width >= 900;
     const { user, logout } = useAuthStore();
     const [dropdownOpen, setDropdownOpen] = React.useState(false);
+    const [notifDropdownOpen, setNotifDropdownOpen] = React.useState(false);
+    const [notifications, setNotifications] = React.useState<any[]>([]);
+    
     const pathname = usePathname();
     const isHistoryPage = pathname.includes("/subscription/history");
     const { colors, isDark } = useAppTheme();
+
+    React.useEffect(() => {
+        if (user?.id) {
+            fetchNotifications();
+        }
+    }, [user?.id]);
+
+    const fetchNotifications = async () => {
+        try {
+            const res = await apiClient.get(`/users/${user?.id}/notifications`);
+            setNotifications(res.data);
+        } catch (err: any) {
+            console.warn("Failed to fetch user notifications:", err.message);
+        }
+    };
+
+    const handleReadNotification = async (notifId: number) => {
+        try {
+            await apiClient.put(`/users/${user?.id}/notifications/${notifId}/read`);
+            setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, is_read: 1 } : n));
+        } catch (err: any) {
+            console.warn("Failed to mark notification as read:", err.message);
+        }
+    };
+
+    const unreadCount = notifications.filter(n => !n.is_read).length;
 
     // Get dynamic display name and UPI address
     const fullName = user?.fullName || "Amit Sharma";
@@ -120,19 +152,55 @@ export default function DashboardHeader({
                 )}
 
                 {/* Notification Bell */}
-                <TouchableOpacity style={[styles.bellBtn, { 
-                    backgroundColor: isDesktop ? colors.surface : "transparent", 
-                    borderColor: isDesktop ? colors.border : "transparent",
-                    borderWidth: isDesktop ? 1 : 0,
-                    marginRight: isDesktop ? 16 : 8,
-                }]} activeOpacity={0.8}>
-                    <Ionicons name="notifications-outline" size={20} color={colors.text} />
-                    <View style={[styles.bellBadge, !isDesktop && { right: 2, top: 0 }]}>
-                        <Text style={styles.bellBadgeText}>3</Text>
-                    </View>
-                </TouchableOpacity>
+                <View style={{ position: "relative", zIndex: 20 }}>
+                    <TouchableOpacity 
+                        style={[styles.bellBtn, { 
+                            backgroundColor: isDesktop ? colors.surface : "transparent", 
+                            borderColor: isDesktop ? colors.border : "transparent",
+                            borderWidth: isDesktop ? 1 : 0,
+                            marginRight: isDesktop ? 16 : 8,
+                        }]} 
+                        activeOpacity={0.8}
+                        onPress={() => {
+                            setNotifDropdownOpen(!notifDropdownOpen);
+                            setDropdownOpen(false);
+                        }}
+                    >
+                        <Ionicons name="notifications-outline" size={20} color={colors.text} />
+                        {unreadCount > 0 && (
+                            <View style={[styles.bellBadge, !isDesktop && { right: 2, top: 0 }]}>
+                                <Text style={styles.bellBadgeText}>{unreadCount}</Text>
+                            </View>
+                        )}
+                    </TouchableOpacity>
 
-                {/* Profile Info Box */}
+                    {notifDropdownOpen && (
+                        <View style={[styles.dropdownMenu, { backgroundColor: colors.surface, borderColor: colors.border, width: 300, right: isDesktop ? 16 : 8 }]}>
+                            <Text style={{ padding: 12, fontWeight: "700", color: colors.text, borderBottomWidth: 1, borderBottomColor: colors.border }}>Notifications</Text>
+                            <ScrollView style={{ maxHeight: 300 }}>
+                                {notifications.length === 0 ? (
+                                    <Text style={{ padding: 16, color: colors.textSecondary, textAlign: 'center' }}>No notifications</Text>
+                                ) : (
+                                    notifications.map((n, idx) => (
+                                        <TouchableOpacity 
+                                            key={idx} 
+                                            style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: n.is_read ? 'transparent' : colors.primary + '10' }}
+                                            onPress={() => !n.is_read && handleReadNotification(n.id)}
+                                        >
+                                            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                                                <Text style={{ fontWeight: n.is_read ? "500" : "700", color: colors.text, flex: 1 }} numberOfLines={1}>{n.title}</Text>
+                                                {!n.is_read && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary, marginTop: 4 }} />}
+                                            </View>
+                                            <Text style={{ fontSize: 12, color: colors.textSecondary }} numberOfLines={2}>{n.message}</Text>
+                                            <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 4 }}>{new Date(n.created_at).toLocaleString()}</Text>
+                                        </TouchableOpacity>
+                                    ))
+                                )}
+                            </ScrollView>
+                        </View>
+                    )}
+                </View>
+
                 <TouchableOpacity
                     activeOpacity={0.8}
                     style={[
@@ -141,6 +209,7 @@ export default function DashboardHeader({
                     ]}
                     onPress={() => {
                         setDropdownOpen(!dropdownOpen);
+                        setNotifDropdownOpen(false);
                         if (onProfilePress) {
                             onProfilePress();
                         }

@@ -306,15 +306,25 @@ router.post("/sync-consent", async (req, res) => {
             let fromDate = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString();
             let toDate = new Date().toISOString();
             
-            const detail = statusData.detail || statusData.consentDetail || statusData.ConsentDetail;
-            const range = detail?.dataRange || detail?.DataRange || statusData.dataRange || statusData.DataRange;
-            if (range) {
-                fromDate = range.from || fromDate;
-                toDate = range.to || toDate;
+            // Attempt to get the exact dataRange from the consent status
+            const detail = statusData.detail || statusData.ConsentDetail || statusData.consentDetail;
+            const range = detail?.FIDataRange || detail?.fiDataRange || detail?.dataRange || detail?.DataRange || statusData.FIDataRange || statusData.dataRange;
+            if (range && range.from && range.to) {
+                fromDate = range.from;
+                toDate = range.to;
             } else {
-                // If we can't find the exact range, subtract 5 minutes from toDate 
-                // to guarantee it's not strictly greater than the consent's generated toDate
-                toDate = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+                // Fetch the original consent from our database to get its created_at timestamp
+                // The generated consent's DataRange 'to' date was set exactly when it was created.
+                const [rows] = await db.query("SELECT created_at FROM consents WHERE id = ?", [consentId]);
+                if (rows.length > 0 && rows[0].created_at) {
+                    const createdAt = new Date(rows[0].created_at);
+                    // Subtract 1 second to ensure it is strictly within the original upper bound
+                    toDate = new Date(createdAt.getTime() - 1000).toISOString();
+                    // Keep fromDate 6 months prior to toDate
+                    fromDate = new Date(createdAt.getTime() - 180 * 24 * 60 * 60 * 1000).toISOString();
+                } else {
+                    toDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+                }
             }
 
             const sessionResponse = await createDataSession({

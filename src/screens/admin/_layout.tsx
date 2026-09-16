@@ -1,9 +1,9 @@
 import React, { useEffect } from "react";
 import { View, ActivityIndicator } from "react-native";
-import { Slot, router } from "../../navigation/RootNavigation";
+import { router } from "../../navigation/RootNavigation";
 import { useAuthStore } from "../../store/auth.store";
 
-export default function AdminLayout() {
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
     const { user, isAuthenticated } = useAuthStore();
 
     useEffect(() => {
@@ -21,5 +21,5 @@ export default function AdminLayout() {
         );
     }
 
-    return <Slot />;
+    return <>{children}</>;
 }

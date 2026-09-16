@@ -86,4 +86,26 @@ export interface DashboardData {
 
     goal: GoalProgress;
 
+    income?: number;
+
+    incomeChange?: number;
+
+    expenses?: number;
+
+    expenseChange?: number;
+
+    savings?: number;
+
+    savingsChange?: number;
+
+    transactionsCount?: number;
+
+    chartDataIncome?: SalesChartItem[];
+
+    chartDataExpense?: SalesChartItem[];
+
+    pieData?: { value: number; color: string }[];
+
+    topCategories?: { label: string; percent: number; amount: number; color: string }[];
+
 }

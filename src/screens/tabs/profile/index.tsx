@@ -13,25 +13,52 @@ import {
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { useAppTheme, Spacing, Shadows, Typography } from "../../../theme";
 import { useAuthStore } from "../../../store/auth.store";
+import apiClient from "../../../api/apiClient";
 
 export default function ProfileScreen() {
     const { colors, isDark } = useAppTheme();
-    const { user } = useAuthStore();
+    const { user, updateUser } = useAuthStore();
     const { width } = useWindowDimensions();
     const isDesktop = width >= 1024;
 
-    const [firstName, setFirstName] = useState(user?.firstName || "Ram");
-    const [lastName, setLastName] = useState(user?.lastName || "Kumar");
-    const [email, setEmail] = useState(user?.email || "ram.kumar@example.com");
-    const [phone, setPhone] = useState("+91 98765 43210");
-    const [company, setCompany] = useState(user?.userType === 'BUSINESS' ? "Kumar Traders" : "");
+    const [firstName, setFirstName] = useState(user?.firstName || "");
+    const [lastName, setLastName] = useState(user?.lastName || "");
+    const [email, setEmail] = useState(user?.email || "");
+    const [phone, setPhone] = useState(user?.mobile || "");
+    const [company, setCompany] = useState(user?.businessName || "");
+    const [isSaving, setIsSaving] = useState(false);
 
-    const handleSave = () => {
-        if (Platform.OS === 'web') {
-            (globalThis as any).alert("Profile updated successfully!");
-        } else {
-            // For native, usually use Alert from react-native
-            console.log("Profile updated");
+    const handleSave = async () => {
+        if (!user) return;
+        setIsSaving(true);
+        try {
+            const res = await apiClient.put("/users/profile", {
+                userId: user.id,
+                firstName,
+                lastName,
+                email,
+                mobile: phone,
+                businessName: company,
+                category: user.category || null,
+                city: user.city || null
+            });
+            if (res.data.user) {
+                updateUser(res.data.user);
+                if (Platform.OS === 'web') {
+                    (globalThis as any).alert("Profile updated successfully!");
+                } else {
+                    console.log("Profile updated");
+                }
+            }
+        } catch (err) {
+            console.error(err);
+            if (Platform.OS === 'web') {
+                (globalThis as any).alert("Failed to update profile");
+            } else {
+                console.log("Failed to update profile");
+            }
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -42,9 +69,9 @@ export default function ProfileScreen() {
                     <Text style={[styles.pageTitle, { color: colors.text }]}>Profile Settings</Text>
                     <Text style={[styles.pageSubtitle, { color: colors.textSecondary }]}>Manage your personal information and preferences</Text>
                 </View>
-                <TouchableOpacity style={[styles.saveBtnTop, { backgroundColor: colors.primary }]} onPress={handleSave}>
+                <TouchableOpacity style={[styles.saveBtnTop, { backgroundColor: colors.primary, opacity: isSaving ? 0.7 : 1 }]} onPress={handleSave} disabled={isSaving}>
                     <Ionicons name="checkmark" size={16} color="#FFF" style={{ marginRight: 6 }} />
-                    <Text style={styles.saveBtnText}>Save Changes</Text>
+                    <Text style={styles.saveBtnText}>{isSaving ? "Saving..." : "Save Changes"}</Text>
                 </TouchableOpacity>
             </View>
 
@@ -143,8 +170,8 @@ export default function ProfileScreen() {
                     )}
 
                     <View style={{ marginTop: 24 }}>
-                        <TouchableOpacity style={[styles.saveBtnBottom, { backgroundColor: colors.primary }]} onPress={handleSave}>
-                            <Text style={styles.saveBtnText}>Save Changes</Text>
+                        <TouchableOpacity style={[styles.saveBtnBottom, { backgroundColor: colors.primary, opacity: isSaving ? 0.7 : 1 }]} onPress={handleSave} disabled={isSaving}>
+                            <Text style={styles.saveBtnText}>{isSaving ? "Saving..." : "Save Changes"}</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
