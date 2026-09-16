@@ -96,6 +96,10 @@ export default function PlatformAdminDashboard() {
 
     // Notifications state
     const [adminNotifications, setAdminNotifications] = useState<any[]>([]);
+    
+    // Payments state
+    const [payments, setPayments] = useState<any[]>([]);
+    const [loadingPayments, setLoadingPayments] = useState(false);
     const [notifTitle, setNotifTitle] = useState("");
     const [notifMessage, setNotifMessage] = useState("");
     const [notifTargetType, setNotifTargetType] = useState("ALL");
@@ -148,9 +152,21 @@ export default function PlatformAdminDashboard() {
             const response = await apiClient.get("/admin/plans");
             setPlans(response.data);
         } catch (err: any) {
-            console.warn("Failed to fetch plans:", err.message);
+            console.warn("Failed to fetch admin plans:", err.message);
         } finally {
             setLoadingPlans(false);
+        }
+    };
+
+    const fetchPayments = async () => {
+        setLoadingPayments(true);
+        try {
+            const response = await apiClient.get("/admin/payments");
+            setPayments(response.data);
+        } catch (err: any) {
+            console.warn("Failed to fetch admin payments:", err.message);
+        } finally {
+            setLoadingPayments(false);
         }
     };
 
@@ -172,7 +188,26 @@ export default function PlatformAdminDashboard() {
         fetchPlans();
         fetchOffers();
         fetchAdminNotifications();
+        fetchPayments();
     }, []);
+
+    useEffect(() => {
+        if (activeTab === "Overview") {
+            fetchDashboardStats();
+        } else if (activeTab === "Users") {
+            fetchUsers();
+        } else if (activeTab === "Businesses") {
+            fetchUsers();
+        } else if (activeTab === "Plans") {
+            fetchPlans();
+        } else if (activeTab === "Offers") {
+            fetchOffers();
+        } else if (activeTab === "Notifications") {
+            fetchAdminNotifications();
+        } else if (activeTab === "Payments") {
+            fetchPayments();
+        }
+    }, [activeTab]);
 
     const handleLogout = () => {
         logout();
@@ -437,6 +472,22 @@ export default function PlatformAdminDashboard() {
             u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
             u.plan.toLowerCase().includes(searchQuery.toLowerCase());
         const matchesStatus = selectedStatus === "All" || u.status.toLowerCase() === selectedStatus.toLowerCase();
+        return matchesSearch && matchesStatus;
+    });
+
+    const filteredBusinesses = users.filter(u => {
+        const matchesSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (u.businessName || "").toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesStatus = selectedStatus === "All" || u.status.toLowerCase() === selectedStatus.toLowerCase();
+        return u.user_type === "BUSINESS" && matchesSearch && matchesStatus;
+    });
+
+    const filteredPayments = payments.filter(p => {
+        const name = p.user_name || "";
+        const email = p.user_email || "";
+        const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase()) || email.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesStatus = selectedStatus === "All" || (p.status || "").toLowerCase() === selectedStatus.toLowerCase();
         return matchesSearch && matchesStatus;
     });
 
@@ -1034,6 +1085,140 @@ export default function PlatformAdminDashboard() {
         </View>
     );
 
+    // Businesses access management tab
+    const renderBusinessesTab = () => (
+        <View style={{ flex: 1 }}>
+            {/* Search and filters */}
+            <View style={[styles.filtersBar, isDesktop ? styles.rowLayout : styles.columnLayout]}>
+                <View style={[styles.searchContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Ionicons name="search" size={18} color={colors.textSecondary} style={{ marginRight: 8 }} />
+                    <TextInput
+                        placeholder="Search businesses by name or email..."
+                        placeholderTextColor={colors.placeholder}
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        style={[styles.searchBarInput, { color: colors.text }]}
+                    />
+                </View>
+
+                <View style={styles.filtersLeft}>
+                    {["All", "Active", "Trial", "Blocked"].map((status) => (
+                        <TouchableOpacity
+                            key={status}
+                            onPress={() => setSelectedStatus(status)}
+                            style={[
+                                styles.filterPill,
+                                { borderColor: colors.border, backgroundColor: colors.surface },
+                                selectedStatus === status && { backgroundColor: colors.primary, borderColor: colors.primary }
+                            ]}
+                        >
+                            <Text style={[
+                                styles.filterPillText,
+                                { color: selectedStatus === status ? "#FFFFFF" : colors.textSecondary }
+                            ]}>
+                                {status}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+            </View>
+
+            {/* Businesses grid card list */}
+            <View style={[styles.gridCard, { flex: 1, padding: 0, overflow: "hidden", backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1 }}>
+                    <View style={{ minWidth: 900, flex: 1 }}>
+                        {/* Header row */}
+                        <View style={[styles.tableHeaderRow, { borderBottomColor: colors.border, paddingHorizontal: 16 }]}>
+                            <Text style={[styles.tableHeadCell, { flex: 1.5, color: colors.textSecondary }]}>Business Name</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1.5, color: colors.textSecondary }]}>Owner Name</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 2, color: colors.textSecondary }]}>Email</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Plan</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Total Volume</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Status</Text>
+                            <Text style={[styles.tableHeadCell, { width: 120, color: colors.textSecondary, textAlign: "right" }]}>Actions</Text>
+                        </View>
+
+                        {/* Rows */}
+                        {loadingUsers ? (
+                            <ActivityIndicator size="large" color={colors.primary} style={{ margin: 40 }} />
+                        ) : filteredBusinesses.length === 0 ? (
+                            <View style={{ padding: 40, alignItems: "center" }}>
+                                <Text style={{ color: colors.textSecondary }}>No businesses found matching your filters.</Text>
+                            </View>
+                        ) : (
+                            filteredBusinesses.map((user) => (
+                                <View key={user.id} style={[styles.tableRow, { borderBottomColor: colors.border, paddingHorizontal: 16 }]}>
+                                    <View style={{ flex: 1.5, flexDirection: "row", alignItems: "center", paddingRight: 10 }}>
+                                        <View style={[styles.avatarSmall, { backgroundColor: colors.primary + "15" }]}>
+                                            <Text style={[styles.avatarSmallText, { color: colors.primary }]}>{user.businessName?.substring(0, 1) || "B"}</Text>
+                                        </View>
+                                        <Text style={[styles.tableCellText, { color: colors.text, fontWeight: "600", marginLeft: 12 }]} numberOfLines={1}>
+                                            {user.businessName || "Unnamed Business"}
+                                        </Text>
+                                    </View>
+                                    <Text style={[styles.tableCellText, { flex: 1.5, color: colors.textSecondary, paddingRight: 10 }]} numberOfLines={1}>{user.name}</Text>
+                                    <Text style={[styles.tableCellText, { flex: 2, color: colors.textSecondary, paddingRight: 10 }]} numberOfLines={1}>{user.email}</Text>
+                                    
+                                    <View style={{ flex: 1, paddingRight: 10, justifyContent: 'center' }}>
+                                        <Text style={[styles.tableCellText, { color: colors.text }]} numberOfLines={1}>
+                                            {user.plan === 'lifetime' ? 'Lifetime' : user.plan === 'free-trial' ? 'Trial' : user.plan || 'Free'}
+                                        </Text>
+                                    </View>
+
+                                    <Text style={[styles.tableCellText, { flex: 1, color: colors.text, paddingRight: 10 }]} numberOfLines={1}>{user.volume || "₹0"}</Text>
+                                    
+                                    <View style={{ flex: 1, paddingRight: 10, justifyContent: 'center' }}>
+                                        <View style={[styles.miniStatusBadge, user.status === "Blocked" ? { backgroundColor: colors.danger + "15" } : user.status === "Trial" ? { backgroundColor: "#F59E0B15" } : styles.bgSuccess]}>
+                                            <Text style={[styles.miniStatusText, user.status === "Blocked" ? { color: colors.danger } : user.status === "Trial" ? { color: "#F59E0B" } : styles.txtSuccess]}>
+                                                {user.status || "Active"}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                    
+                                    <View style={{ width: 120, flexDirection: 'row', alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
+                                        <TouchableOpacity
+                                            onPress={() => handleOpenModal(user)}
+                                            style={[styles.actionBtn, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Ionicons name="create-outline" size={14} color={colors.primary} />
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity
+                                            onPress={() => toggleUserStatus(user.id)}
+                                            style={[
+                                                styles.actionBtn,
+                                                {
+                                                    backgroundColor: user.status === "Blocked" ? colors.success + "15" : colors.danger + "15",
+                                                    borderColor: "transparent"
+                                                }
+                                            ]}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Ionicons
+                                                name={user.status === "Blocked" ? "checkmark-circle-outline" : "ban-outline"}
+                                                size={14}
+                                                color={user.status === "Blocked" ? colors.success : colors.danger}
+                                            />
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity
+                                            onPress={() => handleDeleteUser(user.id)}
+                                            style={[styles.actionBtn, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Ionicons name="trash-outline" size={14} color={colors.danger} />
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            ))
+                        )}
+                    </View>
+                </ScrollView>
+            </View>
+        </View>
+    );
+
     const MOCK_PLANS = [
         { name: "Free", type: "Free", price: "₹0", billing: "Monthly", status: "Active", subscribers: "5,864" },
         { name: "Standard", type: "Paid", price: "₹50", billing: "Monthly", status: "Active", subscribers: "4,530" },
@@ -1167,6 +1352,108 @@ export default function PlatformAdminDashboard() {
         </View>
     );
 
+    const renderPaymentsTab = () => (
+        <View style={{ flex: 1 }}>
+            {/* Search and filters */}
+            <View style={[styles.filtersBar, isDesktop ? styles.rowLayout : styles.columnLayout]}>
+                <View style={[styles.searchContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Ionicons name="search" size={18} color={colors.textSecondary} style={{ marginRight: 8 }} />
+                    <TextInput
+                        placeholder="Search payments by name or email..."
+                        placeholderTextColor={colors.placeholder}
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        style={[styles.searchBarInput, { color: colors.text }]}
+                    />
+                </View>
+
+                <View style={styles.filtersLeft}>
+                    {["All", "SUCCESS", "PENDING", "FAILED"].map((status) => (
+                        <TouchableOpacity
+                            key={status}
+                            onPress={() => setSelectedStatus(status)}
+                            style={[
+                                styles.filterPill,
+                                { borderColor: colors.border, backgroundColor: colors.surface },
+                                selectedStatus === status && { backgroundColor: colors.primary, borderColor: colors.primary }
+                            ]}
+                        >
+                            <Text style={[
+                                styles.filterPillText,
+                                { color: selectedStatus === status ? "#FFFFFF" : colors.textSecondary }
+                            ]}>
+                                {status === "All" ? "All Payments" : status}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+            </View>
+
+            {/* Payments grid card list */}
+            <View style={[styles.gridCard, { flex: 1, padding: 0, overflow: "hidden", backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1 }}>
+                    <View style={{ minWidth: 900, flex: 1 }}>
+                        {/* Header row */}
+                        <View style={[styles.tableHeaderRow, { borderBottomColor: colors.border, paddingHorizontal: 16 }]}>
+                            <Text style={[styles.tableHeadCell, { flex: 2, color: colors.textSecondary }]}>User</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Payment ID</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Amount</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1.5, color: colors.textSecondary }]}>Gateway Ref</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1.5, color: colors.textSecondary }]}>Date</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Status</Text>
+                        </View>
+
+                        {/* Rows */}
+                        {loadingPayments ? (
+                            <ActivityIndicator size="large" color={colors.primary} style={{ margin: 40 }} />
+                        ) : filteredPayments.length === 0 ? (
+                            <View style={{ padding: 40, alignItems: "center" }}>
+                                <Text style={{ color: colors.textSecondary }}>No payments found matching your filters.</Text>
+                            </View>
+                        ) : (
+                            <ScrollView style={{ flex: 1 }}>
+                                {filteredPayments.map((payment) => (
+                                    <View key={payment.id} style={[styles.tableRow, { borderBottomColor: colors.border, paddingHorizontal: 16 }]}>
+                                        <View style={{ flex: 2, flexDirection: "row", alignItems: "center", paddingRight: 10 }}>
+                                            <View style={[styles.avatarSmall, { backgroundColor: colors.primary + "15" }]}>
+                                                <Text style={[styles.avatarSmallText, { color: colors.primary }]}>{payment.user_name?.substring(0, 1) || "U"}</Text>
+                                            </View>
+                                            <View style={{ marginLeft: 12 }}>
+                                                <Text style={[styles.tableCellText, { color: colors.text, fontWeight: "600", fontSize: 14 }]} numberOfLines={1}>
+                                                    {payment.user_name || "Unknown User"}
+                                                </Text>
+                                                <Text style={[{ color: colors.textSecondary, fontSize: 12 }]} numberOfLines={1}>
+                                                    {payment.user_email || "No Email"}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                        <Text style={[styles.tableCellText, { flex: 1, color: colors.textSecondary, paddingRight: 10, fontSize: 12 }]} numberOfLines={1}>
+                                            {payment.id}
+                                        </Text>
+                                        <Text style={[styles.tableCellText, { flex: 1, color: colors.text, fontWeight: "600", paddingRight: 10 }]} numberOfLines={1}>
+                                            ₹{parseFloat(payment.amount).toLocaleString()}
+                                        </Text>
+                                        <Text style={[styles.tableCellText, { flex: 1.5, color: colors.textSecondary, paddingRight: 10, fontSize: 13 }]} numberOfLines={1}>
+                                            {payment.gateway_ref || "N/A"}
+                                        </Text>
+                                        <Text style={[styles.tableCellText, { flex: 1.5, color: colors.textSecondary, paddingRight: 10 }]} numberOfLines={1}>
+                                            {new Date(payment.created_at).toLocaleString()}
+                                        </Text>
+                                        <View style={{ flex: 1, justifyContent: 'center' }}>
+                                            <View style={[styles.miniStatusBadge, payment.status === "SUCCESS" ? styles.bgSuccess : payment.status === "FAILED" ? { backgroundColor: colors.danger + "15" } : { backgroundColor: colors.primary + "15" }]}>
+                                                <Text style={[styles.miniStatusText, payment.status === "SUCCESS" ? styles.txtSuccess : payment.status === "FAILED" ? { color: colors.danger } : { color: colors.primary }]}>{payment.status || "UNKNOWN"}</Text>
+                                            </View>
+                                        </View>
+                                    </View>
+                                ))}
+                            </ScrollView>
+                        )}
+                    </View>
+                </ScrollView>
+            </View>
+        </View>
+    );
+
     // Placeholder view for other tabs
     const renderPlaceholderTab = () => (
         <View style={[styles.gridCard, { backgroundColor: colors.surface, borderColor: colors.border, alignItems: "center", padding: 40 }]}>
@@ -1283,7 +1570,9 @@ export default function PlatformAdminDashboard() {
     const renderAdminDashboardContent = () => {
         if (activeTab === "Overview") return renderDashboardTab();
         if (activeTab === "Users") return renderUsersTab();
+        if (activeTab === "Businesses") return renderBusinessesTab();
         if (activeTab === "Plans") return renderPlansTab();
+        if (activeTab === "Payments") return renderPaymentsTab();
         if (activeTab === "Offers") return renderOffersTab();
         if (activeTab === "Notifications") return renderNotificationsTab();
         return renderPlaceholderTab();
@@ -2646,5 +2935,16 @@ const styles = StyleSheet.create({
         color: "#FFF",
         fontSize: 14,
         fontWeight: "600",
+    },
+    avatarSmall: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    avatarSmallText: {
+        fontSize: 14,
+        fontWeight: "bold",
     },
 });

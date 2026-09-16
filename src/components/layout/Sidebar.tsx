@@ -17,7 +17,7 @@ const SIDEBAR_ITEMS = [
     { title: "Dashboard", route: "/tabs/dashboard", icon: "grid-outline" as const },
     { title: "Transactions", route: "/tabs/transactions", icon: "swap-horizontal-outline" as const },
     { title: "Customers", route: "/tabs/customers", icon: "people-outline" as const },
-    { title: "Reports", route: "/tabs/dashboard", icon: "bar-chart-outline" as const },
+    { title: "Reports", route: "/tabs/reports", icon: "bar-chart-outline" as const },
     { title: "Insights (AI)", route: "/tabs/dashboard/ai-insights", icon: "sparkles-outline" as const, badge: "New" },
     { title: "Subscriptions", route: "/tabs/subscription", icon: "card-outline" as const },
     { title: "Billing History", route: "/tabs/subscription/history", icon: "time-outline" as const },

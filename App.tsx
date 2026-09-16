@@ -33,6 +33,7 @@ import TransactionsScreen from './src/screens/tabs/transactions/index';
 import CustomersScreen from './src/screens/tabs/customers/index';
 import SettingsScreen from './src/screens/tabs/settings/index';
 import ProfileScreen from './src/screens/tabs/profile/index';
+import ReportsScreen from './src/screens/tabs/reports/index';
 // Other
 import PaymentScreen from './src/screens/payment';
 import PaymentSuccessScreen from './src/screens/payment-success';
@@ -83,6 +84,7 @@ function TabNavigator() {
               else if (route.name === '/tabs/customers') iconName = focused ? 'people' : 'people-outline';
               else if (route.name === '/tabs/settings') iconName = focused ? 'settings' : 'settings-outline';
               else if (route.name === '/tabs/profile') iconName = focused ? 'person' : 'person-outline';
+              else if (route.name === '/tabs/reports') iconName = focused ? 'bar-chart' : 'bar-chart-outline';
               return <Ionicons name={iconName} size={size} color={color} />;
             },
             tabBarActiveTintColor: '#6366f1',
@@ -94,6 +96,7 @@ function TabNavigator() {
           {user?.userType === 'BUSINESS' && (
             <Tab.Screen name="/tabs/customers" component={CustomersScreen} options={{ tabBarLabel: 'Customers' }} />
           )}
+          <Tab.Screen name="/tabs/reports" component={ReportsScreen} options={{ tabBarLabel: 'Reports' }} />
           <Tab.Screen name="/tabs/settings" component={SettingsScreen} options={{ tabBarLabel: 'Settings' }} />
           <Tab.Screen name="/tabs/profile" component={ProfileScreen} options={{ tabBarLabel: 'Profile', tabBarItemStyle: { display: 'none' }, tabBarButton: () => null }} />
           <Tab.Screen name="/tabs/subscription" component={SubscriptionIndexScreen} options={{ tabBarLabel: 'Subscriptions', tabBarItemStyle: { display: 'none' }, tabBarButton: () => null }} />
