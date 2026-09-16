@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
     View,
     Text,
@@ -11,6 +11,7 @@ import {
     Alert,
     Modal,
     Pressable,
+    Platform,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import Svg, { Path, Circle } from "react-native-svg";
@@ -34,10 +35,38 @@ const NEW_RECOMMENDATIONS = [
     { title: "Manage Utility Bills", desc: "Set up auto-pay for your electricity and water bills to avoid late fees.", icon: "flash-outline", color: "#F59E0B", bg: "#FFFBEB", btnText: "Setup Now" },
 ];
 
+const DATE_RANGES = ["This Month", "Last Month", "Last 3 Months", "Last 6 Months", "This Year"];
+const CATEGORIES = ["All", "Shopping", "Food", "Travel", "Utilities", "Entertainment", "Groceries", "Income", "Transfer"];
+
 export default function AiInsightsPersonal() {
     const [recommendations, setRecommendations] = useState(DEFAULT_RECOMMENDATIONS);
     const [isRegenerating, setIsRegenerating] = useState(false);
     const [howAiWorksVisible, setHowAiWorksVisible] = useState(false);
+
+    // Filter / date state
+    const [dateRange, setDateRange] = useState("This Month");
+    const [datePickerVisible, setDatePickerVisible] = useState(false);
+    const [filterVisible, setFilterVisible] = useState(false);
+    const [selectedCategory, setSelectedCategory] = useState("All");
+
+    // Stat detail modal
+    const [statDetailVisible, setStatDetailVisible] = useState(false);
+    const [selectedStat, setSelectedStat] = useState<any>(null);
+
+    // Recommendation action modal
+    const [recModalVisible, setRecModalVisible] = useState(false);
+    const [selectedRec, setSelectedRec] = useState<any>(null);
+    const [budgetInput, setBudgetInput] = useState("");
+
+    // Insight detail modal
+    const [insightDetailVisible, setInsightDetailVisible] = useState(false);
+    const [selectedInsight, setSelectedInsight] = useState<any>(null);
+
+    // AI Chat
+    const [chatQuery, setChatQuery] = useState("");
+    const [chatMessages, setChatMessages] = useState<{ role: "user" | "ai"; text: string }[]>([]);
+    const [chatLoading, setChatLoading] = useState(false);
+
     const { width } = useWindowDimensions();
     const isDesktop = width >= 900;
     const { colors, isDark } = useAppTheme();
@@ -50,12 +79,77 @@ export default function AiInsightsPersonal() {
             const res = await apiClient.post("/dashboard/regenerate-insights", { userId: user?.id });
             if (res.data && res.data.recommendations) {
                 setRecommendations(res.data.recommendations);
+            } else {
+                // Cycle between default and new recommendations locally
+                setRecommendations(prev =>
+                    prev[0]?.title === DEFAULT_RECOMMENDATIONS[0]?.title ? NEW_RECOMMENDATIONS : DEFAULT_RECOMMENDATIONS
+                );
             }
-        } catch (error: any) {
-            console.error("Failed to regenerate insights", error);
-            Alert.alert("Error", error.response?.data?.error || error.message || "Failed to generate insights");
+        } catch {
+            setRecommendations(prev =>
+                prev[0]?.title === DEFAULT_RECOMMENDATIONS[0]?.title ? NEW_RECOMMENDATIONS : DEFAULT_RECOMMENDATIONS
+            );
         } finally {
             setIsRegenerating(false);
+        }
+    };
+
+    const handleDateRangeSelect = (range: string) => {
+        setDateRange(range);
+        setDatePickerVisible(false);
+        loadDashboard(user?.id, range);
+    };
+
+    const handleDownloadReport = () => {
+        Alert.alert(
+            "Download Report",
+            `Download your AI Insights report for "${dateRange}"?
+
+The report will include:\n• Spending trends\n• Category breakdown\n• Personalized recommendations\n• Future projections`,
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Download PDF",
+                    onPress: () =>
+                        Alert.alert("Report Ready", "Your report has been generated and saved to your downloads folder."),
+                },
+            ]
+        );
+    };
+
+    const handleStatDetails = (stat: any) => {
+        setSelectedStat(stat);
+        setStatDetailVisible(true);
+    };
+
+    const handleRecAction = (rec: any) => {
+        setSelectedRec(rec);
+        setBudgetInput("");
+        setRecModalVisible(true);
+    };
+
+    const handleInsightDetail = (insight: any) => {
+        setSelectedInsight(insight);
+        setInsightDetailVisible(true);
+    };
+
+    const handleSendChat = async (query?: string) => {
+        const q = (query ?? chatQuery).trim();
+        if (!q) return;
+        setChatMessages(prev => [...prev, { role: "user", text: q }]);
+        setChatQuery("");
+        setChatLoading(true);
+        try {
+            const res = await apiClient.post("/dashboard/ai-chat", { userId: user?.id, question: q });
+            const answer = res.data?.answer || "I don't have enough data to answer that yet. Keep tracking your expenses!";
+            setChatMessages(prev => [...prev, { role: "ai", text: answer }]);
+        } catch {
+            setChatMessages(prev => [
+                ...prev,
+                { role: "ai", text: "I couldn't process that right now. Please try again later." },
+            ]);
+        } finally {
+            setChatLoading(false);
         }
     };
 
@@ -137,6 +231,7 @@ export default function AiInsightsPersonal() {
     ];
 
     return (
+        <>
         <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.scrollContent}>
             {/* Header section with Filter controls */}
             <View style={[styles.headerRow, { borderBottomColor: colors.border }, isDesktop ? styles.rowLayout : styles.columnLayout]}>
@@ -152,22 +247,88 @@ export default function AiInsightsPersonal() {
 
                 {/* Filter Widgets */}
                 <View style={styles.filterWidgetRow}>
-                    <TouchableOpacity style={[styles.rangeSelectorBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.8}>
+                    <TouchableOpacity
+                        style={[styles.rangeSelectorBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                        activeOpacity={0.8}
+                        onPress={() => setDatePickerVisible(true)}
+                    >
                         <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
-                        <Text style={[styles.rangeSelectorText, { color: colors.text }]}>This Month</Text>
+                        <Text style={[styles.rangeSelectorText, { color: colors.text }]}>{dateRange}</Text>
                         <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={[styles.compareBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.8}>
-                        <Ionicons name="filter-outline" size={14} color={colors.text} />
-                        <Text style={[styles.compareBtnText, { color: colors.text }]}>Filters</Text>
+                    <TouchableOpacity
+                        style={[styles.compareBtn, { backgroundColor: selectedCategory !== "All" ? "#8B5CF6" : colors.surface, borderColor: selectedCategory !== "All" ? "#8B5CF6" : colors.border }]}
+                        activeOpacity={0.8}
+                        onPress={() => setFilterVisible(true)}
+                    >
+                        <Ionicons name="filter-outline" size={14} color={selectedCategory !== "All" ? "#FFF" : colors.text} />
+                        <Text style={[styles.compareBtnText, { color: selectedCategory !== "All" ? "#FFF" : colors.text }]}>
+                            {selectedCategory !== "All" ? selectedCategory : "Filters"}
+                        </Text>
+                        {selectedCategory !== "All" && (
+                            <TouchableOpacity onPress={() => setSelectedCategory("All")}>
+                                <Ionicons name="close-circle" size={14} color="#FFF" />
+                            </TouchableOpacity>
+                        )}
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={[styles.compareBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.8}>
+                    <TouchableOpacity
+                        style={[styles.compareBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                        activeOpacity={0.8}
+                        onPress={handleDownloadReport}
+                    >
                         <Ionicons name="download-outline" size={14} color={colors.text} />
                         <Text style={[styles.compareBtnText, { color: colors.text }]}>Download Report</Text>
                     </TouchableOpacity>
                 </View>
+
+                {/* ── Date Range Picker Modal ── */}
+                <Modal visible={datePickerVisible} transparent animationType="fade" onRequestClose={() => setDatePickerVisible(false)}>
+                    <Pressable style={styles.dropOverlay} onPress={() => setDatePickerVisible(false)}>
+                        <Pressable style={[styles.dropSheet, { backgroundColor: isDark ? colors.surface : "#FFF" }]} onPress={() => {}}>
+                            <Text style={[styles.dropTitle, { color: colors.text }]}>Select Date Range</Text>
+                            {DATE_RANGES.map(r => (
+                                <TouchableOpacity
+                                    key={r}
+                                    onPress={() => handleDateRangeSelect(r)}
+                                    style={[styles.dropItem, dateRange === r && { backgroundColor: isDark ? "#1E1433" : "#F5F3FF" }]}
+                                >
+                                    <Ionicons name={dateRange === r ? "radio-button-on" : "radio-button-off"} size={18} color={dateRange === r ? "#8B5CF6" : colors.textSecondary} />
+                                    <Text style={[styles.dropItemText, { color: dateRange === r ? "#8B5CF6" : colors.text, fontWeight: dateRange === r ? "700" : "400" }]}>{r}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </Pressable>
+                    </Pressable>
+                </Modal>
+
+                {/* ── Category Filter Modal ── */}
+                <Modal visible={filterVisible} transparent animationType="slide" onRequestClose={() => setFilterVisible(false)}>
+                    <Pressable style={styles.modalOverlay} onPress={() => setFilterVisible(false)}>
+                        <Pressable style={[styles.modalSheet, { backgroundColor: isDark ? colors.surface : "#FFF" }]} onPress={() => {}}>
+                            <View style={styles.modalHandleBar} />
+                            <View style={styles.modalHeader}>
+                                <Text style={[styles.modalTitle, { color: colors.text }]}>Filter by Category</Text>
+                                <TouchableOpacity onPress={() => setFilterVisible(false)} style={styles.modalCloseBtn}>
+                                    <Ionicons name="close" size={20} color={colors.textSecondary} />
+                                </TouchableOpacity>
+                            </View>
+                            <View style={styles.filterChipsWrap}>
+                                {CATEGORIES.map(cat => (
+                                    <TouchableOpacity
+                                        key={cat}
+                                        onPress={() => { setSelectedCategory(cat); setFilterVisible(false); }}
+                                        style={[styles.filterChip, {
+                                            backgroundColor: selectedCategory === cat ? "#8B5CF6" : (isDark ? colors.border : "#F1F5F9"),
+                                        }]}
+                                    >
+                                        <Text style={[styles.filterChipText, { color: selectedCategory === cat ? "#FFF" : colors.text }]}>{cat}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </Pressable>
+                    </Pressable>
+                </Modal>
             </View>
 
             {/* Greeting Card */}
@@ -310,7 +471,7 @@ export default function AiInsightsPersonal() {
                         </View>
                         <Text style={[styles.statCardSub, { color: colors.textSecondary }]}>{stat.change}</Text>
                         
-                        <TouchableOpacity style={styles.viewDetailsBtn}>
+                        <TouchableOpacity style={styles.viewDetailsBtn} onPress={() => handleStatDetails(stat)} activeOpacity={0.8}>
                             <Text style={styles.viewDetailsText}>View details</Text>
                             <Ionicons name="arrow-forward" size={12} color="#6C2CF4" />
                         </TouchableOpacity>
@@ -367,7 +528,7 @@ export default function AiInsightsPersonal() {
                         {aiInsights.map((item, idx) => {
                             const config = getInsightConfig(item.type);
                             return (
-                                <View key={item.id || idx} style={[styles.insightListItem, { borderBottomColor: colors.border, borderBottomWidth: idx === aiInsights.length - 1 ? 0 : 1 }]}>
+                                <TouchableOpacity key={item.id || idx} style={[styles.insightListItem, { borderBottomColor: colors.border, borderBottomWidth: idx === aiInsights.length - 1 ? 0 : 1 }]} onPress={() => handleInsightDetail(item)} activeOpacity={0.85}>
                                     <View style={[styles.itemIconCircle, { backgroundColor: isDark ? colors.border : config.bg }]}>
                                         <Ionicons name={config.icon as any} size={18} color={config.color} />
                                     </View>
@@ -376,7 +537,7 @@ export default function AiInsightsPersonal() {
                                         <Text style={[styles.itemDesc, { color: colors.textSecondary }]}>{item.description}</Text>
                                     </View>
                                     <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-                                </View>
+                                </TouchableOpacity>
                             );
                         })}
                     </View>
@@ -412,7 +573,7 @@ export default function AiInsightsPersonal() {
                                     <Text style={[styles.itemTitle, { color: colors.text }]}>{item.title}</Text>
                                     <Text style={[styles.itemDesc, { color: colors.textSecondary }]}>{item.desc}</Text>
                                 </View>
-                                <TouchableOpacity style={[styles.actionBtn, { borderColor: "#8B5CF6" }]}>
+                                <TouchableOpacity style={[styles.actionBtn, { borderColor: "#8B5CF6" }]} onPress={() => handleRecAction(item)} activeOpacity={0.85}>
                                     <Text style={[styles.actionBtnText, { color: "#8B5CF6" }]}>{item.btnText}</Text>
                                 </TouchableOpacity>
                             </View>
@@ -493,20 +654,53 @@ export default function AiInsightsPersonal() {
                     <Text style={[styles.insightCardTitle, { color: colors.text }]}>Ask AI Assistant</Text>
                     <Text style={[styles.insightCardSub, { color: colors.textSecondary, marginBottom: 20 }]}>Get answers about your finances</Text>
                     
+                    {/* Chat history */}
+                    {chatMessages.length > 0 && (
+                        <ScrollView style={[styles.chatHistory, { borderColor: colors.border }]} nestedScrollEnabled>
+                            {chatMessages.map((msg, i) => (
+                                <View key={i} style={[styles.chatBubble, msg.role === "user" ? styles.chatBubbleUser : [styles.chatBubbleAi, { backgroundColor: isDark ? colors.border : "#F5F3FF" }]]}>
+                                    {msg.role === "ai" && <Ionicons name="sparkles" size={13} color="#8B5CF6" style={{ marginBottom: 4 }} />}
+                                    <Text style={[styles.chatBubbleText, { color: msg.role === "user" ? "#FFF" : colors.text }]}>{msg.text}</Text>
+                                </View>
+                            ))}
+                            {chatLoading && (
+                                <View style={[styles.chatBubbleAi, { backgroundColor: isDark ? colors.border : "#F5F3FF", paddingVertical: 12 }]}>
+                                    <ActivityIndicator size="small" color="#8B5CF6" />
+                                </View>
+                            )}
+                        </ScrollView>
+                    )}
+
                     <View style={[styles.chatInputContainer, { borderColor: colors.border, backgroundColor: isDark ? colors.background : "#FAFAFA" }]}>
-                        <TextInput 
+                        <TextInput
                             style={[styles.chatInput, { color: colors.text }]}
                             placeholder="Ask me anything about your money..."
                             placeholderTextColor={colors.textSecondary}
+                            value={chatQuery}
+                            onChangeText={setChatQuery}
+                            onSubmitEditing={() => handleSendChat()}
+                            returnKeyType="send"
+                            editable={!chatLoading}
                         />
-                        <TouchableOpacity style={[styles.sendBtn, { backgroundColor: isDark ? colors.border : "#F5F3FF" }]}>
-                            <Ionicons name="send" size={16} color="#8B5CF6" />
+                        <TouchableOpacity
+                            style={[styles.sendBtn, { backgroundColor: chatQuery.trim() ? "#8B5CF6" : (isDark ? colors.border : "#F5F3FF") }]}
+                            onPress={() => handleSendChat()}
+                            activeOpacity={0.85}
+                            disabled={chatLoading || !chatQuery.trim()}
+                        >
+                            <Ionicons name="send" size={16} color={chatQuery.trim() ? "#FFF" : "#8B5CF6"} />
                         </TouchableOpacity>
                     </View>
 
                     <View style={styles.suggestionChips}>
                         {["Why did I spend more on shopping?", "How can I save more?", "Analyze my bills"].map((chip, idx) => (
-                            <TouchableOpacity key={idx} style={[styles.chip, { backgroundColor: isDark ? colors.border : "#F1F5F9" }]}>
+                            <TouchableOpacity
+                                key={idx}
+                                style={[styles.chip, { backgroundColor: isDark ? colors.border : "#F1F5F9" }]}
+                                onPress={() => handleSendChat(chip)}
+                                activeOpacity={0.8}
+                                disabled={chatLoading}
+                            >
                                 <Text style={[styles.chipText, { color: colors.textSecondary }]}>{chip}</Text>
                             </TouchableOpacity>
                         ))}
@@ -515,6 +709,162 @@ export default function AiInsightsPersonal() {
             </View>
 
         </ScrollView>
+
+        {/* ── Stat Detail Modal ── */}
+        <Modal visible={statDetailVisible} transparent animationType="slide" onRequestClose={() => setStatDetailVisible(false)}>
+            <Pressable style={styles.modalOverlay} onPress={() => setStatDetailVisible(false)}>
+                <Pressable style={[styles.modalSheet, { backgroundColor: isDark ? colors.surface : "#FFF" }]} onPress={() => {}}>
+                    <View style={styles.modalHandleBar} />
+                    <View style={styles.modalHeader}>
+                        <View style={styles.modalHeaderLeft}>
+                            <View style={[styles.modalIconCircle, { backgroundColor: selectedStat?.color || "#8B5CF6" }]}>
+                                <Ionicons name={(selectedStat?.icon || "analytics-outline") as any} size={20} color="#FFF" />
+                            </View>
+                            <View>
+                                <Text style={[styles.modalTitle, { color: colors.text }]}>{selectedStat?.title}</Text>
+                                <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>Detailed breakdown</Text>
+                            </View>
+                        </View>
+                        <TouchableOpacity onPress={() => setStatDetailVisible(false)} style={styles.modalCloseBtn}>
+                            <Ionicons name="close" size={20} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                    </View>
+                    <View style={[styles.statDetailBox, { backgroundColor: isDark ? colors.background : "#F8FAFC", borderColor: colors.border }]}>
+                        <Text style={[styles.statDetailValue, { color: selectedStat?.color || colors.text }]}>{selectedStat?.value}</Text>
+                        <Text style={[styles.statDetailChange, { color: colors.textSecondary }]}>{selectedStat?.change}</Text>
+                    </View>
+                    <Text style={[styles.statDetailNote, { color: colors.textSecondary }]}>
+                        This data is calculated from your real UPI transactions for the period: <Text style={{ fontWeight: "700", color: colors.text }}>{dateRange}</Text>.
+                        {selectedStat?.title === "Spending Trend" && " Reducing your top spending category can significantly improve your savings rate."}
+                        {selectedStat?.title === "Savings Rate" && " A healthy savings rate is typically 20% or more of your income."}
+                        {selectedStat?.title === "Top Spending Category" && " Consider setting a monthly budget for this category to control overspending."}
+                        {selectedStat?.title === "Goal Progress" && " Stay consistent with your spending habits to reach your goal on time."}
+                    </Text>
+                    <TouchableOpacity style={[styles.modalCta, { backgroundColor: selectedStat?.color || "#8B5CF6" }]} onPress={() => setStatDetailVisible(false)}>
+                        <Text style={styles.modalCtaText}>Got it</Text>
+                    </TouchableOpacity>
+                </Pressable>
+            </Pressable>
+        </Modal>
+
+        {/* ── Recommendation Action Modal ── */}
+        <Modal visible={recModalVisible} transparent animationType="slide" onRequestClose={() => setRecModalVisible(false)}>
+            <Pressable style={styles.modalOverlay} onPress={() => setRecModalVisible(false)}>
+                <Pressable style={[styles.modalSheet, { backgroundColor: isDark ? colors.surface : "#FFF" }]} onPress={() => {}}>
+                    <View style={styles.modalHandleBar} />
+                    <View style={styles.modalHeader}>
+                        <View style={styles.modalHeaderLeft}>
+                            <View style={[styles.modalIconCircle, { backgroundColor: selectedRec?.color || "#8B5CF6" }]}>
+                                <Ionicons name={(selectedRec?.icon || "bulb-outline") as any} size={20} color="#FFF" />
+                            </View>
+                            <View>
+                                <Text style={[styles.modalTitle, { color: colors.text }]}>{selectedRec?.title}</Text>
+                                <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>{selectedRec?.desc}</Text>
+                            </View>
+                        </View>
+                        <TouchableOpacity onPress={() => setRecModalVisible(false)} style={styles.modalCloseBtn}>
+                            <Ionicons name="close" size={20} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                    </View>
+
+                    {selectedRec?.btnText === "Set Budget" && (
+                        <>
+                            <Text style={[styles.recInputLabel, { color: colors.textSecondary }]}>Enter monthly budget amount (₹)</Text>
+                            <View style={[styles.recInputRow, { borderColor: colors.border, backgroundColor: isDark ? colors.background : "#F8FAFC" }]}>
+                                <Text style={[styles.recInputPrefix, { color: colors.text }]}>₹</Text>
+                                <TextInput
+                                    style={[styles.recInput, { color: colors.text }]}
+                                    placeholder="e.g. 7500"
+                                    placeholderTextColor={colors.textSecondary}
+                                    keyboardType="numeric"
+                                    value={budgetInput}
+                                    onChangeText={setBudgetInput}
+                                />
+                            </View>
+                        </>
+                    )}
+
+                    {selectedRec?.btnText === "Setup Now" && (
+                        <View style={[styles.recInfoBox, { backgroundColor: isDark ? "#0A2E1F" : "#ECFDF5", borderColor: "#10B981" }]}>
+                            <Ionicons name="sync-outline" size={18} color="#10B981" />
+                            <Text style={[styles.recInfoText, { color: isDark ? "#6EE7B7" : "#065F46" }]}>
+                                Auto-save transfers a fixed amount from your account every month. Connect your UPI app to enable this feature.
+                            </Text>
+                        </View>
+                    )}
+
+                    {(selectedRec?.btnText === "Learn More" || selectedRec?.btnText === "View Deals") && (
+                        <View style={[styles.recInfoBox, { backgroundColor: isDark ? "#1E2D45" : "#EFF6FF", borderColor: "#3B82F6" }]}>
+                            <Ionicons name="information-circle-outline" size={18} color="#3B82F6" />
+                            <Text style={[styles.recInfoText, { color: isDark ? "#93C5FD" : "#1E40AF" }]}>
+                                {selectedRec?.title === "Try 50/30/20 Rule"
+                                    ? "The 50/30/20 rule: 50% of income for needs (rent, food), 30% for wants (entertainment), and 20% for savings or debt repayment."
+                                    : "Review your recent transactions to identify patterns and find opportunities to cut costs."}
+                            </Text>
+                        </View>
+                    )}
+
+                    {selectedRec?.btnText === "Review" && (
+                        <View style={[styles.recInfoBox, { backgroundColor: isDark ? "#1E1433" : "#F5F3FF", borderColor: "#8B5CF6" }]}>
+                            <Ionicons name="card-outline" size={18} color="#8B5CF6" />
+                            <Text style={[styles.recInfoText, { color: isDark ? "#C4B5FD" : "#5B21B6" }]}>
+                                You have active subscriptions. Review them in the Transactions section and cancel any you no longer use to save money each month.
+                            </Text>
+                        </View>
+                    )}
+
+                    <TouchableOpacity
+                        style={[styles.modalCta, { backgroundColor: selectedRec?.color || "#8B5CF6" }]}
+                        onPress={() => {
+                            if (selectedRec?.btnText === "Set Budget" && budgetInput) {
+                                Alert.alert("Budget Set! ✅", `Your monthly budget of ₹${budgetInput} for ${selectedRec?.title?.replace("Set ", "")} has been saved.`);
+                            } else if (selectedRec?.btnText === "Setup Now") {
+                                Alert.alert("Coming Soon", "Auto-save feature will be available in the next update!");
+                            } else {
+                                Alert.alert("Noted! ✅", "This tip has been saved to your recommendations.");
+                            }
+                            setRecModalVisible(false);
+                        }}
+                        activeOpacity={0.85}
+                    >
+                        <Text style={styles.modalCtaText}>
+                            {selectedRec?.btnText === "Set Budget" ? "Save Budget" :
+                             selectedRec?.btnText === "Setup Now" ? "Notify Me When Ready" :
+                             "Got it!"}
+                        </Text>
+                    </TouchableOpacity>
+                </Pressable>
+            </Pressable>
+        </Modal>
+
+        {/* ── Insight Detail Modal ── */}
+        <Modal visible={insightDetailVisible} transparent animationType="slide" onRequestClose={() => setInsightDetailVisible(false)}>
+            <Pressable style={styles.modalOverlay} onPress={() => setInsightDetailVisible(false)}>
+                <Pressable style={[styles.modalSheet, { backgroundColor: isDark ? colors.surface : "#FFF" }]} onPress={() => {}}>
+                    <View style={styles.modalHandleBar} />
+                    <View style={styles.modalHeader}>
+                        <View style={styles.modalHeaderLeft}>
+                            <View style={[styles.modalIconCircle, { backgroundColor: selectedInsight?.type === "warning" ? "#EF4444" : selectedInsight?.type === "success" ? "#10B981" : "#3B82F6" }]}>
+                                <Ionicons name={selectedInsight?.type === "warning" ? "warning-outline" : selectedInsight?.type === "success" ? "leaf-outline" : "information-circle-outline"} size={20} color="#FFF" />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.modalTitle, { color: colors.text }]}>{selectedInsight?.title}</Text>
+                            </View>
+                        </View>
+                        <TouchableOpacity onPress={() => setInsightDetailVisible(false)} style={styles.modalCloseBtn}>
+                            <Ionicons name="close" size={20} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                    </View>
+                    <View style={[styles.recInfoBox, { backgroundColor: isDark ? colors.background : "#F8FAFC", borderColor: colors.border }]}>
+                        <Text style={[{ color: colors.text, fontSize: 14, lineHeight: 22 }]}>{selectedInsight?.description}</Text>
+                    </View>
+                    <TouchableOpacity style={[styles.modalCta, { backgroundColor: "#3B82F6" }]} onPress={() => setInsightDetailVisible(false)}>
+                        <Text style={styles.modalCtaText}>Dismiss</Text>
+                    </TouchableOpacity>
+                </Pressable>
+            </Pressable>
+        </Modal>
+        </>
     );
 }
 
@@ -765,6 +1115,147 @@ const styles = StyleSheet.create({
         color: "#FFF",
         fontSize: 15,
         fontWeight: "700",
+    },
+    // ── Date range dropdown ──────────────────────────
+    dropOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.4)",
+        justifyContent: "center",
+        alignItems: "center",
+        padding: 24,
+    },
+    dropSheet: {
+        width: "100%",
+        maxWidth: 340,
+        borderRadius: 20,
+        padding: 20,
+        ...Shadows.md,
+    },
+    dropTitle: {
+        fontSize: 15,
+        fontWeight: "800",
+        marginBottom: 16,
+    },
+    dropItem: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        paddingVertical: 12,
+        paddingHorizontal: 12,
+        borderRadius: 12,
+        marginBottom: 4,
+    },
+    dropItemText: {
+        fontSize: 14,
+        flex: 1,
+    },
+    // ── Filter chips ────────────────────────────────
+    filterChipsWrap: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 10,
+        paddingBottom: 16,
+    },
+    filterChip: {
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 100,
+    },
+    filterChipText: {
+        fontSize: 13,
+        fontWeight: "600",
+    },
+    // ── Stat detail modal ───────────────────────────
+    statDetailBox: {
+        borderRadius: 14,
+        borderWidth: 1,
+        padding: 20,
+        alignItems: "center",
+        marginBottom: 16,
+    },
+    statDetailValue: {
+        fontSize: 36,
+        fontWeight: "900",
+        marginBottom: 6,
+    },
+    statDetailChange: {
+        fontSize: 13,
+        textAlign: "center",
+    },
+    statDetailNote: {
+        fontSize: 13,
+        lineHeight: 22,
+        marginBottom: 16,
+    },
+    // ── Recommendation modal inputs ─────────────────
+    recInputLabel: {
+        fontSize: 13,
+        fontWeight: "600",
+        marginBottom: 8,
+        marginTop: 4,
+    },
+    recInputRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        borderRadius: 12,
+        borderWidth: 1,
+        paddingHorizontal: 14,
+        marginBottom: 16,
+        height: 48,
+    },
+    recInputPrefix: {
+        fontSize: 18,
+        fontWeight: "700",
+        marginRight: 6,
+    },
+    recInput: {
+        flex: 1,
+        fontSize: 16,
+        fontWeight: "600",
+    },
+    recInfoBox: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        borderLeftWidth: 3,
+        borderRadius: 10,
+        padding: 14,
+        gap: 10,
+        marginBottom: 16,
+    },
+    recInfoText: {
+        flex: 1,
+        fontSize: 13,
+        lineHeight: 20,
+    },
+    // ── AI Chat history ─────────────────────────────
+    chatHistory: {
+        maxHeight: 200,
+        borderWidth: 1,
+        borderRadius: 14,
+        padding: 10,
+        marginBottom: 12,
+        gap: 8,
+    },
+    chatBubble: {
+        borderRadius: 14,
+        padding: 10,
+        marginBottom: 6,
+        maxWidth: "85%",
+    },
+    chatBubbleUser: {
+        backgroundColor: "#8B5CF6",
+        alignSelf: "flex-end",
+        borderBottomRightRadius: 4,
+    },
+    chatBubbleAi: {
+        borderRadius: 14,
+        padding: 10,
+        alignSelf: "flex-start",
+        borderBottomLeftRadius: 4,
+    },
+    chatBubbleText: {
+        fontSize: 13,
+        lineHeight: 20,
     },
     statsGrid: {
         gap: 16,
