@@ -9,6 +9,8 @@ import {
     TextInput,
     ActivityIndicator,
     Alert,
+    Modal,
+    Pressable,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import Svg, { Path, Circle } from "react-native-svg";
@@ -35,6 +37,7 @@ const NEW_RECOMMENDATIONS = [
 export default function AiInsightsPersonal() {
     const [recommendations, setRecommendations] = useState(DEFAULT_RECOMMENDATIONS);
     const [isRegenerating, setIsRegenerating] = useState(false);
+    const [howAiWorksVisible, setHowAiWorksVisible] = useState(false);
     const { width } = useWindowDimensions();
     const isDesktop = width >= 900;
     const { colors, isDark } = useAppTheme();
@@ -181,10 +184,112 @@ export default function AiInsightsPersonal() {
                         </Text>
                     </View>
                 </View>
-                <TouchableOpacity style={[styles.howAiWorksBtn, { borderColor: "#8B5CF6" }]}>
+                <TouchableOpacity style={[styles.howAiWorksBtn, { borderColor: "#8B5CF6" }]} onPress={() => setHowAiWorksVisible(true)} activeOpacity={0.8}>
                     <Ionicons name="help-circle-outline" size={16} color="#8B5CF6" />
                     <Text style={[styles.howAiWorksText, { color: "#8B5CF6" }]}>How AI Works</Text>
                 </TouchableOpacity>
+
+            {/* How AI Works Modal */}
+            <Modal
+                visible={howAiWorksVisible}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setHowAiWorksVisible(false)}
+            >
+                <Pressable style={styles.modalOverlay} onPress={() => setHowAiWorksVisible(false)}>
+                    <Pressable style={[styles.modalSheet, { backgroundColor: isDark ? colors.surface : "#FFFFFF" }]} onPress={() => {}}>
+                        {/* Handle Bar */}
+                        <View style={styles.modalHandleBar} />
+
+                        {/* Modal Header */}
+                        <View style={styles.modalHeader}>
+                            <View style={styles.modalHeaderLeft}>
+                                <View style={[styles.modalIconCircle, { backgroundColor: "#8B5CF6" }]}>
+                                    <Ionicons name="sparkles" size={20} color="#FFF" />
+                                </View>
+                                <View>
+                                    <Text style={[styles.modalTitle, { color: colors.text }]}>How AI Works</Text>
+                                    <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>Powered by your transaction data</Text>
+                                </View>
+                            </View>
+                            <TouchableOpacity onPress={() => setHowAiWorksVisible(false)} style={styles.modalCloseBtn}>
+                                <Ionicons name="close" size={20} color={colors.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView showsVerticalScrollIndicator={false}>
+                            {/* Intro */}
+                            <View style={[styles.modalIntroBox, { backgroundColor: isDark ? "#1E1433" : "#F5F3FF", borderColor: "#8B5CF6" }]}>
+                                <Text style={[styles.modalIntroText, { color: isDark ? "#C4B5FD" : "#5B21B6" }]}>
+                                    UpNum's AI engine analyses your real UPI transaction history to generate personalized insights, trends, and smart recommendations — all privately, on your data alone.
+                                </Text>
+                            </View>
+
+                            {/* Steps */}
+                            {[
+                                {
+                                    step: "1",
+                                    icon: "cloud-download-outline",
+                                    color: "#3B82F6",
+                                    bg: isDark ? "#1E2D45" : "#EFF6FF",
+                                    title: "Data Collection",
+                                    desc: "Your UPI transactions are securely fetched via Account Aggregator (AA) consent — you stay in full control and can revoke access anytime.",
+                                },
+                                {
+                                    step: "2",
+                                    icon: "analytics-outline",
+                                    color: "#8B5CF6",
+                                    bg: isDark ? "#1E1433" : "#F5F3FF",
+                                    title: "Pattern Analysis",
+                                    desc: "The AI categorises your spends, detects seasonal patterns, identifies recurring bills, and compares your habits month-over-month.",
+                                },
+                                {
+                                    step: "3",
+                                    icon: "bulb-outline",
+                                    color: "#F59E0B",
+                                    bg: isDark ? "#2D2008" : "#FFFBEB",
+                                    title: "Insight Generation",
+                                    desc: "Based on your patterns the AI crafts actionable tips — like setting a budget for a high-spend category or automating savings on payday.",
+                                },
+                                {
+                                    step: "4",
+                                    icon: "shield-checkmark-outline",
+                                    color: "#10B981",
+                                    bg: isDark ? "#0A2E1F" : "#ECFDF5",
+                                    title: "Privacy First",
+                                    desc: "Your data is never sold or shared. Insights are generated in a secure environment and only you can see your financial summary.",
+                                },
+                            ].map((item, idx) => (
+                                <View key={idx} style={[styles.stepCard, { backgroundColor: item.bg, borderColor: isDark ? colors.border : "transparent" }]}>
+                                    <View style={styles.stepCardLeft}>
+                                        <View style={[styles.stepCircle, { backgroundColor: item.color }]}>
+                                            <Text style={styles.stepNumber}>{item.step}</Text>
+                                        </View>
+                                        <View style={[styles.stepLine, idx === 3 && { opacity: 0 }, { backgroundColor: item.color }]} />
+                                    </View>
+                                    <View style={styles.stepContent}>
+                                        <View style={[styles.stepIconCircle, { backgroundColor: item.color + "22" }]}>
+                                            <Ionicons name={item.icon as any} size={22} color={item.color} />
+                                        </View>
+                                        <Text style={[styles.stepTitle, { color: colors.text }]}>{item.title}</Text>
+                                        <Text style={[styles.stepDesc, { color: colors.textSecondary }]}>{item.desc}</Text>
+                                    </View>
+                                </View>
+                            ))}
+
+                            {/* Footer CTA */}
+                            <TouchableOpacity
+                                style={[styles.modalCta, { backgroundColor: "#8B5CF6" }]}
+                                onPress={() => setHowAiWorksVisible(false)}
+                                activeOpacity={0.85}
+                            >
+                                <Ionicons name="checkmark-circle-outline" size={18} color="#FFF" />
+                                <Text style={styles.modalCtaText}>Got it, thanks!</Text>
+                            </TouchableOpacity>
+                        </ScrollView>
+                    </Pressable>
+                </Pressable>
+            </Modal>
             </View>
 
             {/* Stat Cards Grid */}
@@ -526,6 +631,140 @@ const styles = StyleSheet.create({
     howAiWorksText: {
         fontSize: 14,
         fontWeight: "600",
+    },
+    // ── How AI Works Modal styles ──────────────────────
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.55)",
+        justifyContent: "flex-end",
+    },
+    modalSheet: {
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        paddingHorizontal: 20,
+        paddingBottom: 32,
+        paddingTop: 12,
+        maxHeight: "90%",
+    },
+    modalHandleBar: {
+        width: 40,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: "#CBD5E1",
+        alignSelf: "center",
+        marginBottom: 20,
+    },
+    modalHeader: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: 16,
+    },
+    modalHeaderLeft: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+    },
+    modalIconCircle: {
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: "700",
+    },
+    modalSubtitle: {
+        fontSize: 12,
+        marginTop: 2,
+    },
+    modalCloseBtn: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        backgroundColor: "rgba(148,163,184,0.15)",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    modalIntroBox: {
+        borderLeftWidth: 3,
+        borderRadius: 10,
+        padding: 14,
+        marginBottom: 20,
+    },
+    modalIntroText: {
+        fontSize: 13,
+        lineHeight: 20,
+        fontWeight: "500",
+    },
+    stepCard: {
+        flexDirection: "row",
+        borderRadius: 14,
+        borderWidth: 1,
+        padding: 16,
+        marginBottom: 12,
+        gap: 14,
+    },
+    stepCardLeft: {
+        alignItems: "center",
+        width: 28,
+    },
+    stepCircle: {
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    stepNumber: {
+        color: "#FFF",
+        fontSize: 13,
+        fontWeight: "700",
+    },
+    stepLine: {
+        flex: 1,
+        width: 2,
+        marginTop: 6,
+        borderRadius: 1,
+        opacity: 0.3,
+        minHeight: 24,
+    },
+    stepContent: {
+        flex: 1,
+        gap: 6,
+    },
+    stepIconCircle: {
+        width: 42,
+        height: 42,
+        borderRadius: 12,
+        alignItems: "center",
+        justifyContent: "center",
+        marginBottom: 4,
+    },
+    stepTitle: {
+        fontSize: 15,
+        fontWeight: "700",
+    },
+    stepDesc: {
+        fontSize: 13,
+        lineHeight: 20,
+    },
+    modalCta: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        borderRadius: 14,
+        paddingVertical: 14,
+        marginTop: 8,
+        marginBottom: 4,
+    },
+    modalCtaText: {
+        color: "#FFF",
+        fontSize: 15,
+        fontWeight: "700",
     },
     statsGrid: {
         gap: 16,
