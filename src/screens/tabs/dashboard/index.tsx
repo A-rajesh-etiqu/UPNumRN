@@ -92,7 +92,13 @@ export default function DashboardScreen() {
     const [isFilterMenuVisible, setIsFilterMenuVisible] = useState(false);
     const [filterPeriod, setFilterPeriod] = useState("This Month");
     const [isSyncModalVisible, setIsSyncModalVisible] = useState(false);
-    const [phoneNumber, setPhoneNumber] = useState("");
+    const [phoneNumber, setPhoneNumber] = useState(user?.mobile || "");
+
+    useEffect(() => {
+        if (user?.mobile && !phoneNumber) {
+            setPhoneNumber(user.mobile);
+        }
+    }, [user?.mobile]);
     const [isSyncing, setIsSyncing] = useState(false);
     const params = useLocalSearchParams();
     
@@ -323,7 +329,7 @@ export default function DashboardScreen() {
             <Modal
                 visible={isSyncModalVisible}
                 transparent={true}
-                animationType="slide"
+                animationType="fade"
             >
                 <View style={styles.modalOverlay}>
                     <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
@@ -1040,13 +1046,20 @@ const styles = StyleSheet.create({
     modalOverlay: {
         flex: 1,
         backgroundColor: "rgba(0,0,0,0.5)",
-        justifyContent: "flex-end",
+        justifyContent: "center",
+        alignItems: "center",
+        padding: 20,
     },
     modalContent: {
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
+        width: "100%",
+        maxWidth: 400,
+        borderRadius: 24,
         padding: 24,
-        paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+        ...Platform.select({
+            ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.15, shadowRadius: 20 },
+            android: { elevation: 10 },
+            web: { boxShadow: "0 10px 30px rgba(0,0,0,0.15)" } as any,
+        })
     },
     modalTitle: {
         fontSize: 20,

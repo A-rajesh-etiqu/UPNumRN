@@ -14,6 +14,8 @@ import {
     Alert,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import Svg, { Path } from "react-native-svg";
 import { useAppTheme } from "../../../theme";
@@ -239,6 +241,86 @@ export default function TransactionsScreen() {
     const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, totalItems);
     const paginatedTransactions = filteredTransactions.slice(startIndex, endIndex);
 
+    const generatePDF = async () => {
+        try {
+            if (Platform.OS === 'web') {
+                const { jsPDF } = require("jspdf");
+                const autoTable = require("jspdf-autotable").default || require("jspdf-autotable");
+                
+                const doc = new jsPDF();
+                
+                // Add header
+                doc.setFontSize(18);
+                doc.text("Transactions Report", 14, 22);
+                doc.setFontSize(11);
+                doc.text(`Total Transactions: ${filteredTransactions.length}`, 14, 30);
+                
+                // Prepare table data
+                const tableData = filteredTransactions.map(tx => [
+                    tx.title || tx.category || 'N/A',
+                    'UPI Payment',
+                    `Rs. ${Math.abs(tx.amount || 0).toFixed(2)}`,
+                    tx.date || new Date().toLocaleDateString(),
+                    tx.status || 'Successful'
+                ]);
+                
+                // Generate table
+                autoTable(doc, {
+                    startY: 36,
+                    head: [['Title', 'Type', 'Amount', 'Date', 'Status']],
+                    body: tableData,
+                    theme: 'striped',
+                    headStyles: { fillColor: [109, 40, 217] }
+                });
+                
+                doc.save('transactions.pdf');
+            } else {
+                const htmlContent = `
+                    <html>
+                        <head>
+                            <style>
+                                body { font-family: 'Helvetica'; padding: 20px; }
+                                h1 { text-align: center; color: #333; }
+                                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                                th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+                                th { background-color: #f8f9fa; color: #333; }
+                                tr:nth-child(even) { background-color: #f9f9f9; }
+                                .amount { font-weight: bold; }
+                            </style>
+                        </head>
+                        <body>
+                            <h1>Transactions Report</h1>
+                            <p>Total Transactions: ${filteredTransactions.length}</p>
+                            <table>
+                                <tr>
+                                    <th>Title</th>
+                                    <th>Type</th>
+                                    <th>Amount</th>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                </tr>
+                                ${filteredTransactions.map(tx => `
+                                    <tr>
+                                        <td>${tx.title || tx.category || 'N/A'}</td>
+                                        <td>UPI Payment</td>
+                                        <td class="amount">₹${Math.abs(tx.amount || 0).toFixed(2)}</td>
+                                        <td>${tx.date || new Date().toLocaleDateString()} ${tx.time || ''}</td>
+                                        <td>${tx.status || 'Successful'}</td>
+                                    </tr>
+                                `).join('')}
+                            </table>
+                        </body>
+                    </html>
+                `;
+                const { uri } = await Print.printToFileAsync({ html: htmlContent });
+                await Sharing.shareAsync(uri);
+            }
+        } catch (error) {
+            console.error("PDF generation error:", error);
+            Alert.alert("Error", "Failed to generate PDF");
+        }
+    };
+
     if (loading) {
         return (
             <View style={[styles.container, { backgroundColor: bgColor, justifyContent: 'center', alignItems: 'center' }]}>
@@ -310,7 +392,11 @@ export default function TransactionsScreen() {
                         <Ionicons name="add-outline" size={20} color="#FFFFFF" />
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={[styles.downloadBtn, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]} activeOpacity={0.8}>
+                    <TouchableOpacity 
+                        style={[styles.downloadBtn, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]} 
+                        activeOpacity={0.8}
+                        onPress={generatePDF}
+                    >
                         <Ionicons name="download-outline" size={18} color="#64748B" />
                     </TouchableOpacity>
                 </View>
