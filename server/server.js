@@ -725,6 +725,25 @@ app.delete("/api/admin/users/:id", async (req, res) => {
 });
 
 // ==========================================
+// Admin Payments APIs
+// ==========================================
+app.get("/api/admin/payments", async (req, res) => {
+    try {
+        const [rows] = await db.query(`
+            SELECT p.id, p.amount, p.status, p.created_at, p.user_id, p.gateway_ref,
+                   u.name as user_name, u.email as user_email
+            FROM payments p
+            LEFT JOIN users u ON p.user_id = u.id
+            ORDER BY p.created_at DESC;
+        `);
+        res.json(rows);
+    } catch (err) {
+        console.error("Fetch payments error:", err);
+        res.status(500).json({ error: "Failed to fetch payments" });
+    }
+});
+
+// ==========================================
 // Admin Plans APIs
 // ==========================================
 app.get("/api/admin/plans", async (req, res) => {
