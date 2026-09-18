@@ -186,9 +186,9 @@ export default function PaymentScreen() {
                         <Text style={[styles.cardSectionSub, { color: colors.textSecondary }]}>Scan the QR code using any UPI app</Text>
 
                         {/* Interactive flow of paying */}
-                        <View style={styles.payFlowWrapper}>
+                        <View style={[styles.payFlowWrapper, { flexDirection: isDesktop ? "row" : "column", alignItems: isDesktop ? "flex-start" : "center", marginTop: 16 }]}>
                             {/* QR Section */}
-                            <View style={[styles.qrCol, { alignItems: "center" }]}>
+                            <View style={[styles.qrCol, { flex: 1, alignItems: "center" }]}>
                                 <View style={[styles.qrCodeBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                                     {renderQRCode()}
                                 </View>
@@ -196,24 +196,74 @@ export default function PaymentScreen() {
                                     <Text style={[styles.upiIdLabel, { color: colors.text }]}>UPI ID: you@upi</Text>
                                     <Ionicons name="copy-outline" size={14} color={colors.textSecondary} />
                                 </View>
-                                <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 12, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 }}>OR</Text>
+                            </View>
+
+                            {/* Divider if desktop */}
+                            {isDesktop && <View style={[styles.verticalDivider, { backgroundColor: colors.border, marginHorizontal: 24 }]} />}
+
+                            {/* Steps Section */}
+                            <View style={styles.stepsCol}>
+                                <Text style={[styles.stepsTitle, { color: colors.text, marginBottom: 12 }]}>How to pay?</Text>
+                                <View style={styles.stepItem}>
+                                    <View style={[styles.stepNumber, { borderColor: "#E0E7FF", backgroundColor: "#EEF2FF" }]}>
+                                        <Text style={{ fontSize: 10, color: "#6366F1", fontWeight: "700" }}>1</Text>
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={[styles.stepText, { color: colors.text }]}>Open any UPI app</Text>
+                                        <Text style={[styles.stepSub, { color: colors.textSecondary }]}>Google Pay, PhonePe, Paytm or any other UPI app</Text>
+                                    </View>
+                                </View>
+                                <View style={styles.stepItem}>
+                                    <View style={[styles.stepNumber, { borderColor: "#E0E7FF", backgroundColor: "#EEF2FF" }]}>
+                                        <Text style={{ fontSize: 10, color: "#6366F1", fontWeight: "700" }}>2</Text>
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={[styles.stepText, { color: colors.text }]}>Scan this QR code</Text>
+                                        <Text style={[styles.stepSub, { color: colors.textSecondary }]}>Use your UPI app to scan the QR code</Text>
+                                    </View>
+                                </View>
+                                <View style={styles.stepItem}>
+                                    <View style={[styles.stepNumber, { borderColor: "#E0E7FF", backgroundColor: "#EEF2FF" }]}>
+                                        <Text style={{ fontSize: 10, color: "#6366F1", fontWeight: "700" }}>3</Text>
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={[styles.stepText, { color: colors.text }]}>Confirm & Pay</Text>
+                                        <Text style={[styles.stepSub, { color: colors.textSecondary }]}>Verify the details and complete your payment</Text>
+                                    </View>
+                                </View>
+                                <View style={styles.stepItem}>
+                                    <View style={[styles.stepNumber, { borderColor: "#E0E7FF", backgroundColor: "#EEF2FF" }]}>
+                                        <Text style={{ fontSize: 10, color: "#6366F1", fontWeight: "700" }}>4</Text>
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={[styles.stepText, { color: colors.text }]}>Subscription Activated</Text>
+                                        <Text style={[styles.stepSub, { color: colors.textSecondary }]}>You will get a confirmation instantly</Text>
+                                    </View>
+                                </View>
                             </View>
                         </View>
 
+                        {/* Horizontal OR divider */}
+                        <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 24 }}>
+                            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+                            <Text style={{ fontSize: 10, color: colors.textSecondary, marginHorizontal: 12, backgroundColor: isDark ? colors.border : "#F8FAFC", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, overflow: "hidden", borderWidth: 1, borderColor: colors.border }}>OR</Text>
+                            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+                        </View>
+
                         {/* Pay using UPI ID manually */}
-                        <Text style={[styles.payIdTitle, { color: colors.text, marginTop: 24 }]}>Pay using UPI ID</Text>
-                        <Text style={[styles.payIdSub, { color: colors.textSecondary }]}>Enter any UPI ID to make the payment</Text>
-                        <View style={styles.upiInputRowMobile}>
+                        <Text style={[styles.payIdTitle, { color: colors.text }]}>Pay using UPI ID</Text>
+                        <Text style={[styles.payIdSub, { color: colors.textSecondary, marginBottom: 12 }]}>Enter any UPI ID to make the payment</Text>
+                        <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10 }}>
                             <TextInput
                                 placeholder="Enter UPI ID (e.g. name@upi)"
                                 placeholderTextColor={colors.placeholder}
                                 value={upiIdInput}
                                 onChangeText={setUpiIdInput}
-                                style={[styles.upiTextInput, { color: colors.text, marginBottom: 12 }]}
+                                style={[styles.upiTextInput, { color: colors.text, height: 40, marginBottom: 10 }]}
                             />
                             <TouchableOpacity
                                 onPress={handlePayNow}
-                                style={[styles.payNowBtn, { backgroundColor: colors.primary, width: "100%" }]}
+                                style={[styles.payNowBtn, { backgroundColor: "#6C2CF4", width: "100%", height: 36, borderRadius: 8 }]}
                                 activeOpacity={0.8}
                             >
                                 <Text style={styles.payNowBtnText}>Pay Now</Text>
@@ -221,8 +271,8 @@ export default function PaymentScreen() {
                         </View>
 
                         {/* Popular UPI Apps */}
-                        <Text style={[styles.acceptedAppsTitle, { color: colors.textSecondary, marginTop: 20 }]}>Popular UPI Apps</Text>
-                        <View style={[styles.appsRow, { justifyContent: "space-between" }]}>
+                        <Text style={[styles.acceptedAppsTitle, { color: colors.textSecondary, marginTop: 24 }]}>Popular UPI Apps</Text>
+                        <View style={[styles.appsRow, { justifyContent: "flex-start", gap: 16 }]}>
                             <View style={{ alignItems: "center" }}>
                                 <View style={[styles.appBoxIcon, { backgroundColor: isDark ? colors.border : "#EEF2FF" }]}><Text style={{ fontSize: 20 }}>G</Text></View>
                                 <Text style={[styles.appTextMobile, { color: colors.textSecondary }]}>Google Pay</Text>
@@ -244,18 +294,17 @@ export default function PaymentScreen() {
                                 <Text style={[styles.appTextMobile, { color: colors.textSecondary }]}>Amazon Pay</Text>
                             </View>
                             <View style={{ alignItems: "center" }}>
+                                <View style={[styles.appBoxIcon, { backgroundColor: isDark ? colors.border : "#ECFDF5" }]}><Ionicons name="logo-whatsapp" size={18} color="#10B981" /></View>
+                                <Text style={[styles.appTextMobile, { color: colors.textSecondary }]}>WhatsApp Pay</Text>
+                            </View>
+                            <View style={{ alignItems: "center" }}>
+                                <View style={[styles.appBoxIcon, { backgroundColor: isDark ? colors.border : "#EEF2FF" }]}><Ionicons name="phone-portrait-outline" size={18} color="#6366F1" /></View>
+                                <Text style={[styles.appTextMobile, { color: colors.textSecondary }]}>Mobile Pay</Text>
+                            </View>
+                            <View style={{ alignItems: "center" }}>
                                 <View style={[styles.moreIconBox, { backgroundColor: colors.surface, borderColor: colors.border }]}><Ionicons name="ellipsis-horizontal" size={16} color={colors.textSecondary} /></View>
                                 <Text style={[styles.appTextMobile, { color: colors.textSecondary }]}>More</Text>
                             </View>
-                        </View>
-                    </View>
-
-                    {/* Secure payment banner */}
-                    <View style={[styles.secureDetailsBadge, { backgroundColor: isDark ? colors.surface : "#ECFDF5", borderColor: isDark ? colors.border : "#D1FAE5", marginTop: 12 }]}>
-                        <Ionicons name="shield-checkmark" size={18} color={colors.success} />
-                        <View style={styles.secureDetailsTextCol}>
-                            <Text style={[styles.secureDetailsTitle, { color: colors.success }]}>Safe & Secure Payment</Text>
-                            <Text style={[styles.secureDetailsSub, { color: colors.textSecondary }]}>Your payment details are encrypted and secure.</Text>
                         </View>
                     </View>
                 </View>
@@ -285,14 +334,30 @@ export default function PaymentScreen() {
 
                         <View style={styles.totalRow}>
                             <Text style={[styles.totalLabel, { color: colors.text }]}>Total Amount</Text>
-                            <Text style={[styles.totalValue, { color: colors.secondary }]}>₹{planPrice}</Text>
+                            <Text style={[styles.totalValue, { color: "#F97316" }]}>₹{planPrice}</Text>
+                        </View>
+                    </View>
+
+                    {/* Secure payment banner moved here */}
+                    <View style={[styles.secureDetailsBadge, { backgroundColor: isDark ? colors.surface : "#ECFDF5", borderColor: isDark ? colors.border : "#D1FAE5", marginTop: 0 }]}>
+                        <Ionicons name="shield-checkmark" size={18} color={colors.success} />
+                        <View style={styles.secureDetailsTextCol}>
+                            <Text style={[styles.secureDetailsTitle, { color: colors.success }]}>Safe & Secure Payment</Text>
+                            <Text style={[styles.secureDetailsSub, { color: colors.textSecondary }]}>Your payment details are encrypted and secure.</Text>
                         </View>
                     </View>
 
                     {/* Premium Benefits List Card */}
-                    <View style={[styles.paymentCard, { backgroundColor: isDark ? colors.surface : "#FDF2F8", borderColor: "transparent", marginTop: 16 }]}>
-                        <Text style={[styles.cardSectionTitle, { color: colors.text }]}>You're just one step away!</Text>
-                        <Text style={[styles.cardSectionSub, { color: colors.textSecondary }]}>With UP Num, you get:</Text>
+                    <View style={[styles.paymentCard, { backgroundColor: isDark ? colors.surface : "#FFF5F8", borderColor: isDark ? colors.border : "#FCE7F3", marginTop: 16 }]}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                            <View>
+                                <Text style={[styles.cardSectionTitle, { color: colors.text }]}>You're just one step away!</Text>
+                                <Text style={[styles.cardSectionSub, { color: colors.textSecondary, marginBottom: 0 }]}>With UP Num, you get:</Text>
+                            </View>
+                            <TouchableOpacity style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#FFFFFF", justifyContent: "center", alignItems: "center", ...Shadows.sm, borderWidth: 1, borderColor: "#E2E8F0" }}>
+                                <Ionicons name="arrow-forward" size={20} color="#000" />
+                            </TouchableOpacity>
+                        </View>
 
                         <View style={[styles.premiumList, { marginTop: 20 }]}>
                             <View style={styles.premiumListItemMobile}>
@@ -331,6 +396,7 @@ export default function PaymentScreen() {
                                 </View>
                             </View>
                         </View>
+                        <Text style={{ position: "absolute", right: -10, bottom: -20, fontSize: 100, transform: [{ rotate: "-5deg" }] }}>👑</Text>
                     </View>
                 </View>
             </View>

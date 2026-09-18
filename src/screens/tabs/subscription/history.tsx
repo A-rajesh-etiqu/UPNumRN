@@ -8,6 +8,7 @@ import {
     useWindowDimensions,
     Platform,
     Alert,
+    ActivityIndicator,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
@@ -24,6 +25,7 @@ export default function SubscriptionHistoryScreen() {
     const { user } = useAuthStore();
     const [invoices, setInvoices] = useState<any[]>([]);
     const [subscription, setSubscription] = useState<any>(null);
+    const [sendingInvoice, setSendingInvoice] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
         const fetchHistory = async () => {
@@ -47,12 +49,25 @@ export default function SubscriptionHistoryScreen() {
     }, [user?.id]);
 
     const handleResendInvoice = async (invoiceNo: string) => {
-        if (!invoiceNo) return;
+        if (!invoiceNo) {
+            Alert.alert("No Invoice", "This payment does not have an invoice number yet.");
+            return;
+        }
+        setSendingInvoice(prev => ({ ...prev, [invoiceNo]: true }));
         try {
-            await apiClient.post("/billing/resend", { userId: user?.id, invoiceNo });
-            Alert.alert("Success", `Invoice ${invoiceNo} resent successfully to your email!`);
-        } catch (err) {
-            Alert.alert("Error", "Failed to resend invoice. Please try again.");
+            const res = await apiClient.post("/billing/send-invoice", {
+                userId: user?.id,
+                invoiceNo,
+            });
+            Alert.alert(
+                "Invoice Sent ✉️",
+                res.data?.message || `Invoice ${invoiceNo} has been sent to your registered email address.`
+            );
+        } catch (err: any) {
+            const msg = err.response?.data?.error || "Failed to send invoice. Please try again.";
+            Alert.alert("Error", msg);
+        } finally {
+            setSendingInvoice(prev => ({ ...prev, [invoiceNo]: false }));
         }
     };
 
@@ -187,14 +202,21 @@ export default function SubscriptionHistoryScreen() {
                                                 <Text style={[styles.upiMethodText, { color: colors.textSecondary }]}>{row.upi}</Text>
                                             </View>
 
-                                            {/* Invoice Download */}
-                                            <TouchableOpacity 
-                                                style={[styles.downloadBtn, { width: 90 }]} 
+                                            {/* Invoice Send to Email */}
+                                            <TouchableOpacity
+                                                style={[styles.downloadBtn, { width: 110, opacity: sendingInvoice[row.invoiceNo] ? 0.7 : 1 }]}
                                                 activeOpacity={0.8}
+                                                disabled={sendingInvoice[row.invoiceNo]}
                                                 onPress={() => handleResendInvoice(row.invoiceNo)}
                                             >
-                                                <Ionicons name="download-outline" size={14} color={colors.primary} />
-                                                <Text style={[styles.downloadText, { color: colors.primary }]}>Resend</Text>
+                                                {sendingInvoice[row.invoiceNo] ? (
+                                                    <ActivityIndicator size="small" color={colors.primary} />
+                                                ) : (
+                                                    <Ionicons name="mail-outline" size={14} color={colors.primary} />
+                                                )}
+                                                <Text style={[styles.downloadText, { color: colors.primary }]}>
+                                                    {sendingInvoice[row.invoiceNo] ? "Sending..." : "Send Email"}
+                                                </Text>
                                             </TouchableOpacity>
                                         </View>
                                     ))
@@ -244,12 +266,20 @@ export default function SubscriptionHistoryScreen() {
                                     Click <Text style={[styles.inlineLink, { color: colors.primary }]}>here</Text> to resend latest invoice to your email.
                                 </Text>
                             </View>
-                            <TouchableOpacity 
-                                style={[styles.resendBtn, { backgroundColor: colors.surface, borderColor: colors.primary }, isDesktop && { marginTop: 0 }]} 
+                            <TouchableOpacity
+                                style={[styles.resendBtn, { backgroundColor: colors.surface, borderColor: colors.primary, opacity: sendingInvoice[invoices[0]?.invoiceNo] ? 0.7 : 1 }, isDesktop && { marginTop: 0 }]}
                                 activeOpacity={0.8}
+                                disabled={invoices.length === 0 || sendingInvoice[invoices[0]?.invoiceNo]}
                                 onPress={() => invoices.length > 0 && handleResendInvoice(invoices[0].invoiceNo)}
                             >
-                                <Text style={[styles.resendBtnText, { color: colors.primary }]}>Resend Invoice</Text>
+                                {sendingInvoice[invoices[0]?.invoiceNo] ? (
+                                    <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 6 }} />
+                                ) : (
+                                    <Ionicons name="mail-outline" size={14} color={colors.primary} style={{ marginRight: 6 }} />
+                                )}
+                                <Text style={[styles.resendBtnText, { color: colors.primary }]}>
+                                    {sendingInvoice[invoices[0]?.invoiceNo] ? "Sending..." : "Send to Email"}
+                                </Text>
                             </TouchableOpacity>
                         </View>
                     </View>

@@ -10,6 +10,7 @@ import {
     Alert,
     Platform,
     Clipboard,
+    Pressable,
 } from "react-native";
 import { router } from "../../../navigation/RootNavigation";
 import Ionicons from "react-native-vector-icons/Ionicons";
@@ -47,6 +48,7 @@ export default function SubscriptionIndexScreen() {
     const [loadingPlans, setLoadingPlans] = useState(true);
     const [openFaq, setOpenFaq] = useState<number | null>(null);
     const [copied, setCopied] = useState(false);
+    const [hoveredPlanId, setHoveredPlanId] = useState<string | null>(null);
 
     const { width } = useWindowDimensions();
     const isDesktop = width >= 900;
@@ -154,7 +156,11 @@ export default function SubscriptionIndexScreen() {
             {loadingPlans ? (
                 <ActivityIndicator size="large" color={colors.primary} style={{ marginVertical: 40 }} />
             ) : (
-                <View style={[styles.plansGrid, isDesktop && styles.plansGridRow]}>
+                <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false} 
+                    contentContainerStyle={styles.plansCarousel}
+                >
                     {plans.map((plan, idx) => {
                         const palette = PLAN_COLORS[idx % 4];
                         const price = getDisplayPrice(plan);
@@ -162,19 +168,28 @@ export default function SubscriptionIndexScreen() {
                         const isSelected = selectedPlanId === plan.id.toString();
                         const features = plan.description ? plan.description.split(",") : PLAN_FEATURES_FALLBACK;
 
+                        const isHovered = hoveredPlanId === plan.id.toString();
+                        const isOtherHovered = hoveredPlanId !== null && !isHovered;
+
                         return (
-                            <TouchableOpacity
+                            <Pressable
                                 key={plan.id}
-                                activeOpacity={0.92}
                                 onPress={() => setSelectedPlanId(plan.id.toString())}
-                                style={[
+                                // @ts-ignore - onHoverIn/onHoverOut are available in React Native Web for Pressable
+                                onHoverIn={() => setHoveredPlanId(plan.id.toString())}
+                                onHoverOut={() => setHoveredPlanId(null)}
+                                style={({ pressed }) => [
                                     styles.planCard,
                                     {
                                         backgroundColor: colors.surface,
                                         borderColor: isSelected ? palette.accent : (isDark ? colors.border : "#E2E8F0"),
                                         borderWidth: isSelected ? 2 : 1,
+                                        transform: [{ scale: isHovered ? 1.08 : (pressed ? 0.98 : (isOtherHovered ? 0.95 : 1)) }],
+                                        opacity: pressed ? 0.9 : (isOtherHovered ? 0.4 : 1),
+                                        zIndex: isHovered ? 10 : 1,
                                     },
-                                    isSelected && { ...Shadows.md },
+                                    (isSelected || isHovered) && { ...Shadows.md },
+                                    isOtherHovered && Platform.OS === "web" ? { filter: "blur(2px)" } as any : {},
                                 ]}
                             >
                                 {/* Card top gradient strip */}
@@ -238,10 +253,10 @@ export default function SubscriptionIndexScreen() {
                                         </Text>
                                     </LinearGradient>
                                 </TouchableOpacity>
-                            </TouchableOpacity>
+                            </Pressable>
                         );
                     })}
-                </View>
+                </ScrollView>
             )}
 
             {/* ── Checkout Panel ── */}
@@ -437,10 +452,9 @@ const styles = StyleSheet.create({
     toggleBtnText: { fontSize: 13, fontWeight: "700" },
 
     // Plan cards
-    plansGrid: { gap: 16 },
-    plansGridRow: { flexDirection: "row", flexWrap: "wrap" },
+    plansCarousel: { gap: 16, paddingVertical: 10, paddingHorizontal: 4 },
     planCard: {
-        flex: 1, minWidth: 220, borderRadius: 20, overflow: "hidden",
+        width: 260, borderRadius: 20, overflow: "hidden",
         ...Shadows.sm,
     },
     planCardStrip: { height: 5 },

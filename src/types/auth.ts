@@ -111,7 +111,7 @@ export interface VerifyOtpResponse {
 =========================================== */
 
 export interface ForgotPasswordRequest {
-    mobile: string;
+    identifier: string;
 }
 
 export interface ForgotPasswordResponse {
@@ -125,7 +125,7 @@ export interface ForgotPasswordResponse {
 =========================================== */
 
 export interface ResetPasswordRequest {
-    mobile: string;
+    identifier: string;
     otp: string;
     newPassword: string;
 }

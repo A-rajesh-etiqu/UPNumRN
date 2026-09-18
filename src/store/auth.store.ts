@@ -72,10 +72,12 @@ export const useAuthStore = create<AuthState>((set) => ({
             loading: false,
         }),
 
-    logout: () =>
+    logout: () => {
+        secureStorage.clearSession().catch(err => console.error("Failed to clear session", err));
         set({
             ...initialState,
-        }),
+        });
+    },
 
     setLoading: (loading) =>
         set({

@@ -64,9 +64,9 @@ class AuthApi {
         return response.data;
     }
 
-    async forgotPassword(mobile: string) {
+    async forgotPassword(identifier: string) {
         const response = await apiClient.post<import("../types/auth").ForgotPasswordResponse>("/auth/forgot-password", {
-            mobile,
+            identifier,
         });
         return response.data;
     }
