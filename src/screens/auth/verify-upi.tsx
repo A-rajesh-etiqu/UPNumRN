@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "../../navigation/RootNavigation";
 import { useAuthStore } from "../../store/auth.store";
 import { useAppTheme } from "../../theme";
-import Ionicons from "react-native-vector-icons/Ionicons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 export default function VerifyUPIScreen() {
     const { colors } = useAppTheme();

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Platform, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "../../navigation/RootNavigation";
-import Ionicons from "react-native-vector-icons/Ionicons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { authApi } from "../../api/authApi";
 import AuthLayout from "../../components/auth/AuthLayout";
 import { Colors } from "../../theme";

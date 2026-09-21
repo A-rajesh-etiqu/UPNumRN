@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import * as Keychain from "react-native-keychain";
+import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { User } from "../types/auth";
 
@@ -15,7 +15,7 @@ async function setItem(key: string, value: string) {
     if (isWeb) {
         await AsyncStorage.setItem(key, value);
     } else {
-        await Keychain.setGenericPassword(key, value, { service: key });
+        await SecureStore.setItemAsync(key, value);
     }
 }
 
@@ -23,15 +23,14 @@ async function getItem(key: string) {
     if (isWeb) {
         return AsyncStorage.getItem(key);
     }
-    const credentials = await Keychain.getGenericPassword({ service: key });
-    return credentials ? credentials.password : null;
+    return await SecureStore.getItemAsync(key);
 }
 
 async function deleteItem(key: string) {
     if (isWeb) {
         await AsyncStorage.removeItem(key);
     } else {
-        await Keychain.resetGenericPassword({ service: key });
+        await SecureStore.deleteItemAsync(key);
     }
 }
 

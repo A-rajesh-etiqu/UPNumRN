@@ -7,7 +7,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import Ionicons from "react-native-vector-icons/Ionicons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { LANGUAGES } from "../../constants/languages";
 import { useLanguageStore } from "../../store/language.store";

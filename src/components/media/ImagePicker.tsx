@@ -10,7 +10,7 @@ import {
 } from "react-native";
 
 import * as ImagePickerExpo from "react-native-image-picker";
-import Ionicons from "react-native-vector-icons/Ionicons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 import {
     Colors,

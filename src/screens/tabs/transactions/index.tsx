@@ -16,7 +16,7 @@ import {
 import * as DocumentPicker from "expo-document-picker";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
-import Ionicons from "react-native-vector-icons/Ionicons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import Svg, { Path } from "react-native-svg";
 import { useAppTheme } from "../../../theme";
 import { useTransactionStore } from "../../../store/transaction.store";

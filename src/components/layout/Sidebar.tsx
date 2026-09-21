@@ -7,7 +7,7 @@ import {
     ScrollView,
 } from "react-native";
 import { router, navigationRef } from "../../navigation/RootNavigation";
-import Ionicons from "react-native-vector-icons/Ionicons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
 import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop } from "react-native-svg";
 import { useAppTheme } from "../../theme";

@@ -10,7 +10,7 @@ import {
     Alert,
     Platform,
 } from "react-native";
-import Ionicons from "react-native-vector-icons/Ionicons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAppTheme, Colors, Radius, Spacing, Shadows, Typography } from "../../../theme";
 import { useAuthStore } from "../../../store/auth.store";
 import apiClient from "../../../api/apiClient";

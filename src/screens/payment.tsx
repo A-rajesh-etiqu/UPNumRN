@@ -15,7 +15,7 @@ import {
 import { router, useLocalSearchParams } from "../navigation/RootNavigation";
 
 import { createPayment } from '../services/payment.service';
-import Ionicons from "react-native-vector-icons/Ionicons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
 import Svg, { Rect, Path } from "react-native-svg";
 import Sidebar from "../components/layout/Sidebar";

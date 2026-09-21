@@ -8,7 +8,7 @@ import {
 } from "react-native";
 
 import DateTimePicker from "@react-native-community/datetimepicker";
-import Ionicons from "react-native-vector-icons/Ionicons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 import {
     Colors,

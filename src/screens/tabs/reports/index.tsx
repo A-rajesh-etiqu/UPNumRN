@@ -12,7 +12,7 @@ import {
 import { useAuthStore } from "../../../store/auth.store";
 import { useTransactionStore } from "../../../store/transaction.store";
 import { useAppTheme } from "../../../theme";
-import Ionicons from "react-native-vector-icons/Ionicons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import DatePickerField from "../../../components/common/DatePickerField";
 import { LineChart, PieChart, BarChart } from "react-native-gifted-charts";
 import dayjs from "dayjs";
@@ -46,7 +46,7 @@ export default function ReportsScreen() {
         setActiveFilter(filter);
         const today = new Date();
         const yyyyMmDd = (d: Date) => d.toISOString().split("T")[0];
-        
+
         setEndDate(yyyyMmDd(today));
 
         if (filter === "Last 7 Days") {
@@ -97,7 +97,7 @@ export default function ReportsScreen() {
     // Line Chart Data (Trend)
     const { incomeChartData, expenseChartData, maxLineValue } = useMemo(() => {
         const grouped: Record<string, { inc: number; exp: number }> = {};
-        
+
         let minDate: Date | null = null;
         let maxDate: Date | null = null;
 
@@ -113,9 +113,11 @@ export default function ReportsScreen() {
         });
 
         const sortedDates: string[] = [];
-        if (minDate && maxDate) {
-            let current = new Date(minDate);
-            while (current <= maxDate) {
+        const mMinDate = minDate as Date | null;
+        const mMaxDate = maxDate as Date | null;
+        if (mMinDate && mMaxDate) {
+            let current = new Date(mMinDate);
+            while (current.getTime() <= mMaxDate.getTime()) {
                 sortedDates.push(dayjs(current).format("YYYY-MM-DD"));
                 current.setDate(current.getDate() + 1);
             }
@@ -124,19 +126,19 @@ export default function ReportsScreen() {
         const incData: any[] = [];
         const expData: any[] = [];
         let maxVal = 0;
-        
+
         const step = Math.max(1, Math.ceil(sortedDates.length / 7));
-        
+
         sortedDates.forEach((fullDate, index) => {
             const displayDate = dayjs(fullDate).format("D MMM");
             const data = grouped[fullDate] || { inc: 0, exp: 0 };
             maxVal = Math.max(maxVal, data.inc, data.exp);
-            
+
             const showLabel = index % step === 0 || index === sortedDates.length - 1;
-            incData.push({ 
-                value: data.inc, 
-                label: showLabel ? displayDate : "", 
-                labelTextStyle: { color: colors.textSecondary, fontSize: 10 } 
+            incData.push({
+                value: data.inc,
+                label: showLabel ? displayDate : "",
+                labelTextStyle: { color: colors.textSecondary, fontSize: 10 }
             });
             expData.push({ value: data.exp });
         });
@@ -190,7 +192,7 @@ export default function ReportsScreen() {
         });
 
         const sortedMonths = Object.keys(groupedByMonth).sort((a, b) => dayjs(a, "MMM").month() - dayjs(b, "MMM").month());
-        
+
         const bData: any[] = [];
         let maxVal = 0;
         sortedMonths.forEach(month => {
@@ -209,7 +211,7 @@ export default function ReportsScreen() {
             });
         });
 
-        if(bData.length === 0) {
+        if (bData.length === 0) {
             bData.push({ value: 0, label: "No Data", frontColor: colorIncome, spacing: 4 });
             bData.push({ value: 0, frontColor: colorSpending });
         }
@@ -229,7 +231,7 @@ export default function ReportsScreen() {
 
     // --- Render Helpers ---
 
-    const renderStatCard = (title: string, value: string, icon: string, color: string, change: string, isUp: boolean) => (
+    const renderStatCard = (title: string, value: string, icon: any, color: string, change: string, isUp: boolean) => (
         <View style={[styles.statCard, { backgroundColor: cardBg, borderColor: colors.border, width: isDesktop ? '23%' : '48%', marginBottom: isDesktop ? 0 : 16 }]}>
             <View style={styles.statHeader}>
                 <View style={[styles.statIconWrap, { backgroundColor: color + "15" }]}>
@@ -260,11 +262,11 @@ export default function ReportsScreen() {
                 display: 'flex',
                 alignItems: 'center',
             }}>
-                <input 
+                <input
                     type="date"
                     value={val}
                     onChange={(e) => {
-                        setVal(e.target.value);
+                        setVal((e.target as any).value);
                         setActiveFilter("Custom");
                     }}
                     style={{
@@ -298,7 +300,7 @@ export default function ReportsScreen() {
                         Get detailed insights about your spending, savings and financial habits
                     </Text>
                 </View>
-                
+
                 <View style={styles.headerActions}>
                     {Platform.OS === 'web' && (
                         <View style={styles.datePickerRow}>
@@ -387,11 +389,11 @@ export default function ReportsScreen() {
                                 innerRadius={isDesktop ? 50 : 65}
                                 innerCircleColor={cardBg}
                                 centerLabelComponent={() => (
-                                    <View style={{justifyContent: 'center', alignItems: 'center'}}>
-                                        <Text style={{fontSize: isDesktop ? 16 : 20, color: colors.text, fontWeight: '700'}}>
+                                    <View style={{ justifyContent: 'center', alignItems: 'center' }}>
+                                        <Text style={{ fontSize: isDesktop ? 16 : 20, color: colors.text, fontWeight: '700' }}>
                                             ₹{(totalSpending / 1000).toFixed(1)}k
                                         </Text>
-                                        <Text style={{fontSize: 10, color: colors.textSecondary}}>Total Spending</Text>
+                                        <Text style={{ fontSize: 10, color: colors.textSecondary }}>Total Spending</Text>
                                     </View>
                                 )}
                             />
@@ -414,7 +416,7 @@ export default function ReportsScreen() {
 
             {/* Bottom Row: Top Categories, Recent Tx, Monthly Comparison */}
             <View style={[styles.flexRow, { flexDirection: isDesktop ? 'row' : 'column', gap: 20 }]}>
-                
+
                 {/* Top Categories Progress */}
                 <View style={[styles.card, { flex: 1, backgroundColor: cardBg, borderColor: colors.border }]}>
                     <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 20 }]}>Top Spending Categories</Text>
@@ -498,7 +500,7 @@ export default function ReportsScreen() {
                                 roundedBottom
                                 xAxisThickness={1}
                                 yAxisThickness={0}
-                                yAxisTextStyle={{color: colors.textSecondary, fontSize: 10}}
+                                yAxisTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
                                 yAxisColor={"transparent"}
                                 xAxisColor={colors.border}
                                 rulesColor={colors.border}

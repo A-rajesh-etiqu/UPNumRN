@@ -13,7 +13,7 @@ import {
     Pressable,
     Platform,
 } from "react-native";
-import Ionicons from "react-native-vector-icons/Ionicons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import Svg, { Path, Circle } from "react-native-svg";
 import { PieChart } from "react-native-gifted-charts";
 import { useAppTheme, Spacing, Shadows, Typography } from "../../../theme";

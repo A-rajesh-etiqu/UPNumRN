@@ -13,7 +13,7 @@ import {
     Pressable,
 } from "react-native";
 import { router } from "../../../navigation/RootNavigation";
-import Ionicons from "react-native-vector-icons/Ionicons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
 import Svg, { Rect, Path, Ellipse, Circle } from "react-native-svg";
 import { useAppTheme, Spacing, Shadows } from "../../../theme";

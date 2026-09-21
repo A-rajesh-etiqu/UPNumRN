@@ -9,7 +9,7 @@ import {
     ActivityIndicator,
 } from "react-native";
 import { router } from "../../navigation/RootNavigation";
-import Ionicons from "react-native-vector-icons/Ionicons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop } from "react-native-svg";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";

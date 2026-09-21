@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet, ActivityIndicator, useWindowDimensions, Platform } from "react-native";
 import LinearGradient from "react-native-linear-gradient";
 import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop, Circle } from "react-native-svg";
-import Ionicons from "react-native-vector-icons/Ionicons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 export default function Index() {
     const { width, height } = useWindowDimensions();

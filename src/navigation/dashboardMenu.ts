@@ -1,6 +1,6 @@
 import {
     Ionicons,
-} from "react-native-vector-icons/Ionicons";
+} from "@expo/vector-icons/Ionicons";
 
 export interface DashboardMenuItem {
     title: string;

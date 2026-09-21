@@ -13,7 +13,7 @@ import {
     TextInput
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Ionicons from "react-native-vector-icons/Ionicons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, useLocalSearchParams } from "../../../navigation/RootNavigation";
 import { LineChart, PieChart } from "react-native-gifted-charts";
 
