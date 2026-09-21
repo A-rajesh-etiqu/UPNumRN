@@ -25,6 +25,7 @@ if (Platform.OS === 'web') {
 }
 
 AppRegistry.registerComponent(appName, () => App);
+AppRegistry.registerComponent('main', () => App);
 
 if (Platform.OS === 'web') {
     const rootTag = document.getElementById('root') || document.getElementById('main');

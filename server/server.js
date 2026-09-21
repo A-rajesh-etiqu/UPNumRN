@@ -2,7 +2,8 @@ const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const db = require("./db");
-const { sendOTP } = require("./services/mailer");
+const { sendOTP, sendInvoice } = require("./services/mailer");
+const { generateInvoicePDF } = require("./services/pdfGenerator");
 const multer = require("multer");
 const xlsx = require("xlsx");
 const upload = multer({ storage: multer.memoryStorage() });
@@ -148,11 +149,11 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 app.post("/api/auth/forgot-password", async (req, res) => {
-    const { mobile } = req.body;
+    const { identifier } = req.body;
     try {
-        const [rows] = await db.query("SELECT id, email FROM users WHERE mobile = ? LIMIT 1;", [mobile]);
+        const [rows] = await db.query("SELECT id, email, mobile FROM users WHERE mobile = ? OR email = ? LIMIT 1;", [identifier, identifier]);
         if (rows.length === 0) {
-            return res.status(404).json({ error: "Mobile number not registered" });
+            return res.status(404).json({ error: "User not found with this mobile number or email" });
         }
         
         const userEmail = rows[0].email;
@@ -163,7 +164,8 @@ app.post("/api/auth/forgot-password", async (req, res) => {
         const maskedEmail = userEmail.replace(/(.{2})(.*)(?=@)/, (gp1, gp2, gp3) => gp2 + gp3.replace(/./g, '*'));
         
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        otpStore.set(mobile, otp);
+        // Store OTP keyed by the identifier provided by the user
+        otpStore.set(identifier, otp);
         
         console.log(`Sending real OTP to ${userEmail}...`);
         const emailSent = await sendOTP(userEmail, otp);
@@ -180,15 +182,15 @@ app.post("/api/auth/forgot-password", async (req, res) => {
 });
 
 app.post("/api/auth/reset-password", async (req, res) => {
-    const { mobile, otp, newPassword } = req.body;
+    const { identifier, otp, newPassword } = req.body;
     try {
-        const storedOtp = otpStore.get(mobile);
+        const storedOtp = otpStore.get(identifier);
         if (!storedOtp || storedOtp !== otp) {
             return res.status(400).json({ error: "Invalid or expired OTP" });
         }
 
-        await db.query("UPDATE users SET password = ? WHERE mobile = ?;", [newPassword, mobile]);
-        otpStore.delete(mobile);
+        await db.query("UPDATE users SET password = ? WHERE mobile = ? OR email = ?;", [newPassword, identifier, identifier]);
+        otpStore.delete(identifier);
         
         res.json({ success: true, message: "Password updated successfully" });
     } catch (err) {
@@ -580,6 +582,81 @@ app.get(
 
     }
 );
+
+// ==========================================
+// Billing — Send Invoice to Email
+// ==========================================
+
+app.post("/api/billing/send-invoice", async (req, res) => {
+    const { userId, invoiceNo } = req.body;
+
+    if (!userId || !invoiceNo) {
+        return res.status(400).json({ error: "userId and invoiceNo are required" });
+    }
+
+    try {
+        // 1. Fetch user email
+        const [userRows] = await db.query(
+            "SELECT name, email FROM users WHERE id = ? LIMIT 1;",
+            [userId]
+        );
+        if (userRows.length === 0) {
+            return res.status(404).json({ error: "User not found" });
+        }
+        const { name: userName, email } = userRows[0];
+        if (!email) {
+            return res.status(400).json({ error: "No email address associated with this account" });
+        }
+
+        // 2. Fetch payment + invoice details
+        const [payRows] = await db.query(
+            `SELECT
+                p.amount, p.status, p.created_at, p.provider,
+                p.transaction_reference, p.upi_id,
+                pl.name AS plan_name, pl.type AS billing_cycle,
+                i.invoice_no
+             FROM invoices i
+             JOIN payments p ON p.id = i.payment_id
+             LEFT JOIN subscriptions s ON s.user_id = p.user_id
+             LEFT JOIN plans pl ON pl.id = s.plan_id
+             WHERE i.invoice_no = ? AND p.user_id = ?
+             LIMIT 1;`,
+            [invoiceNo, userId]
+        );
+
+        let invoiceData = { invoiceNo, userName };
+
+        if (payRows.length > 0) {
+            const r = payRows[0];
+            invoiceData = {
+                invoiceNo,
+                userName,
+                planName: r.plan_name || "UpNum Plan",
+                amount: `₹${Number(r.amount).toFixed(2)}`,
+                date: new Date(r.created_at).toLocaleDateString("en-IN"),
+                billingCycle: r.billing_cycle || "Monthly",
+                upiId: r.upi_id || "N/A",
+                transactionId: r.transaction_reference || "N/A",
+                status: r.status || "SUCCESS",
+            };
+        }
+
+        // 3. Send email
+        const sent = await sendInvoice(email, invoiceData);
+        if (!sent) {
+            return res.status(500).json({ error: "Failed to send invoice email. Please check SMTP configuration." });
+        }
+
+        return res.json({
+            success: true,
+            message: `Invoice ${invoiceNo} sent to ${email.replace(/(.{2})(.*)(?=@)/, (_, a, b) => a + b.replace(/./g, "*"))}`,
+        });
+
+    } catch (err) {
+        console.error("Send Invoice Error:", err);
+        return res.status(500).json({ error: "Failed to send invoice" });
+    }
+});
 
 // ==========================================
 // Platform Admin APIs
@@ -987,9 +1064,49 @@ app.post("/api/payments/create", async (req, res) => {
         paymentId = `payment-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
         const billerBillID = `UPNUM-${paymentId}`;
 
+        if (vua && vua.toLowerCase() === 'dummy@upi') {
+            // DUMMY PAYMENT FLOW: Immediately mark as SUCCESS and send invoice
+            
+            await db.query(
+                `INSERT INTO payments (id, user_id, amount, status, provider, provider_bill_id, upi_id) VALUES (?, ?, ?, 'SUCCESS', 'SETU', ?, ?);`,
+                [paymentId, userId, paymentAmount, billerBillID, vua]
+            );
+
+            // Fetch user info for invoice
+            const [users] = await db.query('SELECT name, email FROM users WHERE id = ?', [userId]);
+            const user = users[0];
+            const userEmail = user?.email;
+
+            if (userEmail) {
+                const invoiceData = {
+                    invoiceNo: `INV-${Date.now().toString().slice(-6)}`,
+                    planName: `UP Num Subscription - ${planId}`,
+                    amount: paymentAmount.toFixed(2),
+                    date: new Date().toLocaleDateString("en-IN"),
+                    billingCycle: "Monthly",
+                    userName: user?.name || "Customer",
+                    upiId: vua,
+                    transactionId: paymentId,
+                    status: "SUCCESS"
+                };
+
+                const pdfBuffer = await generateInvoicePDF(invoiceData);
+                await sendInvoice(userEmail, invoiceData, pdfBuffer);
+            }
+
+            return res.status(201).json({
+                success: true,
+                data: {
+                    paymentId,
+                    platformBillID: billerBillID,
+                    upiLink: null,
+                    upiID: vua,
+                }
+            });
+        }
+
         /*
-         * Create local payment first.
-         * IMPORTANT: Subscription is NOT activated here.
+         * Create local payment first for actual flow.
          */
         await db.query(
             `INSERT INTO payments (id, user_id, amount, status, provider, provider_bill_id) VALUES (?, ?, ?, 'CREATED', 'SETU', ?);`,
@@ -1084,7 +1201,7 @@ app.post("/api/payments/create", async (req, res) => {
 
         console.error(
             "Create Setu Payment Error:",
-            error
+            error.message || error
         );
 
 

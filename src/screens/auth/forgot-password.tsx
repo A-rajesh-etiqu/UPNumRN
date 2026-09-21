@@ -9,7 +9,7 @@ import { Colors } from "../../theme";
 
 export default function ForgotPasswordScreen() {
     const [step, setStep] = useState<1 | 2 | 3>(1);
-    const [mobile, setMobile] = useState("");
+    const [identifier, setIdentifier] = useState("");
     const [email, setEmail] = useState("");
     const [otp, setOtp] = useState("");
     const [newPassword, setNewPassword] = useState("");
@@ -19,14 +19,14 @@ export default function ForgotPasswordScreen() {
     const [showPassword, setShowPassword] = useState(false);
 
     const handleSendOtp = async () => {
-        if (mobile.length !== 10) {
-            setError("Please enter a valid 10-digit mobile number");
+        if (identifier.length < 5) {
+            setError("Please enter a valid mobile number or email");
             return;
         }
         setLoading(true);
         setError(null);
         try {
-            const response = await authApi.forgotPassword(mobile);
+            const response = await authApi.forgotPassword(identifier);
             if (response.email) setEmail(response.email);
             Alert.alert("OTP Sent", `An OTP has been sent to your email address.`);
             setStep(2);
@@ -58,7 +58,7 @@ export default function ForgotPasswordScreen() {
         setLoading(true);
         setError(null);
         try {
-            await authApi.resetPassword({ mobile, otp, newPassword });
+            await authApi.resetPassword({ identifier, otp, newPassword });
             Alert.alert("Success", "Password updated successfully!");
             router.replace("/auth/login");
         } catch (err: any) {
@@ -81,8 +81,8 @@ export default function ForgotPasswordScreen() {
 
                     <Text style={styles.title}>Forgot Password</Text>
                     <Text style={styles.subtitle}>
-                        {step === 1 && "Enter your registered mobile number to receive an OTP."}
-                        {step === 2 && `Enter the OTP sent to your email ${email || mobile}.`}
+                        {step === 1 && "Enter your registered mobile number or email address to receive an OTP."}
+                        {step === 2 && `Enter the OTP sent to your email ${email || identifier}.`}
                         {step === 3 && "Create a new strong password."}
                     </Text>
 
@@ -95,14 +95,14 @@ export default function ForgotPasswordScreen() {
                                     <Ionicons name="call-outline" size={20} color="#6D28D9" />
                                 </View>
                                 <View style={styles.inputInner}>
-                                    <Text style={styles.inputLabelFloating}>Mobile Number</Text>
+                                    <Text style={styles.inputLabelFloating}>Mobile Number or Email</Text>
                                     <TextInput
-                                        placeholder="Enter your mobile number"
+                                        placeholder="Enter your mobile number or email"
                                         placeholderTextColor="#94A3B8"
-                                        value={mobile}
-                                        onChangeText={setMobile}
-                                        keyboardType="phone-pad"
-                                        maxLength={10}
+                                        value={identifier}
+                                        onChangeText={setIdentifier}
+                                        keyboardType="default"
+                                        autoCapitalize="none"
                                         style={styles.textInput}
                                     />
                                 </View>
