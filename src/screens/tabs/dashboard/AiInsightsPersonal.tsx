@@ -19,6 +19,8 @@ import { PieChart } from "react-native-gifted-charts";
 import { useAppTheme, Spacing, Shadows, Typography } from "../../../theme";
 import { useAuthStore } from "../../../store/auth.store";
 import { useDashboardStore } from "../../../store/dashboard.store";
+import { ReportCard } from "../../../components/dashboard/ReportCard";
+import DashboardHeader from "../../../components/layout/DashboardHeader";
 import apiClient from "../../../api/apiClient";
 
 const DEFAULT_RECOMMENDATIONS = [
@@ -212,7 +214,7 @@ The report will include:\n• Spending trends\n• Category breakdown\n• Perso
             isUp: null, 
             color: "#8B5CF6", 
             bg: "#F5F3FF", 
-            icon: "target" 
+            icon: "flag-outline" 
         },
     ];
 
@@ -231,19 +233,14 @@ The report will include:\n• Spending trends\n• Category breakdown\n• Perso
     ];
 
     return (
-        <>
-        <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.scrollContent}>
-            {/* Header section with Filter controls */}
-            <View style={[styles.headerRow, { borderBottomColor: colors.border }, isDesktop ? styles.rowLayout : styles.columnLayout]}>
-                <View>
-                    <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
-                        <Text style={[styles.title, { color: colors.text }]}>AI Insights</Text>
-                        <Ionicons name="sparkles" size={24} color="#8B5CF6" />
-                    </View>
-                    <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-                        Smart analysis of your money habits and personalized recommendations
-                    </Text>
-                </View>
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+            <DashboardHeader 
+                title="AI Insights ✨" 
+                subtitle="Smart analysis of your money habits and personalized recommendations" 
+            />
+            <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.scrollContent}>
+                {/* Header section with Filter controls */}
+                <View style={[styles.headerRow, { borderBottomColor: colors.border, justifyContent: isDesktop ? "flex-end" : "flex-start" }]}>
 
                 {/* Filter Widgets */}
                 <View style={styles.filterWidgetRow}>
@@ -349,6 +346,7 @@ The report will include:\n• Spending trends\n• Category breakdown\n• Perso
                     <Ionicons name="help-circle-outline" size={16} color="#8B5CF6" />
                     <Text style={[styles.howAiWorksText, { color: "#8B5CF6" }]}>How AI Works</Text>
                 </TouchableOpacity>
+            </View>
 
             {/* How AI Works Modal */}
             <Modal
@@ -451,31 +449,24 @@ The report will include:\n• Spending trends\n• Category breakdown\n• Perso
                     </Pressable>
                 </Pressable>
             </Modal>
-            </View>
+
 
             {/* Stat Cards Grid */}
-            <View style={[styles.statsGrid, isDesktop ? styles.rowLayout : styles.columnLayout]}>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginBottom: 12 }}>
                 {STATS.map((stat, idx) => (
-                    <View key={idx} style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                        <View style={styles.statCardHeader}>
-                            <Text style={[styles.statCardTitle, { color: colors.textSecondary }]}>{stat.title}</Text>
-                            <View style={[styles.statIconCircle, { backgroundColor: isDark ? colors.border : stat.bg }]}>
-                                <Ionicons name={stat.icon as any} size={16} color={stat.color} />
-                            </View>
-                        </View>
-                        <View style={styles.statValueRow}>
-                            <Text style={[styles.statCardValue, { color: colors.text }]} adjustsFontSizeToFit numberOfLines={1}>{stat.value}</Text>
-                            {stat.isUp !== null && (
-                                <Ionicons name={stat.isUp ? "arrow-up" : "arrow-down"} size={16} color={stat.color} />
-                            )}
-                        </View>
-                        <Text style={[styles.statCardSub, { color: colors.textSecondary }]}>{stat.change}</Text>
-                        
-                        <TouchableOpacity style={styles.viewDetailsBtn} onPress={() => handleStatDetails(stat)} activeOpacity={0.8}>
-                            <Text style={styles.viewDetailsText}>View details</Text>
-                            <Ionicons name="arrow-forward" size={12} color="#6C2CF4" />
-                        </TouchableOpacity>
-                    </View>
+                    <ReportCard
+                        key={idx}
+                        title={stat.title}
+                        value={stat.value}
+                        icon={stat.icon}
+                        color={stat.color}
+                        change={stat.change}
+                        changeText=""
+                        isUp={stat.isUp}
+                        isDesktop={isDesktop}
+                        colors={colors}
+                        onPress={() => handleStatDetails(stat)}
+                    />
                 ))}
             </View>
 
@@ -639,7 +630,7 @@ The report will include:\n• Spending trends\n• Category breakdown\n• Perso
                                 </View>
                                 <View style={styles.impactItem}>
                                     <View style={[styles.impactIcon, { backgroundColor: "#FFF" }]}>
-                                        <Ionicons name="target" size={14} color="#8B5CF6" />
+                                        <Ionicons name="flag-outline" size={14} color="#8B5CF6" />
                                     </View>
                                     <Text style={[styles.impactLabel, { color: colors.textSecondary }]}>Goal Progress Boost</Text>
                                     <Text style={[styles.impactValue, { color: colors.text }]}>+22%</Text>
@@ -864,7 +855,7 @@ The report will include:\n• Spending trends\n• Category breakdown\n• Perso
                 </Pressable>
             </Pressable>
         </Modal>
-        </>
+        </View>
     );
 }
 

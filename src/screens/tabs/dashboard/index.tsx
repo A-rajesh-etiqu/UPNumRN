@@ -205,7 +205,7 @@ export default function DashboardScreen() {
         loadDashboard(user?.id, filterPeriod);
     }, [user?.id, filterPeriod]);
 
-    if (loading) {
+    if (loading && !data) {
         return (
             <DashboardLayout>
                 <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 80 }} />

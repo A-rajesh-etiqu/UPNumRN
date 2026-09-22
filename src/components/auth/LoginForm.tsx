@@ -6,6 +6,7 @@ import {
     TouchableOpacity,
     TextInput,
     Platform,
+    Image,
 } from "react-native";
 import { router } from "../../navigation/RootNavigation";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -73,32 +74,7 @@ export default function LoginForm() {
         <View style={styles.container}>
             {/* Logo Section */}
             <View style={styles.logoSection}>
-                <Svg width="80" height="80" viewBox="0 0 64 64">
-                    <Defs>
-                        <SvgGradient id="gradOrange" x1="0" y1="0" x2="1" y2="1">
-                            <Stop offset="0%" stopColor="#F97316" />
-                            <Stop offset="100%" stopColor="#EA580C" />
-                        </SvgGradient>
-                        <SvgGradient id="gradPurple" x1="0" y1="0" x2="1" y2="1">
-                            <Stop offset="0%" stopColor="#A855F7" />
-                            <Stop offset="100%" stopColor="#6B21A8" />
-                        </SvgGradient>
-                        <SvgGradient id="gradShadow" x1="0" y1="0" x2="1" y2="1">
-                            <Stop offset="0%" stopColor="#4C1D95" />
-                            <Stop offset="100%" stopColor="#312E81" />
-                        </SvgGradient>
-                    </Defs>
-                    <Path d="M 12 40 L 32 44 L 26 54 Z" fill="url(#gradShadow)" />
-                    <Path d="M 12 40 L 52 14 L 32 44 Z" fill="url(#gradPurple)" />
-                    <Path d="M 32 44 L 52 14 L 46 54 Z" fill="url(#gradOrange)" />
-                </Svg>
-                <Text style={styles.appName}>UP Num</Text>
-                <Text style={styles.appTagline}>AI-Powered UPI Analytics</Text>
-                <View style={styles.gradientTextRow}>
-                    <Text style={[styles.gradText, { color: "#6D28D9" }]}>Track. </Text>
-                    <Text style={[styles.gradText, { color: "#A855F7" }]}>Analyze. </Text>
-                    <Text style={[styles.gradText, { color: "#EA580C" }]}>Grow.</Text>
-                </View>
+                <Image source={require('../../../assets/images/logo.png')} style={{ width: 140, height: 60 }} resizeMode="contain" />
             </View>
 
             {/* Welcome Section */}
@@ -192,8 +168,8 @@ export default function LoginForm() {
             </View>
 
             <View style={styles.socialCol}>
-                <SocialButton provider="google" title="Continue with Google" onPress={() => {}} />
-                <SocialButton provider="apple" title="Continue with Apple" onPress={() => {}} />
+                <SocialButton provider="google" title="Continue with Google" onPress={() => { }} />
+                <SocialButton provider="apple" title="Continue with Apple" onPress={() => { }} />
             </View>
 
             {/* Signup Link */}

@@ -7,6 +7,7 @@ import {
     TextInput,
     Platform,
     ActivityIndicator,
+    Image,
 } from "react-native";
 import { router } from "../../navigation/RootNavigation";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -113,23 +114,13 @@ export default function SignupForm() {
         <View style={styles.container}>
             {/* Header Section */}
             <View style={styles.headerSection}>
-                <View style={styles.titleRow}>
-                    <View style={{ flex: 1 }}>
+                <View style={styles.titleColumn}>
+                    <View style={styles.logoBox}>
+                        <Image source={require('../../../assets/images/logo.png')} style={{ width: 140, height: 60 }} resizeMode="contain" />
+                    </View>
+                    <View style={styles.headerTextWrap}>
                         <Text style={styles.headerTitle}>Create Your Account</Text>
                         <Text style={styles.headerSubtitle}>Join UP Num and start tracking your UPI insights</Text>
-                    </View>
-                    <View style={styles.logoBox}>
-                        <Svg width="40" height="40" viewBox="0 0 64 64">
-                            <Defs>
-                                <SvgGradient id="gO" x1="0" y1="0" x2="1" y2="1"><Stop offset="0%" stopColor="#F97316" /><Stop offset="100%" stopColor="#EA580C" /></SvgGradient>
-                                <SvgGradient id="gP" x1="0" y1="0" x2="1" y2="1"><Stop offset="0%" stopColor="#A855F7" /><Stop offset="100%" stopColor="#6B21A8" /></SvgGradient>
-                                <SvgGradient id="gS" x1="0" y1="0" x2="1" y2="1"><Stop offset="0%" stopColor="#4C1D95" /><Stop offset="100%" stopColor="#312E81" /></SvgGradient>
-                            </Defs>
-                            <Path d="M 12 40 L 32 44 L 26 54 Z" fill="url(#gS)" />
-                            <Path d="M 12 40 L 52 14 L 32 44 Z" fill="url(#gP)" />
-                            <Path d="M 32 44 L 52 14 L 46 54 Z" fill="url(#gO)" />
-                        </Svg>
-                        <Text style={styles.logoText}>UP Num</Text>
                     </View>
                 </View>
             </View>
@@ -351,31 +342,31 @@ const styles = StyleSheet.create({
         alignItems: "flex-start",
         marginBottom: 12,
     },
-    titleRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "flex-start",
+    titleColumn: {
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    headerTextWrap: {
+        alignItems: "center",
+        marginTop: 12,
     },
     headerTitle: {
         fontSize: 28,
         fontWeight: "800",
         color: "#0F172A",
         marginBottom: 8,
+        textAlign: "center",
     },
     headerSubtitle: {
         fontSize: 14,
         color: "#64748B",
         lineHeight: 20,
+        textAlign: "center",
     },
     logoBox: {
         alignItems: "center",
         justifyContent: "center",
-    },
-    logoText: {
-        fontSize: 10,
-        fontWeight: "800",
-        color: "#0F172A",
-        marginTop: -4,
     },
     segmentContainer: {
         flexDirection: "row",

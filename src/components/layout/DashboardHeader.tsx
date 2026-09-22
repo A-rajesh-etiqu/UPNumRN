@@ -7,6 +7,7 @@ import {
     useWindowDimensions,
     Image,
     ScrollView,
+    Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -108,7 +109,7 @@ export default function DashboardHeader({
             {/* Left Section: Title & Subtitle */}
             <View style={styles.leftSection}>
                 {(!isDesktop && isDashboard) ? (
-                    <Image source={require('../../../assets/images/logo.png')} style={{ height: 64, width: 220, resizeMode: 'contain', marginLeft: -16 }} />
+                    <Image source={Platform.OS === 'web' ? require('../../../assets/images/web-logo.png') : require('../../../assets/images/logo.png')} style={{ height: 54, width: 160, resizeMode: 'contain', marginLeft: -16 }} />
                 ) : (
                     <>
                         <Text style={[styles.titleText, { color: colors.text }]}>{title}</Text>
@@ -152,6 +153,20 @@ export default function DashboardHeader({
                         </TouchableOpacity>
                     </View>
                 )}
+
+                {/* AI Insights Button */}
+                <TouchableOpacity
+                    style={[styles.bellBtn, {
+                        backgroundColor: isDesktop ? colors.surface : "transparent",
+                        borderColor: isDesktop ? colors.border : "transparent",
+                        borderWidth: isDesktop ? 1 : 0,
+                        marginRight: 8,
+                    }]}
+                    activeOpacity={0.8}
+                    onPress={() => router.push("/tabs/dashboard/ai-insights" as any)}
+                >
+                    <Ionicons name="sparkles-outline" size={20} color="#8B5CF6" />
+                </TouchableOpacity>
 
                 {/* Notification Bell */}
                 <View style={{ position: "relative", zIndex: 20 }}>

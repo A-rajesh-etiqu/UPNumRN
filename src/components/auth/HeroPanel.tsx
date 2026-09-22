@@ -18,34 +18,8 @@ export default function HeroPanel() {
         >
             <View style={styles.logoRow}>
                 {/* 3D Arrowhead Brand Logo Wrap */}
-                <View style={styles.logoCircle}>
-                    <Svg width="26" height="26" viewBox="0 0 32 32">
-                        <Defs>
-                            <SvgGradient id="orangeGradHero" x1="0" y1="0" x2="1" y2="1">
-                                <Stop offset="0%" stopColor="#FB923C" />
-                                <Stop offset="100%" stopColor="#EA580C" />
-                            </SvgGradient>
-                            <SvgGradient id="purpleGradHero" x1="0" y1="0" x2="1" y2="1">
-                                <Stop offset="0%" stopColor="#C084FC" />
-                                <Stop offset="100%" stopColor="#6B21A8" />
-                            </SvgGradient>
-                        </Defs>
-                        {/* Shadow facet */}
-                        <Path d="M 4 20 L 16 22 L 12 28 Z" fill="#4C1D95" />
-                        {/* Left facet */}
-                        <Path d="M 4 20 L 28 6 L 16 22 Z" fill="url(#orangeGradHero)" />
-                        {/* Right facet */}
-                        <Path d="M 16 22 L 28 6 L 22 28 Z" fill="url(#purpleGradHero)" />
-                        
-                        {/* Sparkles */}
-                        <Path d="M 26 2 Q 26 4 24 4 Q 26 4 26 6 Q 26 4 28 4 Q 26 4 26 2 Z" fill="#FB923C" />
-                        <Path d="M 30 6 Q 30 7.5 28.5 7.5 Q 30 7.5 30 9 Q 30 7.5 31.5 7.5 Q 30 7.5 30 6 Z" fill="#FDBA74" />
-                    </Svg>
-                </View>
-                <View style={styles.logoTextContainer}>
-                    <Text style={styles.logoText}>UP Num</Text>
-                    <Text style={styles.logoTagline}>Track. Analyze. Grow.</Text>
-                </View>
+                <Image source={require('../../../assets/images/web-logo.png')} style={{ width: 140, height: 60 }} resizeMode="contain" />
+
             </View>
 
             {/* Headers */}
@@ -204,15 +178,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         marginBottom: 20,
     },
-    logoCircle: {
-        width: 48,
-        height: 48,
-        borderRadius: 14,
-        backgroundColor: "rgba(255, 255, 255, 0.12)",
-        justifyContent: "center",
-        alignItems: "center",
-        marginRight: 14,
-    },
+
     logoTextContainer: {
         justifyContent: "center",
     },

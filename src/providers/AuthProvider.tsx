@@ -12,6 +12,7 @@ import { useAuthStore } from "../store/auth.store";
 import {
     isTokenExpired,
 } from "../utils/jwt";
+import { useDashboardStore } from "../store/dashboard.store";
 
 export default function AuthProvider({
     children,
@@ -59,6 +60,15 @@ export default function AuthProvider({
                 accessToken,
                 refreshToken
             );
+
+            // Pre-fetch dashboard data so the splash screen stays until data is ready
+            try {
+                if (user.role !== "ADMIN") {
+                    await useDashboardStore.getState().loadDashboard(user.id, "30D");
+                }
+            } catch (err) {
+                console.warn("Failed to pre-fetch dashboard data:", err);
+            }
 
             // Preserve search params if any
             let searchStr = "";

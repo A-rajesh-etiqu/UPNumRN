@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet, ActivityIndicator, useWindowDimensions, Platform } from "react-native";
+import { View, Text, StyleSheet, ActivityIndicator, useWindowDimensions, Platform, Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop, Circle } from "react-native-svg";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -28,7 +28,7 @@ export default function Index() {
                         <Path d="M240 110 L270 110 L270 200 L240 200 Z" fill="#C7D2FE" opacity="0.6" />
                         <Path d="M290 80 L320 80 L320 200 L290 200 Z" fill="#C7D2FE" opacity="0.8" />
                         <Path d="M340 50 L370 50 L370 200 L340 200 Z" fill="#A5B4FC" opacity="0.7" />
-                        
+
                         {/* Line trend */}
                         <Path d="M 0 160 Q 60 180 120 120 T 240 100 T 400 40" fill="none" stroke="url(#chartLine)" strokeWidth="3" />
                         <Circle cx="120" cy="120" r="4" fill="#FFFFFF" stroke="#C7D2FE" strokeWidth="2" />
@@ -39,30 +39,7 @@ export default function Index() {
 
                 {/* Logo Area */}
                 <View style={styles.logoWrapper}>
-                    <Svg width="120" height="120" viewBox="0 0 64 64">
-                        <Defs>
-                            <SvgGradient id="gradOrange" x1="0" y1="0" x2="1" y2="1">
-                                <Stop offset="0%" stopColor="#F97316" />
-                                <Stop offset="100%" stopColor="#EA580C" />
-                            </SvgGradient>
-                            <SvgGradient id="gradPurple" x1="0" y1="0" x2="1" y2="1">
-                                <Stop offset="0%" stopColor="#A855F7" />
-                                <Stop offset="100%" stopColor="#6B21A8" />
-                            </SvgGradient>
-                            <SvgGradient id="gradShadow" x1="0" y1="0" x2="1" y2="1">
-                                <Stop offset="0%" stopColor="#4C1D95" />
-                                <Stop offset="100%" stopColor="#312E81" />
-                            </SvgGradient>
-                        </Defs>
-                        {/* Shadow facet */}
-                        <Path d="M 12 40 L 32 44 L 26 54 Z" fill="url(#gradShadow)" />
-                        {/* Left Purple facet */}
-                        <Path d="M 12 40 L 52 14 L 32 44 Z" fill="url(#gradPurple)" />
-                        {/* Right Orange facet */}
-                        <Path d="M 32 44 L 52 14 L 46 54 Z" fill="url(#gradOrange)" />
-                    </Svg>
-                    <Text style={styles.appName}>UP Num</Text>
-                    <Text style={styles.appTagline}>AI-Powered UPI Analytics</Text>
+                    <Image source={require('../../assets/images/logo.png')} style={{ height: 120, width: 240 }} resizeMode="contain" />
                 </View>
             </View>
 
@@ -81,7 +58,7 @@ export default function Index() {
                         />
                     </Svg>
                 </View>
-                
+
                 <View style={styles.bottomContent}>
                     {/* 4 Icons Row */}
                     <View style={styles.featuresRow}>

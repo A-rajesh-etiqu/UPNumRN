@@ -12,9 +12,11 @@ import {
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path, Circle, Rect, Line, Text as SvgText } from "react-native-svg";
-import { useAppTheme, Radius, Spacing, Shadows, Typography } from "../../../theme";
+import { useAppTheme, Spacing, Shadows, Typography } from "../../../theme";
 import { useAuthStore } from "../../../store/auth.store";
 import { useDashboardStore } from "../../../store/dashboard.store";
+import { ReportCard } from "../../../components/dashboard/ReportCard";
+import DashboardHeader from "../../../components/layout/DashboardHeader";
 import apiClient from "../../../api/apiClient";
 
 const DEFAULT_RECOMMENDATIONS = [
@@ -101,15 +103,14 @@ export default function AiInsightsBusiness() {
     ];
 
     return (
-        <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.scrollContent}>
-            {/* Header section with Filter controls */}
-            <View style={[styles.headerRow, { borderBottomColor: colors.border }, isDesktop ? styles.rowLayout : styles.columnLayout]}>
-                <View>
-                    <Text style={[styles.title, { color: colors.text }]}>AI Insights</Text>
-                    <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-                        Smart insights and recommendations to grow your business.
-                    </Text>
-                </View>
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+            <DashboardHeader 
+                title="Business AI ✨" 
+                subtitle="Smart insights and recommendations to grow your business." 
+            />
+            <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.scrollContent}>
+                {/* Header section with Filter controls */}
+                <View style={[styles.headerRow, { borderBottomColor: colors.border, justifyContent: isDesktop ? "flex-end" : "flex-start" }]}>
 
                 {/* Filter Widgets */}
                 <View style={styles.filterWidgetRow}>
@@ -151,34 +152,20 @@ export default function AiInsightsBusiness() {
             </View>
 
             {/* Stat Cards Grid */}
-            <View style={[styles.statsGrid, isDesktop ? styles.rowLayout : styles.columnLayout]}>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginBottom: 12 }}>
                 {STATS.map((stat, idx) => (
-                    <View key={idx} style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                        <View style={styles.statCardHeader}>
-                            <View style={[styles.statIconCircle, { backgroundColor: isDark ? colors.border : stat.bg }]}>
-                                <Ionicons name={stat.icon} size={18} color={stat.color} />
-                            </View>
-                            <View style={[
-                                styles.trendBadge,
-                                { backgroundColor: stat.change.startsWith("+") 
-                                    ? (isDark ? "#064e3b" : "#ECFDF5") 
-                                    : (isDark ? "#7f1d1d" : "#FEE2E2") 
-                                }
-                            ]}>
-                                <Ionicons
-                                    name={stat.change.startsWith("+") ? "trending-up" : "trending-down"}
-                                    size={10}
-                                    color={stat.change.startsWith("+") ? colors.success : colors.danger}
-                                />
-                                <Text style={[styles.trendText, { color: stat.change.startsWith("+") ? colors.success : colors.danger }]}>
-                                    {stat.change}
-                                </Text>
-                            </View>
-                        </View>
-                        <Text style={[styles.statCardValue, { color: colors.text }]} adjustsFontSizeToFit numberOfLines={1}>{stat.value}</Text>
-                        <Text style={[styles.statCardTitle, { color: colors.textSecondary }]}>{stat.title}</Text>
-                        <Text style={[styles.statCardSub, { color: colors.textSecondary }]}>{stat.period}</Text>
-                    </View>
+                    <ReportCard
+                        key={idx}
+                        title={stat.title}
+                        value={stat.value}
+                        icon={stat.icon}
+                        color={stat.color}
+                        change={stat.change}
+                        changeText=""
+                        isUp={stat.change.startsWith("+")}
+                        isDesktop={isDesktop}
+                        colors={colors}
+                    />
                 ))}
             </View>
 
@@ -381,7 +368,8 @@ export default function AiInsightsBusiness() {
                     </View>
                 </View>
             </View>
-        </ScrollView>
+            </ScrollView>
+        </View>
     );
 }
 
