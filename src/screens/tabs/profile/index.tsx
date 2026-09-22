@@ -14,6 +14,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAppTheme, Spacing, Shadows, Typography } from "../../../theme";
 import { useAuthStore } from "../../../store/auth.store";
 import apiClient from "../../../api/apiClient";
+import DashboardHeader from "../../../components/layout/DashboardHeader";
 
 export default function ProfileScreen() {
     const { colors, isDark } = useAppTheme();
@@ -64,11 +65,11 @@ export default function ProfileScreen() {
 
     return (
         <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.scrollContent}>
-            <View style={[styles.pageHeader, isDesktop && styles.pageHeaderDesktop]}>
-                <View>
-                    <Text style={[styles.pageTitle, { color: colors.text }]}>Profile Settings</Text>
-                    <Text style={[styles.pageSubtitle, { color: colors.textSecondary }]}>Manage your personal information and preferences</Text>
-                </View>
+            
+            <DashboardHeader title="Profile Settings" subtitle="Manage your personal information and preferences" />
+
+            <View style={[styles.pageHeader, isDesktop && styles.pageHeaderDesktop, { paddingTop: 16, paddingBottom: 0, borderBottomWidth: 0 }]}>
+                <View />
                 <TouchableOpacity style={[styles.saveBtnTop, { backgroundColor: colors.primary, opacity: isSaving ? 0.7 : 1 }]} onPress={handleSave} disabled={isSaving}>
                     <Ionicons name="checkmark" size={16} color="#FFF" style={{ marginRight: 6 }} />
                     <Text style={styles.saveBtnText}>{isSaving ? "Saving..." : "Save Changes"}</Text>

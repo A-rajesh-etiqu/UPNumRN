@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { router, navigationRef } from "../../navigation/RootNavigation";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import LinearGradient from "react-native-linear-gradient";
+import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop } from "react-native-svg";
 import { useAppTheme } from "../../theme";
 import { useAuthStore } from "../../store/auth.store";

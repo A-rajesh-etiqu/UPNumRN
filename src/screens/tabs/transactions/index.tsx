@@ -13,14 +13,17 @@ import {
     Modal,
     Alert,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as DocumentPicker from "expo-document-picker";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
+import * as FileSystem from "expo-file-system";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import Svg, { Path } from "react-native-svg";
 import { useAppTheme } from "../../../theme";
 import { useTransactionStore } from "../../../store/transaction.store";
 import { useAuthStore } from "../../../store/auth.store";
+import DashboardHeader from "../../../components/layout/DashboardHeader";
 import { router } from "../../../navigation/RootNavigation";
 
 // Types
@@ -141,6 +144,10 @@ export default function TransactionsScreen() {
     const [search, setSearch] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
     const [isProfileMenuVisible, setIsProfileMenuVisible] = useState(false);
+    
+    const { width } = useWindowDimensions();
+    const isDesktop = width >= 768;
+    const insets = useSafeAreaInsets();
     
     // Import Transaction State
     const [isImportMenuVisible, setIsImportMenuVisible] = useState(false);
@@ -313,7 +320,15 @@ export default function TransactionsScreen() {
                     </html>
                 `;
                 const { uri } = await Print.printToFileAsync({ html: htmlContent });
-                await Sharing.shareAsync(uri);
+                
+                // @ts-ignore
+                const pdfName = `${FileSystem.documentDirectory}TransactionsReport.pdf`;
+                await FileSystem.copyAsync({
+                    from: uri,
+                    to: pdfName
+                });
+
+                await Sharing.shareAsync(pdfName, { UTI: '.pdf', mimeType: 'application/pdf' });
             }
         } catch (error) {
             console.error("PDF generation error:", error);
@@ -330,42 +345,12 @@ export default function TransactionsScreen() {
     }
 
     return (
-        <ScrollView style={[styles.container, { backgroundColor: bgColor }]} contentContainerStyle={styles.scrollContent}>
-            
-            {/* Page Header */}
-            <View style={styles.pageHeaderRow}>
-                <View style={styles.pageHeaderLeft}>
-                    <Text style={[styles.pageTitle, { color: colors.text }]}>Transactions</Text>
-                    <Text style={styles.pageSubtitle}>Track and manage all your transactions</Text>
-                </View>
-                <View style={styles.avatarWrapper}>
-                    <TouchableOpacity onPress={() => setIsProfileMenuVisible(true)} style={styles.avatarCircle}>
-                        <Image 
-                            source={{ uri: "https://randomuser.me/api/portraits/men/32.jpg" }} 
-                            style={{ width: 44, height: 44, borderRadius: 22 }}
-                            resizeMode="cover"
-                        />
-                    </TouchableOpacity>
-                    <View style={styles.activeDot} />
-
-                    {/* Profile Dropdown */}
-                    <Modal visible={isProfileMenuVisible} transparent={true} animationType="fade">
-                        <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setIsProfileMenuVisible(false)}>
-                            <View style={[styles.profileDropdown, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                                <TouchableOpacity style={styles.dropdownItem} onPress={() => { setIsProfileMenuVisible(false); router.replace("/tabs/profile"); }}>
-                                    <Ionicons name="person-outline" size={16} color={colors.text} />
-                                    <Text style={[styles.dropdownText, { color: colors.text }]}>Edit Profile</Text>
-                                </TouchableOpacity>
-                                <View style={[styles.dropdownDivider, { backgroundColor: colors.border }]} />
-                                <TouchableOpacity style={styles.dropdownItem} onPress={() => { setIsProfileMenuVisible(false); logout(); router.replace("/auth"); }}>
-                                    <Ionicons name="log-out-outline" size={16} color="#EF4444" />
-                                    <Text style={[styles.dropdownText, { color: "#EF4444" }]}>Logout</Text>
-                                </TouchableOpacity>
-                            </View>
-                        </TouchableOpacity>
-                    </Modal>
-                </View>
-            </View>
+        <View style={{ flex: 1, backgroundColor: bgColor }}>
+            <DashboardHeader 
+                title="Transactions" 
+                subtitle="Track and manage all your transactions" 
+            />
+            <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
 
             {/* Top Filters Row */}
             <View style={styles.topFiltersRow}>
@@ -499,67 +484,95 @@ export default function TransactionsScreen() {
             </View>
 
             {/* Main Table Content */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: "100%" }} contentContainerStyle={{ flexGrow: 1 }}>
-                <View style={[styles.tableContainer, { flex: 1, backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
-                    
-                    {/* Table Header */}
-                    <View style={[styles.tableHeader, { backgroundColor: isDark ? colors.background : "#F8FAFC", borderBottomColor: isDark ? colors.border : "#F1F5F9" }]}>
-                        <Text style={[styles.thText, { flex: 2, minWidth: 200 }]}>Transaction</Text>
-                        <Text style={[styles.thText, { flex: 1.2, minWidth: 100 }]}>Type</Text>
-                        <Text style={[styles.thText, { flex: 1.5, minWidth: 140 }]}>Amount</Text>
-                        <Text style={[styles.thText, { width: 100 }]}>Status</Text>
-                    </View>
+            {isDesktop ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: "100%" }} contentContainerStyle={{ flexGrow: 1 }}>
+                    <View style={[styles.tableContainer, { flex: 1, backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                        
+                        {/* Table Header */}
+                        <View style={[styles.tableHeader, { backgroundColor: isDark ? colors.background : "#F8FAFC", borderBottomColor: isDark ? colors.border : "#F1F5F9" }]}>
+                            <Text style={[styles.thText, { flex: 2, minWidth: 200 }]}>Transaction</Text>
+                            <Text style={[styles.thText, { flex: 1.2, minWidth: 100 }]}>Type</Text>
+                            <Text style={[styles.thText, { flex: 1.5, minWidth: 140 }]}>Amount</Text>
+                            <Text style={[styles.thText, { width: 100 }]}>Status</Text>
+                        </View>
 
-                    {/* Table Rows */}
+                        {/* Table Rows */}
+                        {paginatedTransactions.map((tx, index) => (
+                            <View key={tx.id || index} style={[styles.tableRow, index !== paginatedTransactions.length - 1 && { borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : "#F1F5F9" }]}>
+                                
+                                {/* Transaction Column */}
+                                <View style={[styles.tdCol, { flex: 2, minWidth: 200, flexDirection: "row", alignItems: "center" }]}>
+                                    <View style={[styles.merchantIcon, { backgroundColor: isDark ? colors.border : "#E0E7FF" }]}>
+                                        <Text style={{ color: "#6366F1", fontWeight: "800", fontSize: 16 }}>{getInitials(tx.title || tx.category)}</Text>
+                                    </View>
+                                    <View style={{ marginLeft: 10, flex: 1 }}>
+                                        <Text style={[styles.tdMainText, { color: colors.text }]} numberOfLines={1}>{tx.title || tx.category}</Text>
+                                        <Text style={styles.tdSubText} numberOfLines={1}>{tx.upi || tx.category}</Text>
+                                    </View>
+                                </View>
+
+                                {/* Type Column */}
+                                <View style={[styles.tdCol, { flex: 1.2, minWidth: 100, justifyContent: "center" }]}>
+                                    <Text style={[styles.tdMainText, { color: colors.text, fontSize: 11 }]}>UPI Payment</Text>
+                                    <View style={{ marginTop: 2 }}>
+                                        <UpiLogo />
+                                    </View>
+                                </View>
+
+                                {/* Amount Column */}
+                                <View style={[styles.tdCol, { flex: 1.5, minWidth: 140, justifyContent: "center" }]}>
+                                    <Text style={[styles.tdMainText, { color: colors.text }]}>₹ {Math.abs(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</Text>
+                                    <Text style={styles.tdSubText}>{tx.date} • {tx.time || "12:00 PM"}</Text>
+                                </View>
+
+                                {/* Status Column */}
+                                <View style={[styles.tdCol, { width: 100, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
+                                    <View style={[
+                                        styles.statusPill,
+                                        (!tx.status || tx.status.toLowerCase() === "success" || tx.status.toLowerCase() === "successful") && { backgroundColor: isDark ? "#064e3b" : "#DCFCE7" },
+                                        tx.status?.toLowerCase() === "pending" && { backgroundColor: isDark ? "#1e3a8a" : "#E0F2FE" },
+                                        tx.status?.toLowerCase() === "failed" && { backgroundColor: isDark ? "#7f1d1d" : "#FEE2E2" },
+                                    ]}>
+                                        <Text style={[
+                                            styles.statusText,
+                                            (!tx.status || tx.status.toLowerCase() === "success" || tx.status.toLowerCase() === "successful") && { color: "#16A34A" },
+                                            tx.status?.toLowerCase() === "pending" && { color: "#0284C7" },
+                                            tx.status?.toLowerCase() === "failed" && { color: "#DC2626" },
+                                        ]}>{tx.status || "Successful"}</Text>
+                                    </View>
+                                    <Ionicons name="chevron-forward" size={16} color="#94A3B8" />
+                                </View>
+                            </View>
+                        ))}
+                    </View>
+                </ScrollView>
+            ) : (
+                <View style={{ gap: 12, marginTop: 8 }}>
                     {paginatedTransactions.map((tx, index) => (
-                        <View key={tx.id || index} style={[styles.tableRow, index !== paginatedTransactions.length - 1 && { borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : "#F1F5F9" }]}>
-                            
-                            {/* Transaction Column */}
-                            <View style={[styles.tdCol, { flex: 2, minWidth: 200, flexDirection: "row", alignItems: "center" }]}>
+                        <View key={tx.id || index} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: isDark ? colors.surface : '#FFF', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: isDark ? colors.border : '#F1F5F9' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 10 }}>
                                 <View style={[styles.merchantIcon, { backgroundColor: isDark ? colors.border : "#E0E7FF" }]}>
                                     <Text style={{ color: "#6366F1", fontWeight: "800", fontSize: 16 }}>{getInitials(tx.title || tx.category)}</Text>
                                 </View>
                                 <View style={{ marginLeft: 10, flex: 1 }}>
                                     <Text style={[styles.tdMainText, { color: colors.text }]} numberOfLines={1}>{tx.title || tx.category}</Text>
-                                    <Text style={styles.tdSubText} numberOfLines={1}>{tx.upi || tx.category}</Text>
+                                    <Text style={styles.tdSubText} numberOfLines={1}>{tx.date} • {tx.time || "12:00 PM"}</Text>
                                 </View>
                             </View>
-
-                            {/* Type Column */}
-                            <View style={[styles.tdCol, { flex: 1.2, minWidth: 100, justifyContent: "center" }]}>
-                                <Text style={[styles.tdMainText, { color: colors.text, fontSize: 11 }]}>UPI Payment</Text>
-                                <View style={{ marginTop: 2 }}>
-                                    <UpiLogo />
-                                </View>
-                            </View>
-
-                            {/* Amount Column */}
-                            <View style={[styles.tdCol, { flex: 1.5, minWidth: 140, justifyContent: "center" }]}>
+                            <View style={{ alignItems: 'flex-end' }}>
                                 <Text style={[styles.tdMainText, { color: colors.text }]}>₹ {Math.abs(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</Text>
-                                <Text style={styles.tdSubText}>{tx.date} • {tx.time || "12:00 PM"}</Text>
-                            </View>
-
-                            {/* Status Column */}
-                            <View style={[styles.tdCol, { width: 100, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
-                                <View style={[
-                                    styles.statusPill,
-                                    (!tx.status || tx.status.toLowerCase() === "success" || tx.status.toLowerCase() === "successful") && { backgroundColor: isDark ? "#064e3b" : "#DCFCE7" },
-                                    tx.status?.toLowerCase() === "pending" && { backgroundColor: isDark ? "#1e3a8a" : "#E0F2FE" },
-                                    tx.status?.toLowerCase() === "failed" && { backgroundColor: isDark ? "#7f1d1d" : "#FEE2E2" },
-                                ]}>
-                                    <Text style={[
-                                        styles.statusText,
-                                        (!tx.status || tx.status.toLowerCase() === "success" || tx.status.toLowerCase() === "successful") && { color: "#16A34A" },
-                                        tx.status?.toLowerCase() === "pending" && { color: "#0284C7" },
-                                        tx.status?.toLowerCase() === "failed" && { color: "#DC2626" },
-                                    ]}>{tx.status || "Successful"}</Text>
-                                </View>
-                                <Ionicons name="chevron-forward" size={16} color="#94A3B8" />
+                                <Text style={[
+                                    styles.statusText,
+                                    (!tx.status || tx.status.toLowerCase() === "success" || tx.status.toLowerCase() === "successful") && { color: "#16A34A" },
+                                    tx.status?.toLowerCase() === "pending" && { color: "#0284C7" },
+                                    tx.status?.toLowerCase() === "failed" && { color: "#DC2626" },
+                                    { marginTop: 4 }
+                                ]}>{tx.status || "Successful"}</Text>
                             </View>
                         </View>
                     ))}
                 </View>
-            </ScrollView>
+            )}
 
             {/* Pagination Footer */}
             <View style={styles.paginationRow}>
@@ -714,8 +727,9 @@ export default function TransactionsScreen() {
                         </View>
                     </View>
                 </View>
-            </Modal>
-        </ScrollView>
+                </Modal>
+            </ScrollView>
+        </View>
     );
 }
 
@@ -803,11 +817,14 @@ const styles = StyleSheet.create({
         justifyContent: "space-between",
         alignItems: "center",
         marginBottom: 20,
+        flexWrap: "wrap",
+        gap: 12,
     },
     leftFilters: {
         flexDirection: "row",
         alignItems: "center",
         gap: 12,
+        flexWrap: "wrap",
     },
     filterBox: {
         flexDirection: "row",

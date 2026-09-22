@@ -14,6 +14,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAppTheme, Colors, Radius, Spacing, Shadows, Typography } from "../../../theme";
 import { useAuthStore } from "../../../store/auth.store";
 import apiClient from "../../../api/apiClient";
+import DashboardHeader from "../../../components/layout/DashboardHeader";
 
 const SETTINGS_TABS = [
     { title: "General", badge: null },
@@ -202,6 +203,7 @@ export default function SettingsScreen() {
 
     return (
         <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.scrollContent}>
+            <DashboardHeader title="Settings" subtitle="Manage your account settings and preferences" />
             {/* Responsive grid for sub-menus & configuration sheet */}
             <View style={[styles.layoutWrapper, isDesktop ? styles.rowLayout : styles.columnLayout]}>
 

@@ -18,6 +18,7 @@ import { router, useLocalSearchParams } from "../../../navigation/RootNavigation
 import { LineChart, PieChart } from "react-native-gifted-charts";
 
 import DashboardLayout from "../../../components/layout/DashboardLayout";
+import DashboardHeader from "../../../components/layout/DashboardHeader";
 import { useDashboardStore } from "../../../store/dashboard.store";
 import { useAppTheme } from "../../../theme";
 import Typography from "../../../theme/typography";
@@ -214,74 +215,10 @@ export default function DashboardScreen() {
     return (
         <DashboardLayout>
             {/* Header Section */}
-            <View style={styles.headerContainer}>
-                <View style={{ flex: 1 }}>
-                    <Text style={[styles.greetingText, { color: colors.text, ...Typography.h2 }]}>Good afternoon, {userName} 👋</Text>
-                    <Text style={[styles.subGreetingText, { color: colors.textSecondary, ...Typography.body }]}>
-                        Here's your {isBusiness ? "business" : "financial"} overview
-                    </Text>
-                </View>
-                
-                <View style={styles.headerRightActions}>
-                    <View style={{ position: "relative" }}>
-                        <TouchableOpacity style={[styles.iconButton, { borderColor: colors.border }]} onPress={() => { setIsNotifMenuVisible(!isNotifMenuVisible); setIsProfileMenuVisible(false); }}>
-                            <Ionicons name="notifications-outline" size={20} color={colors.text} />
-                            {unreadCount > 0 && <View style={styles.notificationBadge}><Text style={{ color: '#FFF', fontSize: 8, fontWeight: 'bold' }}>{unreadCount}</Text></View>}
-                        </TouchableOpacity>
-
-                        <Modal visible={isNotifMenuVisible} transparent={true} animationType="fade">
-                            <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setIsNotifMenuVisible(false)}>
-                                <View style={[styles.profileDropdown, { backgroundColor: colors.surface, borderColor: colors.border, width: 300, right: 60, padding: 0 }]}>
-                                    <Text style={{ padding: 12, color: colors.text, borderBottomWidth: 1, borderBottomColor: colors.border, ...Typography.title, fontSize: 16 }}>Notifications</Text>
-                                    <ScrollView style={{ maxHeight: 300 }}>
-                                        {notifications.length === 0 ? (
-                                            <Text style={{ padding: 16, color: colors.textSecondary, textAlign: 'center', ...Typography.body }}>No notifications</Text>
-                                        ) : (
-                                            notifications.map((n, idx) => (
-                                                <TouchableOpacity 
-                                                    key={idx} 
-                                                    style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: n.is_read ? 'transparent' : colors.primary + '10' }}
-                                                    onPress={() => !n.is_read && handleReadNotification(n.id)}
-                                                >
-                                                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                                                        <Text style={{ color: colors.text, flex: 1, ...(n.is_read ? Typography.bodyMedium : Typography.bodyBold) }} numberOfLines={1}>{n.title}</Text>
-                                                        {!n.is_read && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary, marginTop: 4 }} />}
-                                                    </View>
-                                                    <Text style={{ color: colors.textSecondary, ...Typography.caption }} numberOfLines={2}>{n.message}</Text>
-                                                    <Text style={{ color: colors.textSecondary, marginTop: 4, ...Typography.caption, fontSize: 10 }}>{new Date(n.created_at).toLocaleString()}</Text>
-                                                </TouchableOpacity>
-                                            ))
-                                        )}
-                                    </ScrollView>
-                                </View>
-                            </TouchableOpacity>
-                        </Modal>
-                    </View>
-                    
-                    <View style={{ position: "relative" }}>
-                        <TouchableOpacity onPress={() => { setIsProfileMenuVisible(true); setIsNotifMenuVisible(false); }} style={[styles.avatarCircle, { backgroundColor: colors.primary }]}>
-                            <Ionicons name="person" size={20} color="#FFF" />
-                        </TouchableOpacity>
-
-                        {/* Profile Dropdown */}
-                        <Modal visible={isProfileMenuVisible} transparent={true} animationType="fade">
-                            <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setIsProfileMenuVisible(false)}>
-                                <View style={[styles.profileDropdown, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                                    <TouchableOpacity style={styles.dropdownItem} onPress={() => { setIsProfileMenuVisible(false); router.replace("/tabs/profile"); }}>
-                                        <Ionicons name="person-outline" size={16} color={colors.text} />
-                                        <Text style={[styles.dropdownText, { color: colors.text }]}>Edit Profile</Text>
-                                    </TouchableOpacity>
-                                    <View style={[styles.dropdownDivider, { backgroundColor: colors.border }]} />
-                                    <TouchableOpacity style={styles.dropdownItem} onPress={() => { setIsProfileMenuVisible(false); logout(); router.replace("/auth"); }}>
-                                        <Ionicons name="log-out-outline" size={16} color="#EF4444" />
-                                        <Text style={[styles.dropdownText, { color: "#EF4444" }]}>Logout</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </TouchableOpacity>
-                        </Modal>
-                    </View>
-                </View>
-            </View>
+            <DashboardHeader 
+                title={`Good afternoon, ${userName} 👋`} 
+                subtitle={`Here's your ${isBusiness ? "business" : "financial"} overview`} 
+            />
 
             <View style={{ marginBottom: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', zIndex: 9999, elevation: 10 }}>
                 <View style={{ position: "relative", zIndex: 100 }}>

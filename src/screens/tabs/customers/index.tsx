@@ -13,6 +13,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAppTheme, Spacing, Shadows, Typography } from "../../../theme";
 import apiClient from "../../../api/apiClient";
 import { useAuthStore } from "../../../store/auth.store";
+import DashboardHeader from "../../../components/layout/DashboardHeader";
 
 export default function CustomersScreen() {
     const { width } = useWindowDimensions();
@@ -59,8 +60,10 @@ export default function CustomersScreen() {
     }, [transactions, search]);
 
     return (
-        <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.scrollContent}>
-            
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+            <DashboardHeader title="Customers" subtitle="Manage your customers and received payments" />
+            <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+
             {/* UPI ID Header Card */}
             <View style={[styles.upiCard, { backgroundColor: colors.primary }]}>
                 <View style={styles.upiIconContainer}>
@@ -176,7 +179,8 @@ export default function CustomersScreen() {
                 )}
 
             </View>
-        </ScrollView>
+            </ScrollView>
+        </View>
     );
 }
 

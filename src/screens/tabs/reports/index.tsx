@@ -17,6 +17,7 @@ import DatePickerField from "../../../components/common/DatePickerField";
 import { LineChart, PieChart, BarChart } from "react-native-gifted-charts";
 import dayjs from "dayjs";
 import { router } from "../../../navigation/RootNavigation";
+import DashboardHeader from "../../../components/layout/DashboardHeader";
 
 export default function ReportsScreen() {
     const { user } = useAuthStore();
@@ -291,15 +292,14 @@ export default function ReportsScreen() {
     }
 
     return (
-        <ScrollView style={[styles.container, { backgroundColor: bgColor }]}>
-            {/* Header */}
-            <View style={[styles.headerRow, { flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'center' : 'flex-start' }]}>
-                <View style={{ marginBottom: isDesktop ? 0 : 16 }}>
-                    <Text style={[styles.pageTitle, { color: colors.text }]}>Reports</Text>
-                    <Text style={{ color: colors.textSecondary, marginTop: 4, fontSize: 14 }}>
-                        Get detailed insights about your spending, savings and financial habits
-                    </Text>
-                </View>
+        <View style={{ flex: 1, backgroundColor: bgColor }}>
+            <DashboardHeader 
+                title="Reports"
+                subtitle="Get detailed insights about your spending, savings and financial habits"
+            />
+            <ScrollView style={styles.container}>
+
+            <View style={[styles.headerRow, { flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'center' : 'flex-end', paddingTop: 16 }]}>
 
                 <View style={styles.headerActions}>
                     {Platform.OS === 'web' && (
@@ -512,7 +512,8 @@ export default function ReportsScreen() {
             </View>
 
             <View style={{ height: 60 }} />
-        </ScrollView>
+            </ScrollView>
+        </View>
     );
 }
 

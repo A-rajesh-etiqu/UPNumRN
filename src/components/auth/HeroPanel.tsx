@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet, useWindowDimensions, Platform, Image } from "react-native";
-import LinearGradient from "react-native-linear-gradient";
+import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import Svg, { Path, Circle, Defs, Stop, LinearGradient as SvgGradient } from "react-native-svg";
 import FeatureItem from "./FeatureItem";

@@ -8,6 +8,7 @@ import {
     Image,
     ScrollView,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import apiClient from "../../api/apiClient";
@@ -42,6 +43,7 @@ export default function DashboardHeader({
     const pathname = usePathname();
     const isHistoryPage = pathname.includes("/subscription/history");
     const { colors, isDark } = useAppTheme();
+    const insets = useSafeAreaInsets();
 
     React.useEffect(() => {
         if (user?.id) {
@@ -96,23 +98,16 @@ export default function DashboardHeader({
     };
 
     return (
-        <View style={[styles.container, { backgroundColor: colors.surface, borderBottomColor: colors.border, paddingHorizontal: isDesktop ? Spacing.xl : Spacing.md }]}>
-            {/* Left Section: Title & Subtitle or Mobile Logo */}
+        <View style={[styles.container, { 
+            backgroundColor: colors.surface, 
+            borderBottomColor: colors.border, 
+            paddingHorizontal: isDesktop ? Spacing.xl : Spacing.md,
+            paddingTop: isDesktop ? Spacing.md : Math.max(insets.top, 16)
+        }]}>
+            {/* Left Section: Title & Subtitle */}
             <View style={styles.leftSection}>
-                {!isDesktop ? (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                        <Image source={require("../../../assets/images/logo.png")} style={{ width: 28, height: 28 }} resizeMode="contain" />
-                        <View>
-                            <Text style={[styles.titleText, { color: colors.text, fontSize: 16 }]}>UP Num</Text>
-                            <Text style={[styles.subtitleText, { color: colors.textSecondary, fontSize: 10, marginTop: 0 }]}>AI-Powered UPI Analytics</Text>
-                        </View>
-                    </View>
-                ) : (
-                    <>
-                        <Text style={[styles.titleText, { color: colors.text }]}>{title}</Text>
-                        <Text style={[styles.subtitleText, { color: colors.textSecondary }]}>{subtitle}</Text>
-                    </>
-                )}
+                <Text style={[styles.titleText, { color: colors.text }]}>{title}</Text>
+                <Text style={[styles.subtitleText, { color: colors.textSecondary }]}>{subtitle}</Text>
             </View>
 
             {/* Right Section: Secure Payments Badge, Filters & Profile Card */}
@@ -216,14 +211,7 @@ export default function DashboardHeader({
                     }}
                 >
                     <View style={[styles.avatar, { backgroundColor: colors.primary, marginRight: isDesktop ? 8 : 0 }]}>
-                        {user?.profileImage ? (
-                            <Image
-                                source={{ uri: user.profileImage }}
-                                style={styles.avatarImage}
-                            />
-                        ) : (
-                            <Text style={styles.initialsText}>{getInitials()}</Text>
-                        )}
+                        <Text style={styles.initialsText}>{getInitials()}</Text>
                     </View>
                     {isDesktop && (
                         <View style={styles.profileTextCol}>
@@ -315,7 +303,7 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
-        paddingVertical: Spacing.md,
+        paddingBottom: Spacing.md,
         borderBottomWidth: 1,
         zIndex: 10,
     },

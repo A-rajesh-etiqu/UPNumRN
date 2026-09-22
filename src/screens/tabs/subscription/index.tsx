@@ -14,7 +14,8 @@ import {
 } from "react-native";
 import { router } from "../../../navigation/RootNavigation";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import LinearGradient from "react-native-linear-gradient";
+import { LinearGradient } from "expo-linear-gradient";
+import DashboardHeader from "../../../components/layout/DashboardHeader";
 import Svg, { Rect, Path, Ellipse, Circle } from "react-native-svg";
 import { useAppTheme, Spacing, Shadows } from "../../../theme";
 import { useAuthStore } from "../../../store/auth.store";
@@ -118,16 +119,14 @@ export default function SubscriptionIndexScreen() {
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
         >
+            <DashboardHeader title="Subscription" subtitle="Simple, Transparent Pricing" />
+
             {/* ── Page Header ── */}
             <View style={styles.pageHeader}>
                 <View style={[styles.headerBadge, { backgroundColor: isDark ? "#1E1433" : "#F5F3FF" }]}>
                     <Ionicons name="sparkles" size={14} color="#7C3AED" />
                     <Text style={[styles.headerBadgeText, { color: "#7C3AED" }]}>Upgrade your plan</Text>
                 </View>
-                <Text style={[styles.pageTitle, { color: colors.text }]}>Simple, Transparent{"\n"}Pricing</Text>
-                <Text style={[styles.pageSubtitle, { color: colors.textSecondary }]}>
-                    Choose the plan that fits your needs. Upgrade or cancel anytime.
-                </Text>
 
                 {/* Billing Toggle */}
                 <View style={[styles.toggleWrap, { backgroundColor: isDark ? colors.surface : "#F1F5F9" }]}>
@@ -194,7 +193,7 @@ export default function SubscriptionIndexScreen() {
                             >
                                 {/* Card top gradient strip */}
                                 <LinearGradient
-                                    colors={palette.gradient}
+                                    colors={palette.gradient as [string, string, ...string[]]}
                                     start={{ x: 0, y: 0 }}
                                     end={{ x: 1, y: 0 }}
                                     style={styles.planCardStrip}
@@ -243,7 +242,7 @@ export default function SubscriptionIndexScreen() {
                                     style={styles.selectBtnWrap}
                                 >
                                     <LinearGradient
-                                        colors={isSelected ? palette.gradient : (isDark ? ["#1E293B", "#1E293B"] : ["#F8FAFC", "#F1F5F9"])}
+                                        colors={isSelected ? (palette.gradient as [string, string, ...string[]]) : (isDark ? ["#1E293B", "#1E293B"] : ["#F8FAFC", "#F1F5F9"])}
                                         start={{ x: 0, y: 0 }}
                                         end={{ x: 1, y: 0 }}
                                         style={styles.selectBtn}
