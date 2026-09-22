@@ -39,9 +39,10 @@ export default function DashboardHeader({
     const [dropdownOpen, setDropdownOpen] = React.useState(false);
     const [notifDropdownOpen, setNotifDropdownOpen] = React.useState(false);
     const [notifications, setNotifications] = React.useState<any[]>([]);
-    
+
     const pathname = usePathname();
     const isHistoryPage = pathname.includes("/subscription/history");
+    const isDashboard = pathname === "/tabs/dashboard" || pathname === "/";
     const { colors, isDark } = useAppTheme();
     const insets = useSafeAreaInsets();
 
@@ -98,16 +99,22 @@ export default function DashboardHeader({
     };
 
     return (
-        <View style={[styles.container, { 
-            backgroundColor: colors.surface, 
-            borderBottomColor: colors.border, 
+        <View style={[styles.container, {
+            backgroundColor: colors.surface,
+            borderBottomColor: colors.border,
             paddingHorizontal: isDesktop ? Spacing.xl : Spacing.md,
             paddingTop: isDesktop ? Spacing.md : Math.max(insets.top, 16)
         }]}>
             {/* Left Section: Title & Subtitle */}
             <View style={styles.leftSection}>
-                <Text style={[styles.titleText, { color: colors.text }]}>{title}</Text>
-                <Text style={[styles.subtitleText, { color: colors.textSecondary }]}>{subtitle}</Text>
+                {(!isDesktop && isDashboard) ? (
+                    <Image source={require('../../../assets/images/logo.png')} style={{ height: 64, width: 220, resizeMode: 'contain', marginLeft: -16 }} />
+                ) : (
+                    <>
+                        <Text style={[styles.titleText, { color: colors.text }]}>{title}</Text>
+                        <Text style={[styles.subtitleText, { color: colors.textSecondary }]}>{subtitle}</Text>
+                    </>
+                )}
             </View>
 
             {/* Right Section: Secure Payments Badge, Filters & Profile Card */}
@@ -148,13 +155,13 @@ export default function DashboardHeader({
 
                 {/* Notification Bell */}
                 <View style={{ position: "relative", zIndex: 20 }}>
-                    <TouchableOpacity 
-                        style={[styles.bellBtn, { 
-                            backgroundColor: isDesktop ? colors.surface : "transparent", 
+                    <TouchableOpacity
+                        style={[styles.bellBtn, {
+                            backgroundColor: isDesktop ? colors.surface : "transparent",
                             borderColor: isDesktop ? colors.border : "transparent",
                             borderWidth: isDesktop ? 1 : 0,
                             marginRight: isDesktop ? 16 : 8,
-                        }]} 
+                        }]}
                         activeOpacity={0.8}
                         onPress={() => {
                             setNotifDropdownOpen(!notifDropdownOpen);
@@ -177,8 +184,8 @@ export default function DashboardHeader({
                                     <Text style={{ padding: 16, color: colors.textSecondary, textAlign: 'center' }}>No notifications</Text>
                                 ) : (
                                     notifications.map((n, idx) => (
-                                        <TouchableOpacity 
-                                            key={idx} 
+                                        <TouchableOpacity
+                                            key={idx}
                                             style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: n.is_read ? 'transparent' : colors.primary + '10' }}
                                             onPress={() => !n.is_read && handleReadNotification(n.id)}
                                         >
@@ -199,7 +206,7 @@ export default function DashboardHeader({
                 <TouchableOpacity
                     activeOpacity={0.8}
                     style={[
-                        isDesktop ? styles.profileBox : styles.mobileAvatarWrapper, 
+                        isDesktop ? styles.profileBox : styles.mobileAvatarWrapper,
                         isDesktop && { backgroundColor: colors.surface, borderColor: colors.border }
                     ]}
                     onPress={() => {

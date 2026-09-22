@@ -17,13 +17,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as DocumentPicker from "expo-document-picker";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
+import { Asset } from "expo-asset";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import Svg, { Path } from "react-native-svg";
 import { useAppTheme } from "../../../theme";
 import { useTransactionStore } from "../../../store/transaction.store";
 import { useAuthStore } from "../../../store/auth.store";
 import DashboardHeader from "../../../components/layout/DashboardHeader";
+import { ReportCard } from "../../../components/dashboard/ReportCard";
 import { router } from "../../../navigation/RootNavigation";
 
 // Types
@@ -282,20 +284,47 @@ export default function TransactionsScreen() {
                 
                 doc.save('transactions.pdf');
             } else {
+                let logoDataUri = "";
+                try {
+                    const logoAsset = Asset.fromModule(require('../../../../assets/images/logo.png'));
+                    await logoAsset.downloadAsync();
+                    if (logoAsset.localUri || logoAsset.uri) {
+                        const base64 = await FileSystem.readAsStringAsync(logoAsset.localUri || logoAsset.uri, {
+                            encoding: FileSystem.EncodingType.Base64
+                        });
+                        logoDataUri = `data:image/png;base64,${base64}`;
+                    }
+                } catch (e) {
+                    console.log("Could not load logo for PDF", e);
+                }
+
                 const htmlContent = `
                     <html>
                         <head>
                             <style>
-                                body { font-family: 'Helvetica'; padding: 20px; }
-                                h1 { text-align: center; color: #333; }
-                                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                                body { font-family: 'Helvetica'; padding: 20px; position: relative; }
+                                h1 { text-align: center; color: #333; margin-top: 10px; }
+                                table { width: 100%; border-collapse: collapse; margin-top: 20px; z-index: 2; position: relative; }
                                 th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
                                 th { background-color: #f8f9fa; color: #333; }
                                 tr:nth-child(even) { background-color: #f9f9f9; }
                                 .amount { font-weight: bold; }
+                                .header-logo { display: block; margin: 0 auto; max-width: 150px; }
+                                .watermark {
+                                    position: fixed;
+                                    top: 50%;
+                                    left: 50%;
+                                    transform: translate(-50%, -50%);
+                                    opacity: 0.08;
+                                    z-index: 0;
+                                    width: 400px;
+                                    pointer-events: none;
+                                }
                             </style>
                         </head>
                         <body>
+                            ${logoDataUri ? `<img src="${logoDataUri}" class="watermark" />` : ''}
+                            ${logoDataUri ? `<img src="${logoDataUri}" class="header-logo" />` : ''}
                             <h1>Transactions Report</h1>
                             <p>Total Transactions: ${filteredTransactions.length}</p>
                             <table>
@@ -319,16 +348,17 @@ export default function TransactionsScreen() {
                         </body>
                     </html>
                 `;
-                const { uri } = await Print.printToFileAsync({ html: htmlContent });
+                const { base64 } = await Print.printToFileAsync({ html: htmlContent, base64: true });
                 
-                // @ts-ignore
                 const pdfName = `${FileSystem.documentDirectory}TransactionsReport.pdf`;
-                await FileSystem.copyAsync({
-                    from: uri,
-                    to: pdfName
-                });
-
-                await Sharing.shareAsync(pdfName, { UTI: '.pdf', mimeType: 'application/pdf' });
+                if (base64) {
+                    await FileSystem.writeAsStringAsync(pdfName, base64, {
+                        encoding: FileSystem.EncodingType.Base64
+                    });
+                    await Sharing.shareAsync(pdfName, { UTI: '.pdf', mimeType: 'application/pdf' });
+                } else {
+                    Alert.alert("Error", "Failed to generate PDF data");
+                }
             }
         } catch (error) {
             console.error("PDF generation error:", error);
@@ -353,28 +383,15 @@ export default function TransactionsScreen() {
             <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
 
             {/* Top Filters Row */}
-            <View style={styles.topFiltersRow}>
-                <View style={styles.leftFilters}>
-                    <TouchableOpacity style={[styles.filterBox, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]} activeOpacity={0.8}>
-                        <Ionicons name="calendar-outline" size={16} color="#64748B" style={{ marginRight: 8 }} />
-                        <Text style={[styles.filterText, { color: isDark ? colors.text : "#1E293B" }]}>01 May, 2024 - 31 May, 2024</Text>
-                        <Ionicons name="chevron-down" size={14} color="#64748B" style={{ marginLeft: 8 }} />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={[styles.filterBox, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]} activeOpacity={0.8}>
-                        <Ionicons name="funnel-outline" size={16} color="#64748B" style={{ marginRight: 8 }} />
-                        <Text style={[styles.filterText, { color: isDark ? colors.text : "#1E293B" }]}>Filter</Text>
-                        <Ionicons name="chevron-down" size={14} color="#64748B" style={{ marginLeft: 8 }} />
-                    </TouchableOpacity>
-                </View>
-
+            <View style={[styles.topFiltersRow, { justifyContent: 'flex-end' }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                     <TouchableOpacity 
-                        style={[styles.downloadBtn, { backgroundColor: colors.primary, borderColor: colors.primary, paddingHorizontal: 12 }]} 
+                        style={[styles.downloadBtn, { backgroundColor: colors.primary, borderColor: colors.primary, paddingHorizontal: 12, width: 'auto', flexDirection: 'row', gap: 6 }]} 
                         activeOpacity={0.8}
                         onPress={() => setIsImportMenuVisible(true)}
                     >
-                        <Ionicons name="add-outline" size={20} color="#FFFFFF" />
+                        <Ionicons name="add-outline" size={18} color="#FFFFFF" />
+                        <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>Import</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity 
@@ -388,61 +405,12 @@ export default function TransactionsScreen() {
             </View>
 
             {/* KPIs Row */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.kpiRow} style={{ flexGrow: 0, marginBottom: 20 }}>
-                {/* Total Transactions */}
-                <View style={[styles.kpiCard, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
-                    <View style={[styles.iconCircle, { backgroundColor: "#F5F3FF" }]}>
-                        <Ionicons name="swap-horizontal" size={18} color="#8B5CF6" />
-                    </View>
-                    <Text style={styles.kpiTitle}>Total Transactions</Text>
-                    <Text style={[styles.kpiValue, { color: colors.text }]}>{totalTxCount}</Text>
-                    <View style={styles.kpiTrendRow}>
-                        <Ionicons name="arrow-up" size={12} color="#22C55E" />
-                        <Text style={styles.kpiTrendGreen}>12.4%</Text>
-                        <Text style={styles.kpiTrendSub}> vs Apr 01 - Apr 30</Text>
-                    </View>
-                </View>
-
-                {/* Successful */}
-                <View style={[styles.kpiCard, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
-                    <View style={[styles.iconCircle, { backgroundColor: "#DCFCE7" }]}>
-                        <Ionicons name="checkmark-circle-outline" size={18} color="#22C55E" />
-                    </View>
-                    <Text style={styles.kpiTitle}>Successful</Text>
-                    <Text style={[styles.kpiValue, { color: colors.text }]}>{successCount}</Text>
-                    <View style={styles.kpiTrendRow}>
-                        <Ionicons name="arrow-up" size={12} color="#22C55E" />
-                        <Text style={styles.kpiTrendGreen}>94.6%</Text>
-                    </View>
-                </View>
-
-                {/* Failed */}
-                <View style={[styles.kpiCard, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
-                    <View style={[styles.iconCircle, { backgroundColor: "#FEF2F2", position: 'relative' }]}>
-                        <Ionicons name="close-circle-outline" size={18} color="#EF4444" />
-                        <View style={{position: 'absolute', top: 0, right: 0, width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444', borderWidth: 1, borderColor: '#FEF2F2'}} />
-                    </View>
-                    <Text style={styles.kpiTitle}>Failed</Text>
-                    <Text style={[styles.kpiValue, { color: colors.text }]}>{failedCount}</Text>
-                    <View style={styles.kpiTrendRow}>
-                        <Ionicons name="arrow-down" size={12} color="#EF4444" />
-                        <Text style={styles.kpiTrendRed}>3.8%</Text>
-                    </View>
-                </View>
-
-                {/* Pending */}
-                <View style={[styles.kpiCard, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
-                    <View style={[styles.iconCircle, { backgroundColor: "#F0F9FF" }]}>
-                        <Ionicons name="time-outline" size={18} color="#3B82F6" />
-                    </View>
-                    <Text style={styles.kpiTitle}>Pending</Text>
-                    <Text style={[styles.kpiValue, { color: colors.text }]}>{pendingCount}</Text>
-                    <View style={styles.kpiTrendRow}>
-                        <Ionicons name="arrow-up" size={12} color="#3B82F6" />
-                        <Text style={styles.kpiTrendBlue}>1.6%</Text>
-                    </View>
-                </View>
-            </ScrollView>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginBottom: 4 }}>
+                <ReportCard title="Total Transactions" value={totalTxCount.toString()} icon="swap-horizontal" color="#8B5CF6" change="12.4%" isUp={true} isDesktop={isDesktop} colors={colors} changeText="vs Apr 01 - Apr 30" />
+                <ReportCard title="Successful" value={successCount.toString()} icon="checkmark-circle-outline" color="#22C55E" change="94.6%" isUp={true} isDesktop={isDesktop} colors={colors} />
+                <ReportCard title="Failed" value={failedCount.toString()} icon="close-circle-outline" color="#EF4444" change="3.8%" isUp={false} isDesktop={isDesktop} colors={colors} />
+                <ReportCard title="Pending" value={pendingCount.toString()} icon="time-outline" color="#3B82F6" change="1.6%" isUp={true} isDesktop={isDesktop} colors={colors} />
+            </View>
 
             {/* Tabs Row */}
             <View style={styles.tabsWrapper}>

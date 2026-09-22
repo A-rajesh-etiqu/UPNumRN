@@ -233,20 +233,20 @@ export default function ReportsScreen() {
     // --- Render Helpers ---
 
     const renderStatCard = (title: string, value: string, icon: any, color: string, change: string, isUp: boolean) => (
-        <View style={[styles.statCard, { backgroundColor: cardBg, borderColor: colors.border, width: isDesktop ? '23%' : '48%', marginBottom: isDesktop ? 0 : 16 }]}>
+        <View style={[styles.statCard, { backgroundColor: cardBg, borderColor: colors.border, width: isDesktop ? '23%' : '48%', marginBottom: isDesktop ? 0 : 16, padding: isDesktop ? 20 : 12 }]}>
             <View style={styles.statHeader}>
                 <View style={[styles.statIconWrap, { backgroundColor: color + "15" }]}>
                     <Ionicons name={icon} size={20} color={color} />
                 </View>
-                <View>
-                    <Text style={[styles.statTitle, { color: colors.textSecondary }]}>{title}</Text>
-                    <Text style={[styles.statValue, { color: colors.text }]}>{value}</Text>
+                <View style={{ flex: 1 }}>
+                    <Text style={[styles.statTitle, { color: colors.textSecondary }]} numberOfLines={1} adjustsFontSizeToFit>{title}</Text>
+                    <Text style={[styles.statValue, { color: colors.text, fontSize: isDesktop ? 22 : 18 }]} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
                 </View>
             </View>
             <View style={styles.statFooter}>
                 <Ionicons name={isUp ? "caret-up" : "caret-down"} size={12} color={isUp ? colorIncome : colors.danger} />
-                <Text style={[styles.statChange, { color: isUp ? colorIncome : colors.danger }]}>
-                    {change} <Text style={{ color: colors.textSecondary }}>vs. last month</Text>
+                <Text style={[styles.statChange, { color: isUp ? colorIncome : colors.danger }]} numberOfLines={1} adjustsFontSizeToFit>
+                    {change} <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 12 : 10 }}>vs. month</Text>
                 </Text>
             </View>
         </View>
@@ -329,7 +329,7 @@ export default function ReportsScreen() {
             <View style={[styles.flexRow, { flexDirection: isDesktop ? 'row' : 'column', gap: 20 }]}>
                 {/* Trend Chart */}
                 <View style={[styles.card, { flex: isDesktop ? 2 : 1, backgroundColor: cardBg, borderColor: colors.border, overflow: 'hidden' }]}>
-                    <View style={styles.cardHeader}>
+                    <View style={[styles.cardHeader, { flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'center' : 'flex-start', gap: 8 }]}>
                         <Text style={[styles.cardTitle, { color: colors.text }]}>Income vs Spending Trend</Text>
                         <View style={styles.legendWrap}>
                             <View style={styles.legendItem}>
@@ -455,21 +455,25 @@ export default function ReportsScreen() {
                         <Text style={[styles.th, { color: colors.textSecondary, flex: 1.5 }]}>Category</Text>
                         <Text style={[styles.th, { color: colors.textSecondary, flex: 1, textAlign: 'right' }]}>Amount</Text>
                     </View>
-                    {recentTx.map((tx, index) => (
-                        <View key={tx.id} style={[styles.tr, { borderBottomColor: colors.border, borderBottomWidth: index === recentTx.length - 1 ? 0 : 1 }]}>
-                            <View style={{ flex: 1.5, flexDirection: 'row', alignItems: 'center' }}>
-                                <View style={[styles.txTinyIcon, { backgroundColor: tx.type === 'income' ? colorIncome + "15" : colors.danger + "15" }]}>
-                                    <Ionicons name={tx.type === 'income' ? "arrow-down" : "arrow-up"} size={12} color={tx.type === 'income' ? colorIncome : colors.danger} />
+                    {recentTx.map((tx, index) => {
+                        const dateStr = tx.date || (tx as any).date_time || "";
+                        const displayDate = dayjs(dateStr).isValid() && !dateStr.includes("May,") ? dayjs(dateStr).format("DD MMM YYYY") : dateStr;
+                        return (
+                            <View key={tx.id || index.toString()} style={[styles.tr, { borderBottomColor: colors.border, borderBottomWidth: index === recentTx.length - 1 ? 0 : 1 }]}>
+                                <View style={{ flex: 1.5, flexDirection: 'row', alignItems: 'center', paddingRight: 4 }}>
+                                    <View style={[styles.txTinyIcon, { backgroundColor: tx.type === 'income' ? colorIncome + "15" : colors.danger + "15" }]}>
+                                        <Ionicons name={tx.type === 'income' ? "arrow-down" : "arrow-up"} size={12} color={tx.type === 'income' ? colorIncome : colors.danger} />
+                                    </View>
+                                    <Text style={[styles.td, { color: colors.textSecondary, flex: 1 }]} numberOfLines={1}>{displayDate}</Text>
                                 </View>
-                                <Text style={[styles.td, { color: colors.textSecondary }]}>{dayjs((tx as any).date_time || tx.date).format("DD MMM YYYY")}</Text>
+                                <Text style={[styles.td, { color: colors.text, flex: 2, fontWeight: '500', paddingRight: 4 }]} numberOfLines={1}>{tx.title || tx.category || "Transaction"}</Text>
+                                <Text style={[styles.td, { color: colors.textSecondary, flex: 1.5, paddingRight: 4 }]} numberOfLines={1}>{tx.category || "General"}</Text>
+                                <Text style={[styles.td, { flex: 1, textAlign: 'right', fontWeight: '600', color: tx.type === 'income' ? colorIncome : colors.danger }]} numberOfLines={1} adjustsFontSizeToFit>
+                                    {tx.type === 'income' ? "+" : "-"}₹{Math.abs(tx.amount || 0).toLocaleString()}
+                                </Text>
                             </View>
-                            <Text style={[styles.td, { color: colors.text, flex: 2, fontWeight: '500' }]} numberOfLines={1}>{tx.title || "Transaction"}</Text>
-                            <Text style={[styles.td, { color: colors.textSecondary, flex: 1.5 }]} numberOfLines={1}>{tx.category || "General"}</Text>
-                            <Text style={[styles.td, { flex: 1, textAlign: 'right', fontWeight: '600', color: tx.type === 'income' ? colorIncome : colors.danger }]}>
-                                {tx.type === 'income' ? "+" : "-"}₹{tx.amount.toLocaleString()}
-                            </Text>
-                        </View>
-                    ))}
+                        );
+                    })}
                 </View>
 
                 {/* Monthly Comparison */}

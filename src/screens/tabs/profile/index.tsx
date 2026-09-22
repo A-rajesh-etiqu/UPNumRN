@@ -64,9 +64,9 @@ export default function ProfileScreen() {
     };
 
     return (
-        <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.scrollContent}>
-            
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
             <DashboardHeader title="Profile Settings" subtitle="Manage your personal information and preferences" />
+            <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
 
             <View style={[styles.pageHeader, isDesktop && styles.pageHeaderDesktop, { paddingTop: 16, paddingBottom: 0, borderBottomWidth: 0 }]}>
                 <View />
@@ -178,7 +178,8 @@ export default function ProfileScreen() {
                 </View>
 
             </View>
-        </ScrollView>
+            </ScrollView>
+        </View>
     );
 }
 

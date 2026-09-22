@@ -114,12 +114,13 @@ export default function SubscriptionIndexScreen() {
     );
 
     return (
-        <ScrollView
-            style={[styles.container, { backgroundColor: colors.background }]}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-        >
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
             <DashboardHeader title="Subscription" subtitle="Simple, Transparent Pricing" />
+            <ScrollView
+                style={styles.container}
+                contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
+            >
 
             {/* ── Page Header ── */}
             <View style={styles.pageHeader}>
@@ -432,7 +433,8 @@ export default function SubscriptionIndexScreen() {
                     </TouchableOpacity>
                 ))}
             </View>
-        </ScrollView>
+            </ScrollView>
+        </View>
     );
 }
 

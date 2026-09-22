@@ -15,6 +15,7 @@ import { useAppTheme, Colors, Radius, Spacing, Shadows, Typography } from "../..
 import { useAuthStore } from "../../../store/auth.store";
 import apiClient from "../../../api/apiClient";
 import DashboardHeader from "../../../components/layout/DashboardHeader";
+import { router } from "../../../navigation/RootNavigation";
 
 const SETTINGS_TABS = [
     { title: "General", badge: null },
@@ -202,8 +203,9 @@ export default function SettingsScreen() {
     );
 
     return (
-        <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.scrollContent}>
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
             <DashboardHeader title="Settings" subtitle="Manage your account settings and preferences" />
+            <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
             {/* Responsive grid for sub-menus & configuration sheet */}
             <View style={[styles.layoutWrapper, isDesktop ? styles.rowLayout : styles.columnLayout]}>
 
@@ -764,7 +766,11 @@ export default function SettingsScreen() {
                                         <Text style={{ fontSize: 13, fontWeight: "600", color: colors.text }}>15 Oct 2026</Text>
                                     </View>
                                     
-                                    <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary, width: "100%", alignItems: "center" }]} activeOpacity={0.8}>
+                                    <TouchableOpacity 
+                                        style={[styles.saveBtn, { backgroundColor: colors.primary, width: "100%", alignItems: "center" }]} 
+                                        activeOpacity={0.8}
+                                        onPress={() => router.push("/tabs/subscription")}
+                                    >
                                         <Text style={styles.saveBtnText}>Manage Subscription</Text>
                                     </TouchableOpacity>
                                 </View>
@@ -797,7 +803,7 @@ export default function SettingsScreen() {
                             <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                                     <Text style={[styles.cardHeaderTitle, { color: colors.text, fontSize: 14, marginBottom: 0 }]}>Billing History</Text>
-                                    <TouchableOpacity activeOpacity={0.7}>
+                                    <TouchableOpacity activeOpacity={0.7} onPress={() => router.push("/tabs/subscription/history")}>
                                         <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>View All</Text>
                                     </TouchableOpacity>
                                 </View>
@@ -943,7 +949,8 @@ export default function SettingsScreen() {
                     <Text style={[styles.appVersionText, { color: colors.textSecondary }]}>App Version 1.0.0</Text>
                 </View>
             </View>
-        </ScrollView>
+            </ScrollView>
+        </View>
     );
 }
 

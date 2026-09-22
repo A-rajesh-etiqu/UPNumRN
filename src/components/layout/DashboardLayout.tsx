@@ -1,12 +1,12 @@
 import React from "react";
 import {
-    SafeAreaView,
     ScrollView,
     StyleSheet,
     RefreshControl,
     View,
     useWindowDimensions
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
     useAppTheme,
@@ -26,12 +26,20 @@ export default function DashboardLayout({
     onRefresh,
 }: Props) {
     const { colors } = useAppTheme();
+    const { width } = useWindowDimensions();
+    const isDesktop = width >= 900;
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
-            <SafeAreaView style={styles.mainContent}>
+            <SafeAreaView style={styles.mainContent} edges={['left', 'right']}>
                 <ScrollView
-                    contentContainerStyle={styles.content}
+                    contentContainerStyle={[
+                        styles.content,
+                        { 
+                            paddingTop: isDesktop ? Spacing.lg : Spacing.sm,
+                            paddingBottom: isDesktop ? 60 : 24
+                        }
+                    ]}
                     showsVerticalScrollIndicator={false}
                     refreshControl={
                         onRefresh ? (
@@ -58,6 +66,5 @@ const styles = StyleSheet.create({
     },
     content: {
         padding: Spacing.lg,
-        paddingBottom: 120,
     },
 });

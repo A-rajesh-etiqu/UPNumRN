@@ -19,6 +19,7 @@ import { LineChart, PieChart } from "react-native-gifted-charts";
 
 import DashboardLayout from "../../../components/layout/DashboardLayout";
 import DashboardHeader from "../../../components/layout/DashboardHeader";
+import { ReportCard } from "../../../components/dashboard/ReportCard";
 import { useDashboardStore } from "../../../store/dashboard.store";
 import { useAppTheme } from "../../../theme";
 import Typography from "../../../theme/typography";
@@ -38,7 +39,7 @@ const calculateNiceYAxis = (data: any[], data2?: any[]) => {
     const stepExponent = Math.floor(Math.log10(rawStep));
     const stepPower = Math.pow(10, stepExponent);
     const stepFraction = rawStep / stepPower;
-    
+
     let niceStepFraction;
     if (stepFraction <= 1) niceStepFraction = 1;
     else if (stepFraction <= 2) niceStepFraction = 2;
@@ -80,6 +81,8 @@ const SectionHeader = ({ title, icon }: any) => {
     );
 };
 
+
+
 export default function DashboardScreen() {
     const { width } = useWindowDimensions();
     const isDesktop = width >= 1024;
@@ -102,7 +105,7 @@ export default function DashboardScreen() {
     }, [user?.mobile]);
     const [isSyncing, setIsSyncing] = useState(false);
     const params = useLocalSearchParams();
-    
+
     // Determine user type
     const isBusiness = user?.userType === "BUSINESS";
 
@@ -141,7 +144,7 @@ export default function DashboardScreen() {
         setIsSyncing(true);
         try {
             const requestUserId = user?.id || "user-1";
-            const redirectUrl = Platform.OS === 'web' 
+            const redirectUrl = Platform.OS === 'web'
                 ? ((globalThis as any).window?.location?.origin || '') + '/tabs/dashboard'
                 : 'upnumrn://tabs/dashboard';
 
@@ -213,100 +216,108 @@ export default function DashboardScreen() {
     const userName = user?.firstName || "Testuser";
 
     return (
-        <DashboardLayout>
-            {/* Header Section */}
-            <DashboardHeader 
-                title={`Good afternoon, ${userName} 👋`} 
-                subtitle={`Here's your ${isBusiness ? "business" : "financial"} overview`} 
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+            <DashboardHeader
+                title={`Good afternoon, ${userName} 👋`}
+                subtitle={`Here's your ${isBusiness ? "business" : "financial"} overview`}
             />
+            <DashboardLayout>
 
-            <View style={{ marginBottom: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', zIndex: 9999, elevation: 10 }}>
-                <View style={{ position: "relative", zIndex: 100 }}>
-                    <TouchableOpacity 
-                        style={[styles.monthFilter, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                        onPress={() => setIsFilterMenuVisible(!isFilterMenuVisible)}
-                    >
-                        <Text style={[styles.monthFilterText, { color: colors.text, ...Typography.bodyBold, fontSize: 13 }]}>{filterPeriod}</Text>
-                        <Ionicons name="chevron-down" size={16} color={colors.textSecondary} />
+                {!isDesktop && (
+                    <View style={{ marginBottom: 24, marginTop: 2 }}>
+                        <Text style={{ color: colors.text, fontSize: 24, fontWeight: '800' }}>Good afternoon, {userName} 👋</Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 14, marginTop: 4 }}>Here's your {isBusiness ? "business" : "financial"} overview</Text>
+                    </View>
+                )}
+
+                <View style={{ marginBottom: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', zIndex: 9999, elevation: 10 }}>
+                    <View style={{ position: "relative", zIndex: 100 }}>
+                        <TouchableOpacity
+                            style={[styles.monthFilter, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                            onPress={() => setIsFilterMenuVisible(!isFilterMenuVisible)}
+                        >
+                            <Text style={[styles.monthFilterText, { color: colors.text, ...Typography.bodyBold, fontSize: 13 }]}>{filterPeriod}</Text>
+                            <Ionicons name="chevron-down" size={16} color={colors.textSecondary} />
+                        </TouchableOpacity>
+
+                        {/* Filter Dropdown */}
+                        {isFilterMenuVisible && (
+                            <View style={{ position: "absolute", top: 40, left: 0, width: 160, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 12, padding: 8, zIndex: 1000, ...Platform.select({ web: { boxShadow: '0 4px 12px rgba(0,0,0,0.1)' } as any, default: { elevation: 5, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } } }) }}>
+                                {["This Week", "This Month", "Last Month", "This Year", "All Time"].map((period) => (
+                                    <TouchableOpacity
+                                        key={period}
+                                        style={styles.dropdownItem}
+                                        onPress={() => {
+                                            setFilterPeriod(period);
+                                            setIsFilterMenuVisible(false);
+                                        }}
+                                    >
+                                        <Text style={[styles.dropdownText, { color: filterPeriod === period ? colors.primary : colors.text, ...(filterPeriod === period ? Typography.bodyBold : Typography.bodyMedium) }]}>{period}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        )}
+                    </View>
+
+                    <TouchableOpacity style={[styles.syncBtn, { backgroundColor: colors.primary }]} onPress={() => setIsSyncModalVisible(true)}>
+                        <Text style={[styles.syncBtnText, { ...Typography.button, fontSize: 13, fontWeight: "600" }]}>Sync Data</Text>
+                        <Ionicons name="refresh-outline" size={14} color="#FFF" />
                     </TouchableOpacity>
-
-                    {/* Filter Dropdown */}
-                    {isFilterMenuVisible && (
-                        <View style={{ position: "absolute", top: 40, left: 0, width: 160, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 12, padding: 8, zIndex: 1000, ...Platform.select({ web: { boxShadow: '0 4px 12px rgba(0,0,0,0.1)' } as any, default: { elevation: 5, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } } }) }}>
-                            {["This Week", "This Month", "Last Month", "This Year", "All Time"].map((period) => (
-                                <TouchableOpacity 
-                                    key={period}
-                                    style={styles.dropdownItem} 
-                                    onPress={() => { 
-                                        setFilterPeriod(period); 
-                                        setIsFilterMenuVisible(false); 
-                                    }}
-                                >
-                                    <Text style={[styles.dropdownText, { color: filterPeriod === period ? colors.primary : colors.text, ...(filterPeriod === period ? Typography.bodyBold : Typography.bodyMedium) }]}>{period}</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-                    )}
                 </View>
 
-                <TouchableOpacity style={[styles.syncBtn, { backgroundColor: colors.primary }]} onPress={() => setIsSyncModalVisible(true)}>
-                    <Text style={[styles.syncBtnText, { ...Typography.button, fontSize: 13, fontWeight: "600" }]}>Sync Data</Text>
-                    <Ionicons name="refresh-outline" size={14} color="#FFF" />
-                </TouchableOpacity>
-            </View>
+                {/* Conditionally Render Dashboards */}
+                {isBusiness ? (
+                    <BusinessDashboard data={data} recentTransactions={data?.recentTransactions || []} />
+                ) : (
+                    <PersonalDashboard data={data} recentTransactions={data?.recentTransactions || []} />
+                )}
 
-            {/* Conditionally Render Dashboards */}
-            {isBusiness ? (
-                <BusinessDashboard data={data} recentTransactions={data?.recentTransactions || []} />
-            ) : (
-                <PersonalDashboard data={data} recentTransactions={data?.recentTransactions || []} />
-            )}
+                {/* Sync Modal */}
+                <Modal
+                    visible={isSyncModalVisible}
+                    transparent={true}
+                    animationType="fade"
+                >
+                    <View style={styles.modalOverlay}>
+                        <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+                            <Text style={[styles.modalTitle, { color: colors.text }]}>Sync UPI History</Text>
+                            <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
+                                Enter your phone number registered with your bank to fetch your transaction history via Account Aggregator.
+                            </Text>
 
-            {/* Sync Modal */}
-            <Modal
-                visible={isSyncModalVisible}
-                transparent={true}
-                animationType="fade"
-            >
-                <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-                        <Text style={[styles.modalTitle, { color: colors.text }]}>Sync UPI History</Text>
-                        <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
-                            Enter your phone number registered with your bank to fetch your transaction history via Account Aggregator.
-                        </Text>
+                            <TextInput
+                                style={[styles.input, { borderColor: colors.border, color: colors.text }]}
+                                placeholder="Enter phone number"
+                                placeholderTextColor={colors.textSecondary}
+                                keyboardType="phone-pad"
+                                value={phoneNumber}
+                                onChangeText={setPhoneNumber}
+                            />
 
-                        <TextInput
-                            style={[styles.input, { borderColor: colors.border, color: colors.text }]}
-                            placeholder="Enter phone number"
-                            placeholderTextColor={colors.textSecondary}
-                            keyboardType="phone-pad"
-                            value={phoneNumber}
-                            onChangeText={setPhoneNumber}
-                        />
-
-                        <View style={styles.modalActions}>
-                            <TouchableOpacity
-                                style={[styles.modalBtn, { backgroundColor: "transparent" }]}
-                                onPress={() => setIsSyncModalVisible(false)}
-                            >
-                                <Text style={{ color: colors.textSecondary }}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
-                                onPress={handleSyncSubmit}
-                                disabled={isSyncing}
-                            >
-                                {isSyncing ? (
-                                    <ActivityIndicator color="#fff" size="small" />
-                                ) : (
-                                    <Text style={{ color: "#fff", fontWeight: "bold" }}>Continue to OTP</Text>
-                                )}
-                            </TouchableOpacity>
+                            <View style={styles.modalActions}>
+                                <TouchableOpacity
+                                    style={[styles.modalBtn, { backgroundColor: "transparent" }]}
+                                    onPress={() => setIsSyncModalVisible(false)}
+                                >
+                                    <Text style={{ color: colors.textSecondary }}>Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+                                    onPress={handleSyncSubmit}
+                                    disabled={isSyncing}
+                                >
+                                    {isSyncing ? (
+                                        <ActivityIndicator color="#fff" size="small" />
+                                    ) : (
+                                        <Text style={{ color: "#fff", fontWeight: "bold" }}>Continue to OTP</Text>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
                         </View>
                     </View>
-                </View>
-            </Modal>
-        </DashboardLayout>
+                </Modal>
+            </DashboardLayout>
+        </View>
     );
 }
 
@@ -344,7 +355,7 @@ function PersonalDashboard({ data, recentTransactions }: { data: any, recentTran
     const pieData = data?.pieData?.length ? data.pieData : [{ value: 100, color: '#E2E8F0' }];
 
     const topCategories = data?.topCategories || [];
-    
+
     // Add missing styles inline
     const localStyles = {
         iconCircle: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center' as const, alignItems: 'center' as const },
@@ -356,78 +367,21 @@ function PersonalDashboard({ data, recentTransactions }: { data: any, recentTran
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
             {/* KPI Grid */}
             <View style={[styles.kpiGrid, isDesktop && { flexWrap: "nowrap", gap: 16 }]}>
-                {/* Income */}
-                <View style={[styles.kpiCard, isDesktop && { width: "23%", marginBottom: 0 }]}>
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <View style={[localStyles.iconCircle, { backgroundColor: "#DCFCE7" }]}>
-                            <Ionicons name="arrow-down-outline" size={20} color="#16A34A" />
-                        </View>
-                        <View style={{ marginLeft: 12, flex: 1 }}>
-                            <Text style={[styles.kpiLabel, { color: colors.textSecondary, ...Typography.bodyMedium }]}>Income</Text>
-                            <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.kpiValue, { color: colors.text, fontSize: 20 }]}>₹{income.toLocaleString('en-IN')}</Text>
-                        </View>
-                    </View>
-                    <Text style={[styles.kpiTrendUp, { marginTop: 8, color: incomeChange >= 0 ? "#16A34A" : "#EF4444" }]}>
-                        {incomeChange >= 0 ? "↑" : "↓"} {Math.abs(incomeChange)}% <Text style={{color: colors.textSecondary, fontWeight: "normal"}}>vs Last Month</Text>
-                    </Text>
-                </View>
-                
-                {/* Expenses */}
-                <View style={[styles.kpiCard, isDesktop && { width: "23%", marginBottom: 0 }]}>
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <View style={[localStyles.iconCircle, { backgroundColor: "#FEE2E2" }]}>
-                            <Ionicons name="arrow-up-outline" size={20} color="#EF4444" />
-                        </View>
-                        <View style={{ marginLeft: 12, flex: 1 }}>
-                            <Text style={[styles.kpiLabel, { color: colors.textSecondary, ...Typography.bodyMedium }]}>Expenses</Text>
-                            <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.kpiValue, { color: colors.text, fontSize: 20 }]}>₹{expenses.toLocaleString('en-IN')}</Text>
-                        </View>
-                    </View>
-                    <Text style={[styles.kpiTrendUp, { marginTop: 8, color: expenseChange >= 0 ? "#EF4444" : "#16A34A" }]}>
-                        {expenseChange >= 0 ? "↑" : "↓"} {Math.abs(expenseChange)}% <Text style={{color: colors.textSecondary, fontWeight: "normal"}}>vs Last Month</Text>
-                    </Text>
-                </View>
-
-                {/* Savings */}
-                <View style={[styles.kpiCard, isDesktop && { width: "23%", marginBottom: 0 }]}>
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <View style={[localStyles.iconCircle, { backgroundColor: "#F3E8FF" }]}>
-                            <Ionicons name="wallet-outline" size={20} color="#6C2CF4" />
-                        </View>
-                        <View style={{ marginLeft: 12, flex: 1 }}>
-                            <Text style={[styles.kpiLabel, { color: colors.textSecondary, ...Typography.bodyMedium }]}>Savings</Text>
-                            <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.kpiValue, { color: colors.text, fontSize: 20 }]}>₹{savings.toLocaleString('en-IN')}</Text>
-                        </View>
-                    </View>
-                    <Text style={[styles.kpiTrendUp, { marginTop: 8, color: savingsChange >= 0 ? "#16A34A" : "#EF4444" }]}>
-                        {savingsChange >= 0 ? "↑" : "↓"} {Math.abs(savingsChange)}% <Text style={{color: colors.textSecondary, fontWeight: "normal"}}>vs Last Month</Text>
-                    </Text>
-                </View>
-
-                {/* Transactions */}
-                <View style={[styles.kpiCard, isDesktop && { width: "23%", marginBottom: 0 }]}>
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <View style={[localStyles.iconCircle, { backgroundColor: "#E0F2FE" }]}>
-                            <Ionicons name="document-text-outline" size={20} color="#0284C7" />
-                        </View>
-                        <View style={{ marginLeft: 12, flex: 1 }}>
-                            <Text style={[styles.kpiLabel, { color: colors.textSecondary, ...Typography.bodyMedium }]}>Transactions</Text>
-                            <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.kpiValue, { color: colors.text, fontSize: 20 }]}>{txCount}</Text>
-                        </View>
-                    </View>
-                    <Text style={[styles.kpiTrendUp, { color: "#16A34A", marginTop: 8 }]}>↑ 15.6% <Text style={{color: colors.textSecondary, fontWeight: "normal"}}>vs Last Month</Text></Text>
-                </View>
+                <ReportCard title="Total Income" value={`₹${income.toLocaleString('en-IN')}`} icon="trending-up" color="#10B981" change={`${Math.abs(incomeChange)}%`} isUp={incomeChange >= 0} isDesktop={isDesktop} colors={colors} />
+                <ReportCard title="Total Spending" value={`₹${expenses.toLocaleString('en-IN')}`} icon="swap-vertical" color="#EF4444" change={`${Math.abs(expenseChange)}%`} isUp={expenseChange <= 0} isDesktop={isDesktop} colors={colors} />
+                <ReportCard title="Savings" value={`₹${savings.toLocaleString('en-IN')}`} icon="wallet-outline" color="#3B82F6" change={`${Math.abs(savingsChange)}%`} isUp={savingsChange >= 0} isDesktop={isDesktop} colors={colors} />
+                <ReportCard title="Transactions" value={txCount.toString()} icon="calendar-outline" color="#F59E0B" change="10%" isUp={true} isDesktop={isDesktop} colors={colors} />
             </View>
 
             {/* 2 Column Layout */}
             <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 16, marginTop: 16 }}>
-                
+
                 {/* LEFT COLUMN */}
                 <View style={{ flex: 1, gap: 16 }}>
                     {/* Income vs Expenses Chart */}
                     <SectionCard>
                         <SectionHeader title="Income vs Expenses" />
-                        <View 
+                        <View
                             style={{ marginTop: 16, overflow: 'hidden' }}
                             onLayout={(e) => setChartWidth(e.nativeEvent.layout.width)}
                         >
@@ -519,7 +473,7 @@ function PersonalDashboard({ data, recentTransactions }: { data: any, recentTran
                                         </View>
                                         <View style={{ width: 80, alignItems: "flex-end" }}>
                                             <Text style={[
-                                                styles.listAmount, 
+                                                styles.listAmount,
                                                 { color: colors.text }
                                             ]}>
                                                 {tx.type === 'expense' ? '-' : ''}₹{Math.abs(tx.amount).toLocaleString('en-IN')}
@@ -592,26 +546,10 @@ function BusinessDashboard({ data, recentTransactions }: { data: any, recentTran
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
             {/* KPI Grid */}
             <View style={[styles.kpiGrid, isDesktop && { flexWrap: "nowrap", gap: 16 }]}>
-                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }, isDesktop && { width: "23%", marginBottom: 0 }]}>
-                    <Text style={[styles.kpiLabel, { color: colors.textSecondary, ...Typography.bodyMedium }]}>Sales</Text>
-                    <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.kpiValue, { color: colors.text, ...Typography.h2, fontSize: 20 }]}>₹{sales.toLocaleString('en-IN')}</Text>
-                    <Text style={[styles.kpiTrendUp, { color: incomeChange >= 0 ? "#16A34A" : "#EF4444" }]}>{incomeChange >= 0 ? "↑" : "↓"} {Math.abs(incomeChange)}%</Text>
-                </View>
-                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }, isDesktop && { width: "23%", marginBottom: 0 }]}>
-                    <Text style={[styles.kpiLabel, { color: colors.textSecondary, ...Typography.bodyMedium }]}>Expenses</Text>
-                    <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.kpiValue, { color: colors.text, ...Typography.h2, fontSize: 20 }]}>₹{expenses.toLocaleString('en-IN')}</Text>
-                    <Text style={[styles.kpiTrendUp, { color: expenseChange >= 0 ? "#EF4444" : "#16A34A" }]}>{expenseChange >= 0 ? "↑" : "↓"} {Math.abs(expenseChange)}%</Text>
-                </View>
-                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }, isDesktop && { width: "23%", marginBottom: 0 }]}>
-                    <Text style={[styles.kpiLabel, { color: colors.textSecondary, ...Typography.bodyMedium }]}>Net Cashflow</Text>
-                    <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.kpiValue, { color: colors.text, ...Typography.h2, fontSize: 20 }]}>₹{cashflow.toLocaleString('en-IN')}</Text>
-                    <Text style={[styles.kpiTrendUp, { color: savingsChange >= 0 ? "#16A34A" : "#EF4444" }]}>{savingsChange >= 0 ? "↑" : "↓"} {Math.abs(savingsChange)}%</Text>
-                </View>
-                <View style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }, isDesktop && { width: "23%", marginBottom: 0 }]}>
-                    <Text style={[styles.kpiLabel, { color: colors.textSecondary, ...Typography.bodyMedium }]}>Transactions</Text>
-                    <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.kpiValue, { color: colors.text, ...Typography.h2, fontSize: 20 }]}>{txCount}</Text>
-                    <Text style={styles.kpiTrendUp}></Text>
-                </View>
+                <ReportCard title="Total Income" value={`₹${sales.toLocaleString('en-IN')}`} icon="trending-up" color="#10B981" change={`${Math.abs(incomeChange)}%`} isUp={incomeChange >= 0} isDesktop={isDesktop} colors={colors} />
+                <ReportCard title="Total Spending" value={`₹${expenses.toLocaleString('en-IN')}`} icon="swap-vertical" color="#EF4444" change={`${Math.abs(expenseChange)}%`} isUp={expenseChange <= 0} isDesktop={isDesktop} colors={colors} />
+                <ReportCard title="Net Cashflow" value={`₹${cashflow.toLocaleString('en-IN')}`} icon="wallet-outline" color="#3B82F6" change={`${Math.abs(savingsChange)}%`} isUp={savingsChange >= 0} isDesktop={isDesktop} colors={colors} />
+                <ReportCard title="Transactions" value={txCount.toString()} icon="calendar-outline" color="#F59E0B" change="10%" isUp={true} isDesktop={isDesktop} colors={colors} />
             </View>
 
             {/* Sales Performance */}
@@ -744,7 +682,7 @@ function BusinessDashboard({ data, recentTransactions }: { data: any, recentTran
                                     {tx.category || tx.title}
                                 </Text>
                                 <Text style={[
-                                    styles.listAmount, 
+                                    styles.listAmount,
                                     { color: tx.type === 'expense' ? colors.danger : colors.success }
                                 ]}>
                                     {tx.type === 'expense' ? '-' : '+'}₹{Math.abs(tx.amount).toLocaleString('en-IN')}
