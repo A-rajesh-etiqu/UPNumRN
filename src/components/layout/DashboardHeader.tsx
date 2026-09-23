@@ -27,12 +27,14 @@ interface Props {
     title: string;
     subtitle: string;
     onProfilePress?: () => void;
+    isAdmin?: boolean;
 }
 
 export default function DashboardHeader({
     title,
     subtitle,
     onProfilePress,
+    isAdmin = false,
 }: Props) {
     const { width } = useWindowDimensions();
     const isDesktop = width >= 900;
@@ -155,18 +157,20 @@ export default function DashboardHeader({
                 )}
 
                 {/* AI Insights Button */}
-                <TouchableOpacity
-                    style={[styles.bellBtn, {
-                        backgroundColor: isDesktop ? colors.surface : "transparent",
-                        borderColor: isDesktop ? colors.border : "transparent",
-                        borderWidth: isDesktop ? 1 : 0,
-                        marginRight: 8,
-                    }]}
-                    activeOpacity={0.8}
-                    onPress={() => router.push("/tabs/dashboard/ai-insights" as any)}
-                >
-                    <Ionicons name="sparkles-outline" size={20} color="#8B5CF6" />
-                </TouchableOpacity>
+                {!isAdmin && (
+                    <TouchableOpacity
+                        style={[styles.bellBtn, {
+                            backgroundColor: isDesktop ? colors.surface : "transparent",
+                            borderColor: isDesktop ? colors.border : "transparent",
+                            borderWidth: isDesktop ? 1 : 0,
+                            marginRight: 8,
+                        }]}
+                        activeOpacity={0.8}
+                        onPress={() => router.push("/tabs/dashboard/ai-insights" as any)}
+                    >
+                        <Ionicons name="sparkles-outline" size={20} color="#8B5CF6" />
+                    </TouchableOpacity>
+                )}
 
                 {/* Notification Bell */}
                 <View style={{ position: "relative", zIndex: 20 }}>

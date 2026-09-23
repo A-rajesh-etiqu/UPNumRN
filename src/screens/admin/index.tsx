@@ -19,27 +19,23 @@ import { useAppTheme, Radius, Spacing, Shadows, Typography } from "../../theme";
 import { router } from "../../navigation/RootNavigation";
 import { useAuthStore } from "../../store/auth.store";
 import apiClient from "../../api/apiClient";
+import Sidebar from "../../components/layout/Sidebar";
+import DashboardHeader from "../../components/layout/DashboardHeader";
 
 declare var window: any;
 
-const ADMIN_MENU_MAIN = [
-    { title: "Overview", icon: "home-outline" as const },
-    { title: "Users", icon: "person-outline" as const },
-    { title: "Businesses", icon: "business-outline" as const },
-    { title: "Plans", icon: "card-outline" as const },
-    { title: "Payments", icon: "cash-outline" as const },
-    { title: "Disputes", icon: "scale-outline" as const },
-    { title: "Offers", icon: "gift-outline" as const },
-    { title: "Reports", icon: "bar-chart-outline" as const },
-    { title: "Notifications", icon: "notifications-outline" as const },
-];
-
-const ADMIN_MENU_SYSTEM = [
-    { title: "System Health", icon: "desktop-outline" as const },
-];
-
-const ADMIN_MENU_SETTINGS = [
-    { title: "Settings", icon: "settings-outline" as const },
+const ADMIN_SIDEBAR_ITEMS = [
+    { title: "Overview", route: "/admin", icon: "home-outline" as any },
+    { title: "Users", route: "/admin/users", icon: "person-outline" as any },
+    { title: "Businesses", route: "/admin/businesses", icon: "business-outline" as any },
+    { title: "Plans", route: "/admin/plans", icon: "card-outline" as any },
+    { title: "Payments", route: "/admin/payments", icon: "cash-outline" as any },
+    { title: "Disputes", route: "/admin/disputes", icon: "scale-outline" as any },
+    { title: "Offers", route: "/admin/offers", icon: "gift-outline" as any },
+    { title: "Reports", route: "/admin/reports", icon: "bar-chart-outline" as any },
+    { title: "Notifications", route: "/admin/notifications", icon: "notifications-outline" as any },
+    { title: "System Health", route: "/admin/system", icon: "desktop-outline" as any },
+    { title: "Settings", route: "/admin/settings", icon: "settings-outline" as any },
 ];
 
 export default function PlatformAdminDashboard() {
@@ -96,10 +92,13 @@ export default function PlatformAdminDashboard() {
 
     // Notifications state
     const [adminNotifications, setAdminNotifications] = useState<any[]>([]);
-    
+
     // Payments state
     const [payments, setPayments] = useState<any[]>([]);
     const [loadingPayments, setLoadingPayments] = useState(false);
+
+    // Mobile More Menu state
+    const [showMobileMoreMenu, setShowMobileMoreMenu] = useState(false);
     const [notifTitle, setNotifTitle] = useState("");
     const [notifMessage, setNotifMessage] = useState("");
     const [notifTargetType, setNotifTargetType] = useState("ALL");
@@ -491,116 +490,7 @@ export default function PlatformAdminDashboard() {
         return matchesSearch && matchesStatus;
     });
 
-    // Render Admin Left Sidebar
-    const renderAdminSidebar = () => (
-        <View style={[styles.sidebar, { backgroundColor: isDark ? colors.surface : "#111827", borderRightColor: colors.border }]}>
-            <View>
-                {/* Logo and Tagline */}
-                <View style={styles.logoRow}>
-                    <Svg width="36" height="36" viewBox="0 0 32 32">
-                        <Defs>
-                            <SvgGradient id="orangeGradAdmin" x1="0" y1="0" x2="1" y2="1">
-                                <Stop offset="0%" stopColor="#FB923C" />
-                                <Stop offset="100%" stopColor="#EA580C" />
-                            </SvgGradient>
-                            <SvgGradient id="purpleGradAdmin" x1="0" y1="0" x2="1" y2="1">
-                                <Stop offset="0%" stopColor="#C084FC" />
-                                <Stop offset="100%" stopColor="#6B21A8" />
-                            </SvgGradient>
-                        </Defs>
-                        <Path d="M 4 20 L 16 22 L 12 28 Z" fill="#4C1D95" />
-                        <Path d="M 4 20 L 28 6 L 16 22 Z" fill="url(#orangeGradAdmin)" />
-                        <Path d="M 16 22 L 28 6 L 22 28 Z" fill="url(#purpleGradAdmin)" />
-                        <Path d="M 26 2 Q 26 4 24 4 Q 26 4 26 6 Q 26 4 28 4 Q 26 4 26 2 Z" fill="#FB923C" />
-                        <Path d="M 30 6 Q 30 7.5 28.5 7.5 Q 30 7.5 30 9 Q 30 7.5 31.5 7.5 Q 30 7.5 30 6 Z" fill="#FDBA74" />
-                    </Svg>
-                    <View style={styles.logoTextContainer}>
-                        <Text style={styles.logoText}>UP Num</Text>
-                        <Text style={styles.logoSub}>Track. Analyze. Grow.</Text>
-                    </View>
-                </View>
-
-                {/* Section MAIN */}
-                <Text style={styles.sidebarSectionHeader}>MAIN</Text>
-                <View style={styles.sidebarMenuBlock}>
-                    {ADMIN_MENU_MAIN.map((item, idx) => {
-                        const isActive = activeTab === item.title;
-                        return (
-                            <TouchableOpacity
-                                key={idx}
-                                style={[styles.sidebarBtn, isActive && { backgroundColor: colors.primary }]}
-                                onPress={() => setActiveTab(item.title)}
-                                activeOpacity={0.8}
-                            >
-                                <View style={styles.sidebarBtnInner}>
-                                    <Ionicons name={item.icon} size={18} color={isActive ? "#FFFFFF" : "#94A3B8"} />
-                                    <Text style={[styles.sidebarBtnText, isActive && styles.sidebarBtnTextActive]}>
-                                        {item.title}
-                                    </Text>
-                                </View>
-                            </TouchableOpacity>
-                        );
-                    })}
-                </View>
-
-                {/* Section SYSTEM */}
-                <Text style={styles.sidebarSectionHeader}>SYSTEM</Text>
-                <View style={styles.sidebarMenuBlock}>
-                    {ADMIN_MENU_SYSTEM.map((item, idx) => {
-                        const isActive = activeTab === item.title;
-                        return (
-                            <TouchableOpacity
-                                key={idx}
-                                style={[styles.sidebarBtn, isActive && { backgroundColor: colors.primary }]}
-                                onPress={() => setActiveTab(item.title)}
-                                activeOpacity={0.8}
-                            >
-                                <View style={styles.sidebarBtnInner}>
-                                    <Ionicons name={item.icon} size={18} color={isActive ? "#FFFFFF" : "#94A3B8"} />
-                                    <Text style={[styles.sidebarBtnText, isActive && styles.sidebarBtnTextActive]}>{item.title}</Text>
-                                </View>
-                            </TouchableOpacity>
-                        );
-                    })}
-                </View>
-
-                {/* Section SETTINGS */}
-                <Text style={styles.sidebarSectionHeader}>SETTINGS</Text>
-                <View style={styles.sidebarMenuBlock}>
-                    {ADMIN_MENU_SETTINGS.map((item, idx) => {
-                        const isActive = activeTab === item.title;
-                        return (
-                            <TouchableOpacity
-                                key={idx}
-                                style={[styles.sidebarBtn, isActive && { backgroundColor: colors.primary }]}
-                                onPress={() => setActiveTab(item.title)}
-                                activeOpacity={0.8}
-                            >
-                                <View style={styles.sidebarBtnInner}>
-                                    <Ionicons name={item.icon} size={18} color={isActive ? "#FFFFFF" : "#94A3B8"} />
-                                    <Text style={[styles.sidebarBtnText, isActive && styles.sidebarBtnTextActive]}>{item.title}</Text>
-                                </View>
-                            </TouchableOpacity>
-                        );
-                    })}
-                </View>
-            </View>
-
-            {/* Bottom Status Box */}
-            <View>
-                <View style={styles.statusBox}>
-                    <View style={styles.statusDotRow}>
-                        <View style={styles.greenDot} />
-                        <Text style={styles.statusBoxTitle}>Platform Status</Text>
-                    </View>
-                    <Text style={styles.statusBoxText}>All Systems Operational</Text>
-                    <Text style={styles.statusBoxTime}>Last checked: 2 mins ago</Text>
-                </View>
-
-                {/* Logout Button Removed */}
-            </View>
-        </View>
-    );
+    // Removed renderAdminSidebar
 
     // Main dashboard view content
     const renderDashboardTab = () => {
@@ -673,7 +563,7 @@ export default function PlatformAdminDashboard() {
                 )}
 
                 {/* Filters & Export Row */}
-                <View style={[styles.filtersExportRow, isDesktop ? styles.rowLayout : { flexDirection: "column", gap: 12 }]}>
+                <View style={[styles.filtersExportRow, { flexDirection: isDesktop ? "row" : "column", gap: 12 }]}>
                     <View style={{ flexDirection: isDesktop ? "row" : "row", gap: 10, flexWrap: "wrap" }}>
                         <TouchableOpacity style={[styles.filterDropdownBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.8}>
                             <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
@@ -692,7 +582,7 @@ export default function PlatformAdminDashboard() {
                 </View>
 
                 {/* Top KPIs Row */}
-                <View style={[styles.kpisRow, isDesktop ? styles.rowLayout : { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }]}>
+                <View style={[styles.kpisRow, { flexDirection: "row", flexWrap: isDesktop ? "nowrap" : "wrap", justifyContent: "space-between", gap: isDesktop ? 16 : 0 }]}>
                     {[
                         { title: "Total Users", value: stats?.totalUsers?.toLocaleString() || "0", change: "+12.5%", desc: "vs Apr 2024", color: "#6C2CF4", bg: "#F5F3FF", icon: "people-outline" as const, positive: true },
                         { title: "Active Businesses", value: stats?.activeBusinesses?.toLocaleString() || "0", change: "+9.4%", desc: "vs Apr 2024", color: "#3B82F6", bg: "#EFF6FF", icon: "briefcase-outline" as const, positive: true },
@@ -701,7 +591,7 @@ export default function PlatformAdminDashboard() {
                         { title: "Disputes", value: stats?.disputes?.toLocaleString() || "0", change: "+6.3%", desc: "vs Apr 2024", color: "#EF4444", bg: "#FEF2F2", icon: "shield-half-outline" as const, positive: false },
                         { title: "Conversion Rate", value: `${stats?.conversionRate?.toFixed(2) || "0"}%`, change: "+3.1%", desc: "vs Apr 2024", color: "#8B5CF6", bg: "#F5F3FF", icon: "trending-up-outline" as const, positive: true },
                     ].map((kpi, idx) => (
-                        <View key={idx} style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border, flex: isDesktop ? 1 : 0, minWidth: isDesktop ? 0 : "48%", maxWidth: isDesktop ? "16%" : "48%" }]}>
+                        <View key={idx} style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border, flex: isDesktop ? 1 : 0, width: isDesktop ? "auto" : "48%", marginBottom: isDesktop ? 0 : 16 }]}>
                             <View style={styles.kpiCardHeader}>
                                 <View style={[styles.kpiIconCircle, { backgroundColor: kpi.bg }]}>
                                     <Ionicons name={kpi.icon} size={20} color={kpi.color} />
@@ -792,7 +682,7 @@ export default function PlatformAdminDashboard() {
                         </View>
                         <View style={{ marginTop: 10, gap: 16 }}>
                             {stats?.recentActivities?.slice(0, 5).map((act: any, idx: number) => {
-                                let icon = "information"; let bg = "#F5F3FF"; let c = "#6C2CF4";
+                                let icon: any = "information"; let bg = "#F5F3FF"; let c = "#6C2CF4";
                                 if (act.type === 'user') { icon = "person-outline"; bg = "#F5F3FF"; c = "#6C2CF4"; }
                                 if (act.type === 'payment') { icon = "cash-outline"; bg = "#ECFDF5"; c = "#00C853"; }
                                 if (act.type === 'business') { icon = "business-outline"; bg = "#EFF6FF"; c = "#3B82F6"; }
@@ -1158,7 +1048,7 @@ export default function PlatformAdminDashboard() {
                                     </View>
                                     <Text style={[styles.tableCellText, { flex: 1.5, color: colors.textSecondary, paddingRight: 10 }]} numberOfLines={1}>{user.name}</Text>
                                     <Text style={[styles.tableCellText, { flex: 2, color: colors.textSecondary, paddingRight: 10 }]} numberOfLines={1}>{user.email}</Text>
-                                    
+
                                     <View style={{ flex: 1, paddingRight: 10, justifyContent: 'center' }}>
                                         <Text style={[styles.tableCellText, { color: colors.text }]} numberOfLines={1}>
                                             {user.plan === 'lifetime' ? 'Lifetime' : user.plan === 'free-trial' ? 'Trial' : user.plan || 'Free'}
@@ -1166,7 +1056,7 @@ export default function PlatformAdminDashboard() {
                                     </View>
 
                                     <Text style={[styles.tableCellText, { flex: 1, color: colors.text, paddingRight: 10 }]} numberOfLines={1}>{user.volume || "₹0"}</Text>
-                                    
+
                                     <View style={{ flex: 1, paddingRight: 10, justifyContent: 'center' }}>
                                         <View style={[styles.miniStatusBadge, user.status === "Blocked" ? { backgroundColor: colors.danger + "15" } : user.status === "Trial" ? { backgroundColor: "#F59E0B15" } : styles.bgSuccess]}>
                                             <Text style={[styles.miniStatusText, user.status === "Blocked" ? { color: colors.danger } : user.status === "Trial" ? { color: "#F59E0B" } : styles.txtSuccess]}>
@@ -1174,7 +1064,7 @@ export default function PlatformAdminDashboard() {
                                             </Text>
                                         </View>
                                     </View>
-                                    
+
                                     <View style={{ width: 120, flexDirection: 'row', alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
                                         <TouchableOpacity
                                             onPress={() => handleOpenModal(user)}
@@ -1477,7 +1367,7 @@ export default function PlatformAdminDashboard() {
 
             <View style={[styles.gridCard, { backgroundColor: colors.surface, borderColor: colors.border, padding: 24, marginBottom: 24 }]}>
                 <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 16 }]}>Send New Notification</Text>
-                
+
                 <View style={{ gap: 16 }}>
                     <View>
                         <Text style={[styles.modalGridLabel, { color: colors.textSecondary, marginBottom: 4 }]}>Notification Title</Text>
@@ -1514,7 +1404,7 @@ export default function PlatformAdminDashboard() {
                             ))}
                         </View>
                     </View>
-                    
+
                     {notifTargetType !== "ALL" && (
                         <View>
                             <Text style={[styles.modalGridLabel, { color: colors.textSecondary, marginBottom: 4 }]}>Target User IDs (comma separated)</Text>
@@ -1858,104 +1748,69 @@ export default function PlatformAdminDashboard() {
         );
     };
 
+    const renderMobileMoreModal = () => {
+        if (!showMobileMoreMenu || isDesktop) return null;
+
+        const moreItems = [
+            { title: "Plans", icon: "card-outline" as any },
+            { title: "Disputes", icon: "scale-outline" as any },
+            { title: "Offers", icon: "gift-outline" as any },
+            { title: "Reports", icon: "bar-chart-outline" as any },
+            { title: "Notifications", icon: "notifications-outline" as any },
+            { title: "System Health", icon: "desktop-outline" as any },
+            { title: "Settings", icon: "settings-outline" as any },
+        ];
+
+        return (
+            <View style={styles.modalOverlay}>
+                <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: "auto", marginBottom: 0, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }]}>
+                    <View style={styles.modalHeader}>
+                        <Text style={[styles.modalTitle, { color: colors.text }]}>More Options</Text>
+                        <TouchableOpacity onPress={() => setShowMobileMoreMenu(false)} style={styles.modalCloseBtn}>
+                            <Ionicons name="close" size={24} color={colors.text} />
+                        </TouchableOpacity>
+                    </View>
+                    <View style={[styles.modalBody, { paddingBottom: 40 }]}>
+                        {moreItems.map((item, idx) => (
+                            <TouchableOpacity
+                                key={idx}
+                                style={{ flexDirection: "row", alignItems: "center", gap: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}
+                                onPress={() => {
+                                    setActiveTab(item.title);
+                                    setShowMobileMoreMenu(false);
+                                }}
+                            >
+                                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary + "15", alignItems: "center", justifyContent: "center" }}>
+                                    <Ionicons name={item.icon} size={20} color={colors.primary} />
+                                </View>
+                                <Text style={{ fontSize: 16, fontWeight: "600", color: colors.text }}>{item.title}</Text>
+                                <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} style={{ marginLeft: "auto" }} />
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                </View>
+            </View>
+        );
+    };
+
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
             <View style={{ flex: 1, flexDirection: isDesktop ? "row" : "column" }}>
-                {isDesktop && renderAdminSidebar()}
+                {isDesktop && (
+                    <Sidebar
+                        items={ADMIN_SIDEBAR_ITEMS}
+                        activeTabOverride={activeTab}
+                        onItemPress={(item) => setActiveTab(item.title)}
+                    />
+                )}
 
                 {/* Main Content Pane */}
                 <View style={{ flex: 1, zIndex: 10 }}>
-                    {/* Admin Header Panel */}
-                    {isDesktop ? (
-                        <View style={[styles.headerRow, { borderBottomColor: colors.border, zIndex: 50 }]}>
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                                <View>
-                                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                                        <Text style={[styles.headerTitle, { color: colors.text }]}>Platform Admin</Text>
-                                        <View style={styles.badgeAdmin}><Text style={styles.badgeAdminText}>Superuser</Text></View>
-                                    </View>
-                                    <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
-                                        Manage platform access, users permissions, transactions and configurations.
-                                    </Text>
-                                </View>
-                            </View>
-
-                            <View style={styles.headerRightWidgets}>
-                                <TouchableOpacity onPress={() => router.back()} style={styles.linkBackApp}>
-                                    <Ionicons name="arrow-back-circle-outline" size={16} color={colors.primary} />
-                                    <Text style={[styles.linkBackAppText, { color: colors.primary }]}>User Portal</Text>
-                                </TouchableOpacity>
-                                {/* Notification Badge */}
-                                <TouchableOpacity style={[styles.bellBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.8}>
-                                    <Ionicons name="notifications-outline" size={20} color={colors.text} />
-                                    <View style={styles.bellBadge}>
-                                        <Text style={styles.bellBadgeText}>3</Text>
-                                    </View>
-                                </TouchableOpacity>
-                                {/* Profile Box */}
-                                <View style={{ position: "relative", zIndex: 10 }}>
-                                    <TouchableOpacity
-                                        style={[styles.profileBox, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                                        activeOpacity={0.8}
-                                        onPress={() => setShowProfileMenu(!showProfileMenu)}
-                                    >
-                                        <View style={[styles.avatar, { backgroundColor: colors.primary + "15" }]}>
-                                            <Text style={{ color: colors.primary, fontSize: 14, fontWeight: "700" }}>
-                                                {user?.fullName ? user.fullName.charAt(0).toUpperCase() : "A"}
-                                            </Text>
-                                        </View>
-                                        <View>
-                                            <Text style={[styles.profileName, { color: colors.text }]}>{user?.fullName || "Platform Admin"}</Text>
-                                            <Text style={[styles.profileEmail, { color: colors.textSecondary }]}>{user?.email || "admin@upnum.com"}</Text>
-                                        </View>
-                                        <Ionicons name="chevron-down" size={16} color={colors.textSecondary} style={{ marginLeft: 8 }} />
-                                    </TouchableOpacity>
-
-                                    {showProfileMenu && (
-                                        <View style={[styles.profileDropdown, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                                            <TouchableOpacity
-                                                style={styles.profileDropdownItem}
-                                                onPress={() => {
-                                                    setShowProfileMenu(false);
-                                                    logout();
-                                                }}
-                                            >
-                                                <Ionicons name="log-out-outline" size={18} color={colors.danger} />
-                                                <Text style={[styles.profileDropdownText, { color: colors.danger }]}>Logout</Text>
-                                            </TouchableOpacity>
-                                        </View>
-                                    )}
-                                </View>
-                            </View>
-                        </View>
-                    ) : (
-                        <View style={[styles.mobileHeader, { borderBottomColor: colors.border, backgroundColor: colors.surface }]}>
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                                <TouchableOpacity onPress={() => router.back()} activeOpacity={0.8}>
-                                    <Ionicons name="menu-outline" size={28} color={colors.text} />
-                                </TouchableOpacity>
-                                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                                    <Svg width="22" height="22" viewBox="0 0 32 32">
-                                        <Path d="M 4 20 L 16 22 L 12 28 Z" fill="#4C1D95" />
-                                        <Path d="M 4 20 L 28 6 L 16 22 Z" fill="#EA580C" />
-                                        <Path d="M 16 22 L 28 6 L 22 28 Z" fill="#6B21A8" />
-                                    </Svg>
-                                    <Text style={[styles.mobileLogoText, { color: colors.text }]}>UP Num</Text>
-                                </View>
-                            </View>
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
-                                <TouchableOpacity style={styles.mobileBellBtn} activeOpacity={0.8}>
-                                    <Ionicons name="notifications-outline" size={22} color={colors.text} />
-                                    <View style={styles.mobileBellBadge}>
-                                        <Text style={styles.bellBadgeText}>3</Text>
-                                    </View>
-                                </TouchableOpacity>
-                                <View style={[styles.mobileAvatar, { backgroundColor: colors.primary + "15" }]}>
-                                    <Text style={{ color: colors.primary, fontSize: 12, fontWeight: "700" }}>A</Text>
-                                </View>
-                            </View>
-                        </View>
-                    )}
+                    <DashboardHeader
+                        title="Platform Admin"
+                        subtitle="Manage platform access & users permissions."
+                        isAdmin={true}
+                    />
 
                     {/* Scrollable area */}
                     <ScrollView style={styles.mainContentScroll} contentContainerStyle={isDesktop ? styles.mainContentInner : styles.mobileContentInner}>
@@ -1966,18 +1821,18 @@ export default function PlatformAdminDashboard() {
                     {!isDesktop && (
                         <View style={[styles.bottomNavBar, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
                             {[
-                                { title: "Dashboard", icon: "grid" as const },
+                                { title: "Overview", icon: "grid" as const },
                                 { title: "Users", icon: "people" as const },
-                                { title: "Transactions", icon: "swap-horizontal" as const },
-                                { title: "Reports", icon: "document-text" as const },
+                                { title: "Businesses", icon: "business" as const },
+                                { title: "Payments", icon: "cash" as const },
                                 { title: "More", icon: "ellipsis-horizontal" as const },
                             ].map((tab, idx) => {
-                                const isActive = activeTab === tab.title || (tab.title === "More" && !["Dashboard", "Users", "Transactions", "Reports"].includes(activeTab));
+                                const isActive = activeTab === tab.title || (tab.title === "More" && !["Overview", "Users", "Businesses", "Payments"].includes(activeTab));
                                 return (
                                     <TouchableOpacity
                                         key={idx}
                                         style={styles.bottomNavBtn}
-                                        onPress={() => setActiveTab(tab.title === "More" ? "Settings" : tab.title)}
+                                        onPress={() => tab.title === "More" ? setShowMobileMoreMenu(true) : setActiveTab(tab.title)}
                                         activeOpacity={0.8}
                                     >
                                         <Ionicons
@@ -1998,6 +1853,7 @@ export default function PlatformAdminDashboard() {
             {renderDetailModal()}
             {renderPlanModal()}
             {renderOfferModal()}
+            {renderMobileMoreModal()}
         </SafeAreaView>
     );
 }

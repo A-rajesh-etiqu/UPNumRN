@@ -78,7 +78,7 @@ function TabNavigator() {
             headerShown: false,
             tabBarStyle: { display: isDesktop ? 'none' : 'flex' },
             tabBarIcon: ({ focused, color, size }) => {
-              let iconName = 'home';
+              let iconName: any = 'home';
               if (route.name === '/tabs/dashboard') iconName = focused ? 'home' : 'home-outline';
               else if (route.name === '/tabs/transactions') iconName = focused ? 'list' : 'list-outline';
               else if (route.name === '/tabs/customers') iconName = focused ? 'people' : 'people-outline';

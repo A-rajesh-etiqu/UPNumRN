@@ -27,9 +27,21 @@ const SIDEBAR_ITEMS = [
     { title: "Help & Support", route: "/tabs/settings", icon: "help-circle-outline" as const },
 ];
 
-export default function Sidebar() {
+export interface SidebarItem {
+    title: string;
+    route: string;
+    icon: any;
+    badge?: string;
+}
+
+interface SidebarProps {
+    items?: SidebarItem[];
+    activeTabOverride?: string;
+    onItemPress?: (item: SidebarItem) => void;
+}
+
+export default function Sidebar({ items = SIDEBAR_ITEMS, activeTabOverride, onItemPress }: SidebarProps = {}) {
     const [pathname, setPathname] = useState(navigationRef.isReady() ? navigationRef.getCurrentRoute()?.name || "" : "");
-    const [showPromo, setShowPromo] = useState(true);
     const [activeTab, setActiveTab] = useState("Dashboard");
     const { user } = useAuthStore();
     const { colors, isDark } = useAppTheme();
@@ -60,24 +72,30 @@ export default function Sidebar() {
             setActiveTab("Subscriptions");
             return;
         }
-        const match = SIDEBAR_ITEMS.find(item => item.route === pathname);
+        const match = items.find(item => item.route === pathname);
         if (match) {
-            const activeItem = SIDEBAR_ITEMS.find(item => item.title === activeTab);
+            const activeItem = items.find(item => item.title === activeTab);
             if (!activeItem || activeItem.route !== pathname) {
                 setActiveTab(match.title);
             }
         } else {
-            const prefixMatch = [...SIDEBAR_ITEMS].reverse().find(item => pathname.startsWith(item.route));
+            const prefixMatch = [...items].reverse().find(item => pathname.startsWith(item.route));
             if (prefixMatch) {
                 setActiveTab(prefixMatch.title);
             }
         }
     }, [pathname]);
 
-    const handleNavigate = (title: string, route: string) => {
-        setActiveTab(title);
-        router.replace(route as any);
+    const handleNavigate = (item: SidebarItem) => {
+        if (onItemPress) {
+            onItemPress(item);
+        } else {
+            setActiveTab(item.title);
+            router.replace(item.route as any);
+        }
     };
+
+    const currentActiveTab = activeTabOverride || activeTab;
 
     return (
         <View style={[styles.container, { backgroundColor: colors.sidebarDark, borderRightColor: colors.border }]}>
@@ -95,11 +113,11 @@ export default function Sidebar() {
                 contentContainerStyle={styles.menuScrollContent}
                 showsVerticalScrollIndicator={false}
             >
-                {SIDEBAR_ITEMS.filter(item => {
+                {items.filter(item => {
                     if (item.title === "Customers" && user?.userType !== "BUSINESS") return false;
                     return true;
                 }).map((item, index) => {
-                    const isActive = item.title === activeTab;
+                    const isActive = item.title === currentActiveTab;
 
                     const content = (
                         <View style={styles.menuItemInner}>
@@ -124,7 +142,7 @@ export default function Sidebar() {
                         <TouchableOpacity
                             key={index}
                             activeOpacity={0.8}
-                            onPress={() => handleNavigate(item.title, item.route)}
+                            onPress={() => handleNavigate(item)}
                             style={styles.menuItemWrapper}
                         >
                             {isActive ? (
@@ -146,58 +164,6 @@ export default function Sidebar() {
                 })}
             </ScrollView>
 
-            {/* Promo Card at Bottom */}
-            {showPromo && (
-                <View style={[styles.promoCard, { backgroundColor: isDark ? colors.surface : "#1E1B4B", borderColor: isDark ? colors.border : "rgba(255, 255, 255, 0.05)" }]}>
-                    <TouchableOpacity
-                        style={styles.promoCloseBtn}
-                        onPress={() => setShowPromo(false)}
-                        activeOpacity={0.7}
-                    >
-                        <Ionicons name="close" size={16} color={colors.textSecondary} />
-                    </TouchableOpacity>
-
-                    {/* Crown Row */}
-                    <View style={styles.crownRow}>
-                        <Svg width="16" height="16" viewBox="0 0 24 24" style={{ marginRight: 8 }}>
-                            <Path d="M2 21h20v-2H2v2zM22 7l-4 5-4-8-4 8-4-5-2 10h20L22 7z" fill="#F59E0B" />
-                        </Svg>
-                        <Text style={styles.crownTitle}>You're on Lifetime Plan</Text>
-                    </View>
-
-                    <Text style={styles.promoTitle}>Limited Time Offer 🚀</Text>
-                    <Text style={[styles.promoText, { color: colors.textSecondary }]}>
-                        Lifetime access for first 1000 users at ₹10/month
-                    </Text>
-
-                    {/* Progress bar */}
-                    <View style={styles.progressContainer}>
-                        <View style={[styles.progressBar, { backgroundColor: isDark ? colors.border : "#334155" }]}>
-                            <LinearGradient
-                                colors={["#8B5CF6", "#EC4899"]}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 0 }}
-                                style={[styles.progressFill, { width: "62.7%" }]}
-                            />
-                        </View>
-                        <Text style={[styles.progressLabel, { color: colors.textSecondary }]}>627 / 1000 users left</Text>
-                    </View>
-
-                    <TouchableOpacity activeOpacity={0.9} onPress={() => handleNavigate("Referral", "/tabs/settings")}>
-                        <LinearGradient
-                            colors={["#EA580C", "#EC4899"]}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 0 }}
-                            style={styles.promoButton}
-                        >
-                            <View style={{ flexDirection: "row", alignItems: "center" }}>
-                                <Text style={styles.promoButtonText}>Refer & Earn</Text>
-                                <Ionicons name="chevron-forward-outline" size={12} color="#FFFFFF" style={{ marginLeft: 6 }} />
-                            </View>
-                        </LinearGradient>
-                    </TouchableOpacity>
-                </View>
-            )}
         </View>
     );
 }
