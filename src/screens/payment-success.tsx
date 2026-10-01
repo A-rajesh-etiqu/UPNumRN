@@ -19,16 +19,36 @@ import {
 
 import { SUBSCRIPTION_PLANS } from "../constants/subscription";
 
+function resolvePlanDetails(planId?: string) {
+    const id = String(planId || '').toLowerCase();
+
+    if (id === '1' || id === 'free') {
+        return { id: '1', name: 'Free Tier', price: 0, billingCycle: 'MONTHLY' as const, isLifetimeOffer: false, type: 'Basic Features' };
+    }
+    if (id === '2' || id === 'standard' || id === 'monthly') {
+        return { id: '2', name: 'Standard Plan', price: 50, billingCycle: 'MONTHLY' as const, isLifetimeOffer: false, type: 'Advanced Features' };
+    }
+    if (id === '3' || id === 'premium') {
+        return { id: '3', name: 'Premium Plan', price: 150, billingCycle: 'MONTHLY' as const, isLifetimeOffer: false, type: 'All Features' };
+    }
+    if (id === '4' || id === 'lifetime') {
+        return { id: '4', name: 'Lifetime Plan', price: 10, billingCycle: 'MONTHLY' as const, isLifetimeOffer: true, type: 'One-time Offer' };
+    }
+
+    return { id: id || '2', name: 'Standard Plan', price: 50, billingCycle: 'MONTHLY' as const, isLifetimeOffer: false, type: 'Advanced Features' };
+}
+
 export default function PaymentSuccessScreen() {
-    const { planId } = useLocalSearchParams<{
+    const { planId, planName: paramPlanName, amount: paramAmount } = useLocalSearchParams<{
         planId: string;
+        planName?: string;
+        amount?: string;
     }>();
 
     const { colors } = useAppTheme();
-
-    const plan = SUBSCRIPTION_PLANS.find(
-        (item) => item.id === planId
-    );
+    const fallbackPlan = resolvePlanDetails(planId);
+    const finalPlanName = paramPlanName || fallbackPlan.name;
+    const finalPrice = paramAmount !== undefined ? parseFloat(paramAmount) : fallbackPlan.price;
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -53,7 +73,7 @@ export default function PaymentSuccessScreen() {
                     </Text>
 
                     <Text style={[styles.value, { color: colors.text }]}>
-                        {plan?.name}
+                        {finalPlanName}
                     </Text>
 
                     <View style={[styles.divider, { backgroundColor: colors.border }]} />
@@ -63,7 +83,7 @@ export default function PaymentSuccessScreen() {
                     </Text>
 
                     <Text style={[styles.value, { color: colors.text }]}>
-                        ₹{plan?.price}
+                        ₹{finalPrice}
                     </Text>
 
                     <View style={[styles.divider, { backgroundColor: colors.border }]} />
@@ -73,9 +93,7 @@ export default function PaymentSuccessScreen() {
                     </Text>
 
                     <Text style={[styles.value, { color: colors.text }]}>
-                        {plan?.type === "MONTHLY"
-                            ? "Monthly"
-                            : "Lifetime"}
+                        {fallbackPlan.isLifetimeOffer ? "One-time" : "Monthly"}
                     </Text>
                 </View>
 
@@ -83,8 +101,19 @@ export default function PaymentSuccessScreen() {
                     style={[styles.button, { backgroundColor: colors.primary }]}
                     onPress={() => {
                         const { user, updateUser } = require("../store/auth.store").useAuthStore.getState();
-                        if (user && user.subscription) {
-                            updateUser({ ...user, subscription: { ...user.subscription, status: "ACTIVE" } });
+                        if (user) {
+                            updateUser({
+                                ...user,
+                                subscription: {
+                                    id: String(planId || fallbackPlan.id),
+                                    name: finalPlanName,
+                                    price: finalPrice,
+                                    currency: "INR",
+                                    billingCycle: fallbackPlan.billingCycle,
+                                    isLifetimeOffer: fallbackPlan.isLifetimeOffer,
+                                    status: "ACTIVE"
+                                }
+                            });
                         }
                         router.replace("/tabs/dashboard");
                     }}

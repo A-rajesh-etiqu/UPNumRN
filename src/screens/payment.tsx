@@ -22,9 +22,31 @@ import Sidebar from "../components/layout/Sidebar";
 import { useAppTheme, Radius, Spacing, Shadows, Typography } from "../theme";
 import { useAuthStore } from "../store/auth.store";
 
+function resolvePlanDetails(planId?: string) {
+    const id = String(planId || '').toLowerCase();
+
+    if (id === '1' || id === 'free') {
+        return { id: '1', name: 'Free Tier', price: 0, billingCycle: 'Monthly', isLifetimeOffer: false };
+    }
+    if (id === '2' || id === 'standard' || id === 'monthly') {
+        return { id: '2', name: 'Standard Plan', price: 50, billingCycle: 'Monthly', isLifetimeOffer: false };
+    }
+    if (id === '3' || id === 'premium') {
+        return { id: '3', name: 'Premium Plan', price: 150, billingCycle: 'Monthly', isLifetimeOffer: false };
+    }
+    if (id === '4' || id === 'lifetime') {
+        return { id: '4', name: 'Lifetime Plan', price: 10, billingCycle: 'One-time', isLifetimeOffer: true };
+    }
+
+    return { id: id || '2', name: 'Standard Plan', price: 50, billingCycle: 'Monthly', isLifetimeOffer: false };
+}
+
 export default function PaymentScreen() {
-    const { planId } = useLocalSearchParams<{
+    const { planId, amount: paramAmount, planName: paramPlanName, billingCycle: paramBillingCycle } = useLocalSearchParams<{
         planId: string;
+        amount?: string;
+        planName?: string;
+        billingCycle?: string;
     }>();
 
     const { user } = useAuthStore();
@@ -36,8 +58,13 @@ export default function PaymentScreen() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [status, setStatus] = useState<"pending" | "success">("pending");
 
-    const planName = planId === "lifetime" ? "Lifetime Plan" : "Standard Plan";
-    const planPrice = planId === "lifetime" ? "10.00" : "50.00";
+    const fallbackDetails = resolvePlanDetails(planId);
+    const planName = paramPlanName || fallbackDetails.name;
+    const planPrice = paramAmount ? parseFloat(paramAmount).toFixed(2) : fallbackDetails.price.toFixed(2);
+    const billingCycleText = paramBillingCycle
+        ? (paramBillingCycle === "yearly" ? "Yearly" : (paramBillingCycle === "one-time" ? "One-time" : "Monthly"))
+        : fallbackDetails.billingCycle;
+    const periodLabel = paramBillingCycle === "yearly" ? "/year" : (paramBillingCycle === "one-time" ? " one-time" : "/month");
 
     const handlePayNow = async () => {
         setIsProcessing(true);
@@ -47,18 +74,21 @@ export default function PaymentScreen() {
             const response = await createPayment({
                 userId: user?.id || "unknown-user",
                 orderId: `order-${Date.now()}`,
-                planId: planId || "standard",
+                planId: planId || "2",
                 amount: Number(planPrice),
                 vua: finalUpiId,
             });
 
             if (response.platformBillID) {
-                // For UPI Collect, we just show success after a small delay (simulating user accepting the push notification)
+                // For UPI Collect, we show success after a small delay
                 console.log("UPI Collect Request Sent!", response);
                 setTimeout(() => {
                     setStatus("success");
                     setTimeout(() => {
-                        router.replace("/payment-success", { planId });
+                        router.replace({
+                            pathname: "/payment-success",
+                            params: { planId, planName, amount: planPrice }
+                        });
                     }, 1200);
                 }, 1500); // Wait 1.5s to simulate "processing"
             } else {
@@ -176,8 +206,8 @@ export default function PaymentScreen() {
                         </View>
                         <View style={styles.planBannerRight}>
                             <Text style={[styles.planBannerPrice, { color: isDark ? colors.text : "#7C2D12" }]}>₹{planPrice}</Text>
-                            <Text style={[styles.planBannerPeriod, { color: colors.textSecondary }]}>/month</Text>
-                            <Text style={{ fontSize: 9, color: colors.textSecondary }}>One-time offer</Text>
+                            <Text style={[styles.planBannerPeriod, { color: colors.textSecondary }]}>{periodLabel}</Text>
+                            <Text style={{ fontSize: 9, color: colors.textSecondary }}>Selected Plan</Text>
                         </View>
                     </View>
 
@@ -322,7 +352,7 @@ export default function PaymentScreen() {
                             </View>
                             <View style={styles.summaryItem}>
                                 <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Billing Cycle</Text>
-                                <Text style={[styles.summaryValue, { color: colors.text }]}>Monthly</Text>
+                                <Text style={[styles.summaryValue, { color: colors.text }]}>{billingCycleText}</Text>
                             </View>
                             <View style={styles.summaryItem}>
                                 <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Price</Text>

@@ -129,17 +129,11 @@ export default function PlatformAdminDashboard() {
         setLoadingUsers(true);
         try {
             const response = await apiClient.get("/admin/users");
-            setUsers(response.data);
+            if (Array.isArray(response.data)) {
+                setUsers(response.data);
+            }
         } catch (err: any) {
-            console.warn("Failed to fetch users from database, falling back to mock:", err.message);
-            // fallback mock data
-            setUsers([
-                { id: "user-1", name: "Amit Sharma", type: "Individual", email: "amit@example.com", mobile: "8888888888", joined: "31 May 2024", status: "Active", volume: "₹12.4 Lakhs", plan: "lifetime", planStatus: "ACTIVE", transactions: "342" },
-                { id: "user-2", name: "Neha Patel", type: "Individual", email: "neha.patel@example.com", mobile: "7777777777", joined: "31 May 2024", status: "Active", volume: "₹8.2 Lakhs", plan: "lifetime", planStatus: "ACTIVE", transactions: "219" },
-                { id: "user-3", name: "Bright Retailers", type: "Business", email: "contact@brightretailers.in", mobile: "6666666666", joined: "30 May 2024", status: "Active", volume: "₹45.6 Lakhs", plan: "lifetime", planStatus: "ACTIVE", transactions: "1,245" },
-                { id: "user-4", name: "Tech Consultants", type: "Business", email: "info@techconsultants.in", mobile: "5555555555", joined: "30 May 2024", status: "Blocked", volume: "₹18.9 Lakhs", plan: "lifetime", planStatus: "ACTIVE", transactions: "560" },
-                { id: "user-5", name: "Rahul Verma", type: "Individual", email: "rahul.verma@example.com", mobile: "4444444444", joined: "29 May 2024", status: "Trial", volume: "₹1.2 Lakhs", plan: "free-trial", planStatus: "TRIAL", transactions: "45" },
-            ]);
+            console.warn("Failed to fetch users from database:", err.message);
         } finally {
             setLoadingUsers(false);
         }
@@ -467,25 +461,41 @@ export default function PlatformAdminDashboard() {
     };
 
     const filteredUsers = users.filter(u => {
-        const matchesSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            u.plan.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesStatus = selectedStatus === "All" || u.status.toLowerCase() === selectedStatus.toLowerCase();
+        const name = u.name || u.fullName || "";
+        const email = u.email || "";
+        const planStr = String(u.plan || "");
+        const status = u.status || "";
+        const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            planStr.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesStatus = selectedStatus === "All" || status.toLowerCase() === selectedStatus.toLowerCase();
         return matchesSearch && matchesStatus;
     });
 
     const filteredBusinesses = users.filter(u => {
-        const matchesSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (u.businessName || "").toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesStatus = selectedStatus === "All" || u.status.toLowerCase() === selectedStatus.toLowerCase();
-        return u.user_type === "BUSINESS" && matchesSearch && matchesStatus;
+        const name = u.name || u.fullName || "";
+        const email = u.email || "";
+        const busName = u.businessName || u.business_name || "";
+        const status = u.status || "";
+        const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            busName.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesStatus = selectedStatus === "All" || status.toLowerCase() === selectedStatus.toLowerCase();
+        
+        const userTypeStr = String(u.user_type || u.userType || u.type || "").toUpperCase();
+        const isBusiness = userTypeStr === "BUSINESS" || Boolean(u.businessName) || Boolean(u.business_name);
+        return isBusiness && matchesSearch && matchesStatus;
     });
 
     const filteredPayments = payments.filter(p => {
         const name = p.user_name || "";
         const email = p.user_email || "";
-        const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase()) || email.toLowerCase().includes(searchQuery.toLowerCase());
+        const planName = p.plan_name || p.plan_id || "";
+        const id = p.id || "";
+        const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                              email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                              planName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                              id.toLowerCase().includes(searchQuery.toLowerCase());
         const matchesStatus = selectedStatus === "All" || (p.status || "").toLowerCase() === selectedStatus.toLowerCase();
         return matchesSearch && matchesStatus;
     });
@@ -1155,30 +1165,38 @@ export default function PlatformAdminDashboard() {
                             <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Subscribers</Text>
                             <Text style={[styles.tableHeadCell, { width: 80, color: colors.textSecondary, textAlign: "right" }]}>Actions</Text>
                         </View>
-                        <ScrollView style={{ flex: 1 }}>
-                            {plans.map((plan, idx) => (
-                                <View key={idx} style={[styles.tableRow, { borderBottomColor: colors.border, paddingHorizontal: 24, height: 64 }]}>
-                                    <Text style={[styles.tableCellText, { flex: 1.5, color: colors.text, fontWeight: "600", paddingRight: 10 }]} numberOfLines={1}>{plan.name}</Text>
-                                    <Text style={[styles.tableCellText, { flex: 1, color: colors.textSecondary, paddingRight: 10 }]} numberOfLines={1}>{plan.type}</Text>
-                                    <Text style={[styles.tableCellText, { flex: 1, color: colors.text, paddingRight: 10 }]} numberOfLines={1}>₹{plan.price}</Text>
-                                    <Text style={[styles.tableCellText, { flex: 1, color: colors.textSecondary, paddingRight: 10 }]} numberOfLines={1}>{plan.billing}</Text>
-                                    <View style={{ flex: 1, paddingRight: 10, justifyContent: 'center' }}>
-                                        <View style={[styles.miniStatusBadge, plan.status === "Active" ? styles.bgSuccess : { backgroundColor: colors.danger + "15" }]}>
-                                            <Text style={[styles.miniStatusText, plan.status === "Active" ? styles.txtSuccess : { color: colors.danger }]}>{plan.status}</Text>
+                        {loadingPlans ? (
+                            <ActivityIndicator size="large" color={colors.primary} style={{ margin: 40 }} />
+                        ) : plans.length === 0 ? (
+                            <View style={{ padding: 40, alignItems: "center" }}>
+                                <Text style={{ color: colors.textSecondary }}>No subscription plans found in database.</Text>
+                            </View>
+                        ) : (
+                            <ScrollView style={{ flex: 1 }}>
+                                {plans.map((plan, idx) => (
+                                    <View key={idx} style={[styles.tableRow, { borderBottomColor: colors.border, paddingHorizontal: 24, height: 64 }]}>
+                                        <Text style={[styles.tableCellText, { flex: 1.5, color: colors.text, fontWeight: "600", paddingRight: 10 }]} numberOfLines={1}>{plan.name}</Text>
+                                        <Text style={[styles.tableCellText, { flex: 1, color: colors.textSecondary, paddingRight: 10 }]} numberOfLines={1}>{plan.type}</Text>
+                                        <Text style={[styles.tableCellText, { flex: 1, color: colors.text, paddingRight: 10 }]} numberOfLines={1}>₹{plan.price}</Text>
+                                        <Text style={[styles.tableCellText, { flex: 1, color: colors.textSecondary, paddingRight: 10 }]} numberOfLines={1}>{plan.billing}</Text>
+                                        <View style={{ flex: 1, paddingRight: 10, justifyContent: 'center' }}>
+                                            <View style={[styles.miniStatusBadge, plan.status === "Active" ? styles.bgSuccess : { backgroundColor: colors.danger + "15" }]}>
+                                                <Text style={[styles.miniStatusText, plan.status === "Active" ? styles.txtSuccess : { color: colors.danger }]}>{plan.status}</Text>
+                                            </View>
+                                        </View>
+                                        <Text style={[styles.tableCellText, { flex: 1, color: colors.text, paddingRight: 10 }]} numberOfLines={1}>{plan.subscribers || 0}</Text>
+                                        <View style={{ width: 80, flexDirection: 'row', alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
+                                            <TouchableOpacity onPress={() => handleOpenPlanModal(plan)}>
+                                                <Ionicons name="create-outline" size={18} color={colors.primary} />
+                                            </TouchableOpacity>
+                                            <TouchableOpacity onPress={() => handleDeletePlan(plan.id)}>
+                                                <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                                            </TouchableOpacity>
                                         </View>
                                     </View>
-                                    <Text style={[styles.tableCellText, { flex: 1, color: colors.text, paddingRight: 10 }]} numberOfLines={1}>{plan.subscribers || 0}</Text>
-                                    <View style={{ width: 80, flexDirection: 'row', alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
-                                        <TouchableOpacity onPress={() => handleOpenPlanModal(plan)}>
-                                            <Ionicons name="create-outline" size={18} color={colors.primary} />
-                                        </TouchableOpacity>
-                                        <TouchableOpacity onPress={() => handleDeletePlan(plan.id)}>
-                                            <Ionicons name="trash-outline" size={18} color={colors.danger} />
-                                        </TouchableOpacity>
-                                    </View>
-                                </View>
-                            ))}
-                        </ScrollView>
+                                ))}
+                            </ScrollView>
+                        )}
                     </View>
                 </ScrollView>
             </View>
@@ -1286,6 +1304,7 @@ export default function PlatformAdminDashboard() {
                         {/* Header row */}
                         <View style={[styles.tableHeaderRow, { borderBottomColor: colors.border, paddingHorizontal: 16 }]}>
                             <Text style={[styles.tableHeadCell, { flex: 2, color: colors.textSecondary }]}>User</Text>
+                            <Text style={[styles.tableHeadCell, { flex: 1.5, color: colors.textSecondary }]}>Subscribed Plan</Text>
                             <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Payment ID</Text>
                             <Text style={[styles.tableHeadCell, { flex: 1, color: colors.textSecondary }]}>Amount</Text>
                             <Text style={[styles.tableHeadCell, { flex: 1.5, color: colors.textSecondary }]}>Gateway Ref</Text>
@@ -1317,6 +1336,13 @@ export default function PlatformAdminDashboard() {
                                                 </Text>
                                             </View>
                                         </View>
+                                        <View style={{ flex: 1.5, paddingRight: 10, justifyContent: 'center' }}>
+                                            <View style={{ backgroundColor: colors.primary + "15", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, alignSelf: 'flex-start' }}>
+                                                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }} numberOfLines={1}>
+                                                    {payment.plan_name || payment.plan_id || "Standard Plan"}
+                                                </Text>
+                                            </View>
+                                        </View>
                                         <Text style={[styles.tableCellText, { flex: 1, color: colors.textSecondary, paddingRight: 10, fontSize: 12 }]} numberOfLines={1}>
                                             {payment.id}
                                         </Text>
@@ -1324,7 +1350,7 @@ export default function PlatformAdminDashboard() {
                                             ₹{parseFloat(payment.amount).toLocaleString()}
                                         </Text>
                                         <Text style={[styles.tableCellText, { flex: 1.5, color: colors.textSecondary, paddingRight: 10, fontSize: 13 }]} numberOfLines={1}>
-                                            {payment.gateway_ref || "N/A"}
+                                            {payment.gateway_ref || payment.upi_id || "N/A"}
                                         </Text>
                                         <Text style={[styles.tableCellText, { flex: 1.5, color: colors.textSecondary, paddingRight: 10 }]} numberOfLines={1}>
                                             {new Date(payment.created_at).toLocaleString()}

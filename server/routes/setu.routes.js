@@ -318,12 +318,13 @@ router.post("/sync-consent", async (req, res) => {
                 const [rows] = await db.query("SELECT created_at FROM consents WHERE id = ?", [consentId]);
                 if (rows.length > 0 && rows[0].created_at) {
                     const createdAt = new Date(rows[0].created_at);
-                    // Subtract 1 second to ensure it is strictly within the original upper bound
-                    toDate = new Date(createdAt.getTime() - 1000).toISOString();
-                    // Keep fromDate 6 months prior to toDate
-                    fromDate = new Date(createdAt.getTime() - 180 * 24 * 60 * 60 * 1000).toISOString();
+                    // Subtract 1 hour to ensure it is strictly within the original upper bound (accounts for MySQL rounding)
+                    toDate = new Date(createdAt.getTime() - 60 * 60 * 1000).toISOString();
+                    // Add 1 day to fromDate to ensure it is strictly after the consent's fromDate
+                    fromDate = new Date(createdAt.getTime() - 179 * 24 * 60 * 60 * 1000).toISOString();
                 } else {
                     toDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+                    fromDate = new Date(Date.now() - 179 * 24 * 60 * 60 * 1000).toISOString();
                 }
             }
 
@@ -349,7 +350,13 @@ router.post("/sync-consent", async (req, res) => {
         }
         return res.json({ success: true, message: "Consent status is " + status });
     } catch (error) {
-        console.error("Setu sync consent:", error);
+        console.error("Setu sync consent:", error.response?.data || error.message || error);
+        
+        // Handle Setu frequency limit gracefully
+        if (error.response?.data?.errorMsg === 'Consent already used for the frequency') {
+            return res.json({ success: true, message: "Transactions are already up to date for today!" });
+        }
+
         return res.status(500).json({ success: false, message: "Failed to sync consent data" });
     }
 });

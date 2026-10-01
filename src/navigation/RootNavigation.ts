@@ -3,32 +3,36 @@ import { createNavigationContainerRef, useRoute } from '@react-navigation/native
 export const navigationRef = createNavigationContainerRef<any>();
 
 export const router = {
-  push: (name: string, params?: any) => {
+  push: (name: string | { pathname: string; params?: any }, params?: any) => {
     if (navigationRef.isReady()) {
-      let rootName = name;
-      let nestedParams = params;
-      if (name.startsWith('/tabs/')) {
+      let routeName = typeof name === 'object' ? name.pathname : name;
+      let routeParams = typeof name === 'object' ? name.params : params;
+      let rootName = routeName;
+      let nestedParams = routeParams;
+      if (routeName.startsWith('/tabs/')) {
          rootName = '/tabs';
-         nestedParams = { screen: name, params };
-      } else if (name.startsWith('/auth/')) {
+         nestedParams = { screen: routeName, params: routeParams };
+      } else if (routeName.startsWith('/auth/')) {
          rootName = '/auth';
-         nestedParams = { screen: name, params };
+         nestedParams = { screen: routeName, params: routeParams };
       }
       navigationRef.navigate(rootName as any, nestedParams as any);
     } else {
       setTimeout(() => router.push(name, params), 100);
     }
   },
-  replace: (name: string, params?: any) => {
+  replace: (name: string | { pathname: string; params?: any }, params?: any) => {
     if (navigationRef.isReady()) {
-      let rootName = name;
-      let nestedParams = params;
-      if (name.startsWith('/tabs/')) {
+      let routeName = typeof name === 'object' ? name.pathname : name;
+      let routeParams = typeof name === 'object' ? name.params : params;
+      let rootName = routeName;
+      let nestedParams = routeParams;
+      if (routeName.startsWith('/tabs/')) {
          rootName = '/tabs';
-         nestedParams = { screen: name, params };
-      } else if (name.startsWith('/auth/')) {
+         nestedParams = { screen: routeName, params: routeParams };
+      } else if (routeName.startsWith('/auth/')) {
          rootName = '/auth';
-         nestedParams = { screen: name, params };
+         nestedParams = { screen: routeName, params: routeParams };
       }
       navigationRef.reset({ index: 0, routes: [{ name: rootName, params: nestedParams }] });
     } else {

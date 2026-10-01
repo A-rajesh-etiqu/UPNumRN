@@ -8,13 +8,85 @@ const multer = require("multer");
 const xlsx = require("xlsx");
 const upload = multer({ storage: multer.memoryStorage() });
 
-dotenv.config();
+const path = require("path");
+dotenv.config({ path: path.join(__dirname, ".env") });
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 8085;
+
+function resolvePlanDetails(planId) {
+    const id = String(planId || '').toLowerCase();
+
+    if (id === 'free-trial' || id === 'trial') {
+        return {
+            id: 'free-trial',
+            code: 'free-trial',
+            name: 'Free Trial (1 Month)',
+            type: 'Free Trial',
+            price: 0,
+            billingCycle: 'MONTHLY',
+            isLifetimeOffer: false,
+            status: 'TRIAL'
+        };
+    }
+    if (id === '1' || id === 'free') {
+        return {
+            id: '1',
+            code: 'free',
+            name: 'Free Tier',
+            type: 'Basic Features',
+            price: 0,
+            billingCycle: 'MONTHLY',
+            isLifetimeOffer: false,
+        };
+    }
+    if (id === '2' || id === 'standard' || id === 'monthly') {
+        return {
+            id: '2',
+            code: 'standard',
+            name: 'Standard Plan',
+            type: 'Advanced Features',
+            price: 50,
+            billingCycle: 'MONTHLY',
+            isLifetimeOffer: false,
+        };
+    }
+    if (id === '3' || id === 'premium') {
+        return {
+            id: '3',
+            code: 'premium',
+            name: 'Premium Plan',
+            type: 'All Features',
+            price: 150,
+            billingCycle: 'MONTHLY',
+            isLifetimeOffer: false,
+        };
+    }
+    if (id === '4' || id === 'lifetime') {
+        return {
+            id: '4',
+            code: 'lifetime',
+            name: 'Lifetime Plan',
+            type: 'One-time Offer',
+            price: 10,
+            billingCycle: 'LIFETIME',
+            isLifetimeOffer: true,
+        };
+    }
+
+    return {
+        id: id || '2',
+        code: id || 'standard',
+        name: 'Standard Plan',
+        type: 'Advanced Features',
+        price: 50,
+        billingCycle: 'MONTHLY',
+        isLifetimeOffer: false,
+    };
+}
 
 // ==========================================
 // Authentication APIs
@@ -47,14 +119,14 @@ app.post("/api/auth/register", async (req, res) => {
             VALUES (?, ?, TRUE, TRUE);
         `, [id, email.split("@")[0] + "@upi"]);
 
-        // 4. Create pending trial subscription
+        // 4. Create default free trial subscription (1 month)
         const trialStart = new Date();
         const trialEnd = new Date();
         trialEnd.setMonth(trialEnd.getMonth() + 1); // 1 month free trial
         await db.query(`
             INSERT INTO subscriptions (user_id, plan_id, trial_start, trial_end, billing_day, next_billing_date, status)
-            VALUES (?, 'standard', ?, ?, ?, ?, 'ACTIVE');
-        `, [id, trialStart, trialEnd, 1, trialEnd]);
+            VALUES (?, 'free-trial', ?, ?, ?, ?, 'TRIAL');
+        `, [id, trialStart, trialEnd, trialStart.getDate(), trialEnd]);
 
         res.status(201).json({
             message: "User registered successfully",
@@ -76,7 +148,7 @@ app.post("/api/auth/register", async (req, res) => {
                 userType: userType || 'PERSONAL',
                 isVerified: true,
                 isUpiVerified: true,
-                subscription: { id: "standard", name: "Standard Plan", price: 50, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: "ACTIVE" }
+                subscription: { id: "free-trial", name: "Free Trial (1 Month)", price: 0, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: "TRIAL", trialEnd: trialEnd.toISOString() }
             }
         });
     } catch (err) {
@@ -107,16 +179,38 @@ app.post("/api/auth/login", async (req, res) => {
         const [profileRows] = await db.query("SELECT * FROM profiles WHERE user_id = ? LIMIT 1;", [userRow.id]);
         const profileRow = profileRows[0] || {};
 
-        const [subRows] = await db.query("SELECT * FROM subscriptions WHERE user_id = ? LIMIT 1;", [userRow.id]);
-        let subscription = { id: "free", name: "Free Tier", price: 0, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: "ACTIVE" };
+        const [subRows] = await db.query(
+            "SELECT s.*, p.name as plan_name, p.price as plan_price, p.billing as plan_billing FROM subscriptions s LEFT JOIN plans p ON CAST(p.id AS CHAR) = CAST(s.plan_id AS CHAR) WHERE s.user_id = ? LIMIT 1;", 
+            [userRow.id]
+        );
+        let subscription = { id: "free-trial", name: "Free Trial (1 Month)", price: 0, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: "TRIAL" };
         if (subRows.length > 0) {
             const s = subRows[0];
-            if (s.plan_id === "lifetime") {
-                subscription = { id: "lifetime", name: "Founder Offer", price: 10, currency: "INR", billingCycle: "LIFETIME", isLifetimeOffer: true, status: s.status };
-            } else if (s.plan_id === "monthly" || s.plan_id === "standard") {
-                subscription = { id: "standard", name: "Standard Plan", price: 50, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: s.status };
-            } else if (s.plan_id === "free-trial") {
-                subscription = { id: "standard", name: "Standard Plan", price: 50, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: s.status };
+            const isTrial = s.plan_id === 'free-trial' || s.status === 'TRIAL';
+            const isExpired = isTrial && s.trial_end && new Date() > new Date(s.trial_end);
+
+            if (isTrial) {
+                subscription = {
+                    id: 'free-trial',
+                    name: isExpired ? "Free Trial (Expired)" : "Free Trial (1 Month)",
+                    price: 0,
+                    currency: "INR",
+                    billingCycle: "MONTHLY",
+                    isLifetimeOffer: false,
+                    status: isExpired ? "EXPIRED" : "TRIAL",
+                    trialEnd: s.trial_end
+                };
+            } else {
+                const planDetails = resolvePlanDetails(s.plan_id);
+                subscription = {
+                    id: String(s.plan_id),
+                    name: s.plan_name || planDetails.name,
+                    price: s.plan_price !== null && s.plan_price !== undefined ? parseFloat(s.plan_price) : planDetails.price,
+                    currency: "INR",
+                    billingCycle: s.plan_billing || planDetails.billingCycle,
+                    isLifetimeOffer: planDetails.isLifetimeOffer,
+                    status: s.status || "ACTIVE"
+                };
             }
         }
 
@@ -236,9 +330,19 @@ app.put("/api/users/profile", async (req, res) => {
         const isUpiVerified = upiRows.length > 0 ? !!upiRows[0].verified : false;
 
         const [subRows] = await db.query("SELECT * FROM subscriptions WHERE user_id = ? AND status = 'ACTIVE' LIMIT 1;", [userId]);
-        let subscription = { id: "free", name: "Free Plan", price: 0, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: "INACTIVE" };
+        let subscription = { id: "1", name: "Free Tier", price: 0, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: "INACTIVE" };
         if (subRows.length > 0) {
-            subscription = { id: subRows[0].plan_id, name: subRows[0].plan_id === 'standard' ? 'Standard Plan' : subRows[0].plan_id, price: 50, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: subRows[0].status };
+            const s = subRows[0];
+            const planDetails = resolvePlanDetails(s.plan_id);
+            subscription = {
+                id: planDetails.id,
+                name: planDetails.name,
+                price: planDetails.price,
+                currency: "INR",
+                billingCycle: planDetails.billingCycle,
+                isLifetimeOffer: planDetails.isLifetimeOffer,
+                status: s.status || "ACTIVE"
+            };
         }
 
         const names = userRow.name.split(" ");
@@ -679,16 +783,38 @@ app.get("/api/profile", async (req, res) => {
         const userRow = userRows[0];
 
         // Fetch subscription
-        const [subRows] = await db.query("SELECT * FROM subscriptions WHERE user_id = ? LIMIT 1;", [uid]);
-        let subscription = { id: "free", name: "Free Tier", price: 0, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false };
+        const [subRows] = await db.query(
+            "SELECT s.*, p.name as plan_name, p.price as plan_price, p.billing as plan_billing FROM subscriptions s LEFT JOIN plans p ON CAST(p.id AS CHAR) = CAST(s.plan_id AS CHAR) WHERE s.user_id = ? LIMIT 1;", 
+            [uid]
+        );
+        let subscription = { id: "free-trial", name: "Free Trial (1 Month)", price: 0, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: "TRIAL" };
         if (subRows.length > 0) {
             const s = subRows[0];
-            if (s.plan_id === "lifetime") {
-                subscription = { id: "lifetime", name: "Lifetime Launch Offer", price: 999, currency: "INR", billingCycle: "LIFETIME", isLifetimeOffer: true, status: s.status };
-            } else if (s.plan_id === "monthly") {
-                subscription = { id: "monthly", name: "Monthly Plan", price: 99, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: s.status };
-            } else if (s.plan_id === "free-trial") {
-                subscription = { id: "free-trial", name: "Free Trial", price: 0, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: s.status };
+            const isTrial = s.plan_id === 'free-trial' || s.status === 'TRIAL';
+            const isExpired = isTrial && s.trial_end && new Date() > new Date(s.trial_end);
+
+            if (isTrial) {
+                subscription = {
+                    id: 'free-trial',
+                    name: isExpired ? "Free Trial (Expired)" : "Free Trial (1 Month)",
+                    price: 0,
+                    currency: "INR",
+                    billingCycle: "MONTHLY",
+                    isLifetimeOffer: false,
+                    status: isExpired ? "EXPIRED" : "TRIAL",
+                    trialEnd: s.trial_end
+                };
+            } else {
+                const planDetails = resolvePlanDetails(s.plan_id);
+                subscription = {
+                    id: String(s.plan_id),
+                    name: s.plan_name || planDetails.name,
+                    price: s.plan_price !== null && s.plan_price !== undefined ? parseFloat(s.plan_price) : planDetails.price,
+                    currency: "INR",
+                    billingCycle: s.plan_billing || planDetails.billingCycle,
+                    isLifetimeOffer: planDetails.isLifetimeOffer,
+                    status: s.status || "ACTIVE"
+                };
             }
         }
 
@@ -725,32 +851,46 @@ app.get("/api/admin/users", async (req, res) => {
         const [rows] = await db.query(`
             SELECT u.id, u.name, u.email, u.mobile, u.role, u.status as user_status, u.user_type, 
                    p.business_name, p.category, p.city,
-                   s.plan_id, s.status as sub_status, s.next_billing_date, s.trial_end, u.created_at
+                   s.plan_id, s.status as sub_status, s.next_billing_date, s.trial_end, u.created_at,
+                   pl.name as plan_name
             FROM users u
             LEFT JOIN profiles p ON p.user_id = u.id
             LEFT JOIN subscriptions s ON s.user_id = u.id
+            LEFT JOIN plans pl ON CAST(pl.id AS CHAR) = CAST(s.plan_id AS CHAR)
             WHERE u.role = 'USER'
             ORDER BY u.created_at DESC;
         `);
 
-        res.json(rows.map(r => ({
-            id: r.id,
-            name: r.name,
-            email: r.email,
-            mobile: r.mobile,
-            role: r.role,
-            status: r.user_status,
-            user_type: r.user_type,
-            businessName: r.business_name || "",
-            category: r.category || "",
-            city: r.city || "",
-            plan: r.plan_id || "None",
-            planStatus: r.sub_status || "INACTIVE",
-            nextBilling: r.next_billing_date ? new Date(r.next_billing_date).toLocaleDateString("en-IN") : "N/A",
-            joined: new Date(r.created_at || Date.now()).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
-            volume: "₹" + (Math.floor(Math.random() * 50) + 1) + "." + Math.floor(Math.random() * 9) + " Lakhs",
-            transactions: String(Math.floor(Math.random() * 800) + 10)
-        })));
+        res.json(rows.map(r => {
+            const isTrial = r.plan_id === 'free-trial' || r.sub_status === 'TRIAL';
+            const isExpired = isTrial && r.trial_end && new Date() > new Date(r.trial_end);
+            let displayPlan = r.plan_name || (r.plan_id === 'free-trial' ? 'Free Trial' : r.plan_id) || "Free Trial";
+            let displayStatus = r.sub_status || "INACTIVE";
+
+            if (isTrial) {
+                displayPlan = "Free Trial";
+                displayStatus = isExpired ? "EXPIRED" : "TRIAL";
+            }
+
+            return {
+                id: r.id,
+                name: r.name,
+                email: r.email,
+                mobile: r.mobile,
+                role: r.role,
+                status: r.user_status,
+                user_type: r.user_type,
+                businessName: r.business_name || "",
+                category: r.category || "",
+                city: r.city || "",
+                plan: displayPlan,
+                planStatus: displayStatus,
+                nextBilling: r.next_billing_date ? new Date(r.next_billing_date).toLocaleDateString("en-IN") : "N/A",
+                joined: new Date(r.created_at || Date.now()).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
+                volume: "₹" + (Math.floor(Math.random() * 50) + 1) + "." + Math.floor(Math.random() * 9) + " Lakhs",
+                transactions: String(Math.floor(Math.random() * 800) + 10)
+            };
+        }));
     } catch (err) {
         console.error("Admin Fetch Users Error:", err);
         res.status(500).json({ error: "Failed to fetch users" });
@@ -807,10 +947,12 @@ app.delete("/api/admin/users/:id", async (req, res) => {
 app.get("/api/admin/payments", async (req, res) => {
     try {
         const [rows] = await db.query(`
-            SELECT p.id, p.amount, IF(p.status = 'SUCCESS', 'SUCCESS', 'FAILED') as status, p.created_at, p.user_id, p.gateway_ref,
-                   u.name as user_name, u.email as user_email
+            SELECT p.id, p.amount, IF(p.status = 'SUCCESS', 'SUCCESS', 'FAILED') as status, p.created_at, p.user_id, p.gateway_ref, p.plan_id, p.upi_id,
+                   u.name as user_name, u.email as user_email,
+                   COALESCE(pl.name, p.plan_id) as plan_name
             FROM payments p
             LEFT JOIN users u ON p.user_id = u.id
+            LEFT JOIN plans pl ON CAST(pl.id AS CHAR) = CAST(p.plan_id AS CHAR)
             ORDER BY p.created_at DESC;
         `);
         res.json(rows);
@@ -835,7 +977,32 @@ app.get("/api/admin/plans", async (req, res) => {
 
 app.get("/api/plans", async (req, res) => {
     try {
-        const [rows] = await db.query("SELECT * FROM plans WHERE status = 'Active' ORDER BY id ASC");
+        const { userId } = req.query;
+        let [rows] = await db.query("SELECT * FROM plans WHERE LOWER(status) = 'active' ORDER BY id ASC");
+
+        if (userId) {
+            const [subRows] = await db.query(
+                "SELECT * FROM subscriptions WHERE user_id = ? AND status = 'ACTIVE';",
+                [userId]
+            );
+            const [payRows] = await db.query(
+                "SELECT * FROM payments WHERE user_id = ? AND status = 'SUCCESS';",
+                [userId]
+            );
+
+            const hasSubscribed =
+                (subRows.length > 0 && subRows[0].plan_id !== "free" && subRows[0].plan_id !== "free-trial") ||
+                payRows.length > 0;
+
+            if (hasSubscribed) {
+                // Keep welcome/one-time offers if active, or filter only one-time welcome offers if explicitly intended
+                // But ensure all active general plans stay available
+                rows = rows.filter(p =>
+                    !p.name.toLowerCase().includes("welcome offer")
+                );
+            }
+        }
+
         res.json(rows);
     } catch (err) {
         console.error("Fetch active plans error:", err);
@@ -1065,25 +1232,28 @@ app.post("/api/payments/create", async (req, res) => {
         const billerBillID = `UPNUM-${paymentId}`;
 
         if (vua && vua.toLowerCase() === 'dummy@upi') {
-            // DUMMY PAYMENT FLOW: Immediately mark as SUCCESS and send invoice
-            
+            // DUMMY PAYMENT FLOW: Immediately mark as SUCCESS and send invoice & activate subscription
             await db.query(
-                `INSERT INTO payments (id, user_id, amount, status, provider, provider_bill_id, upi_id) VALUES (?, ?, ?, 'SUCCESS', 'SETU', ?, ?);`,
-                [paymentId, userId, paymentAmount, billerBillID, vua]
+                `INSERT INTO payments (id, user_id, plan_id, amount, status, provider, provider_bill_id, upi_id) VALUES (?, ?, ?, ?, 'SUCCESS', 'SETU', ?, ?);`,
+                [paymentId, userId, String(planId), paymentAmount, billerBillID, vua]
             );
+
+            // Activate subscription for selected plan
+            await activateSubscription(userId, planId);
 
             // Fetch user info for invoice
             const [users] = await db.query('SELECT name, email FROM users WHERE id = ?', [userId]);
             const user = users[0];
             const userEmail = user?.email;
+            const planDetails = resolvePlanDetails(planId);
 
             if (userEmail) {
                 const invoiceData = {
                     invoiceNo: `INV-${Date.now().toString().slice(-6)}`,
-                    planName: `UP Num Subscription - ${planId}`,
+                    planName: planDetails.name,
                     amount: paymentAmount.toFixed(2),
                     date: new Date().toLocaleDateString("en-IN"),
-                    billingCycle: "Monthly",
+                    billingCycle: planDetails.billingCycle,
                     userName: user?.name || "Customer",
                     upiId: vua,
                     transactionId: paymentId,
@@ -1109,8 +1279,8 @@ app.post("/api/payments/create", async (req, res) => {
          * Create local payment first for actual flow.
          */
         await db.query(
-            `INSERT INTO payments (id, user_id, amount, status, provider, provider_bill_id) VALUES (?, ?, ?, 'CREATED', 'SETU', ?);`,
-            [paymentId, userId, paymentAmount, billerBillID]
+            `INSERT INTO payments (id, user_id, plan_id, amount, status, provider, provider_bill_id) VALUES (?, ?, ?, ?, 'CREATED', 'SETU', ?);`,
+            [paymentId, userId, String(planId), paymentAmount, billerBillID]
         );
 
         let setuPayment;
@@ -1447,100 +1617,43 @@ function mapSetuStatus(
     }
 }
 
-async function activateSubscription(
-    payment
-) {
+async function activateSubscription(paymentOrUserId, targetPlanId) {
+    const userId = typeof paymentOrUserId === "object" ? paymentOrUserId.user_id : paymentOrUserId;
+    const planId = targetPlanId || (typeof paymentOrUserId === "object" ? paymentOrUserId.plan_id : null) || "2";
 
-    const [
-        existingRows
-    ] = await db.query(
-        `
-        SELECT *
-        FROM subscriptions
-        WHERE user_id = ?
-        LIMIT 1;
-        `,
-        [
-            payment.user_id,
-        ]
+    let finalPlanId = String(planId);
+    
+    // Check if plan exists in DB plans table
+    const [planRows] = await db.query("SELECT * FROM plans WHERE CAST(id AS CHAR) = ? OR LOWER(name) = LOWER(?) LIMIT 1;", [finalPlanId, finalPlanId]);
+    if (planRows.length > 0) {
+        finalPlanId = String(planRows[0].id);
+    } else {
+        const planDetails = resolvePlanDetails(planId);
+        finalPlanId = planDetails.id;
+    }
+
+    const nextBilling = new Date();
+    nextBilling.setMonth(nextBilling.getMonth() + 1);
+
+    const [existingRows] = await db.query(
+        `SELECT * FROM subscriptions WHERE user_id = ? LIMIT 1;`,
+        [userId]
     );
 
-
-    /*
-     * Don't accidentally activate
-     * an already-active subscription.
-     */
-
-    if (
-        existingRows.length > 0 &&
-        existingRows[0].status === "ACTIVE"
-    ) {
-        return;
-    }
-
-
-    /*
-     * For the lifetime offer,
-     * there is no real monthly expiry.
-     */
-
-    const nextBillingDate =
-        null;
-
-
-    if (
-        existingRows.length > 0
-    ) {
-
+    if (existingRows.length > 0) {
         await db.query(
-            `
-            UPDATE subscriptions
-
-            SET
-                plan_id = 'lifetime',
-                status = 'ACTIVE',
-                trial_end = NULL,
-                next_billing_date = ?,
-                billing_day = NULL
-
-            WHERE user_id = ?;
-            `,
-            [
-                nextBillingDate,
-                payment.user_id,
-            ]
+            `UPDATE subscriptions
+             SET plan_id = ?, status = 'ACTIVE', trial_end = NULL, next_billing_date = ?, billing_day = ?
+             WHERE user_id = ?;`,
+            [finalPlanId, nextBilling, nextBilling.getDate(), userId]
         );
-
     } else {
-
         await db.query(
-            `
-            INSERT INTO subscriptions
-            (
-                user_id,
-                plan_id,
-                status,
-                trial_end,
-                next_billing_date,
-                billing_day
-            )
-            VALUES
-            (
-                ?,
-                'lifetime',
-                'ACTIVE',
-                NULL,
-                NULL,
-                NULL
-            );
-            `,
-            [
-                payment.user_id,
-            ]
+            `INSERT INTO subscriptions (user_id, plan_id, status, trial_start, trial_end, next_billing_date, billing_day)
+             VALUES (?, ?, 'ACTIVE', NULL, NULL, ?, ?);`,
+            [userId, finalPlanId, nextBilling, nextBilling.getDate()]
         );
-
     }
-
 }
 
 const setuRoutes =

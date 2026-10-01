@@ -32,7 +32,6 @@ import DashboardScreen from './src/screens/tabs/dashboard/index';
 import TransactionsScreen from './src/screens/tabs/transactions/index';
 import CustomersScreen from './src/screens/tabs/customers/index';
 import SettingsScreen from './src/screens/tabs/settings/index';
-import ProfileScreen from './src/screens/tabs/profile/index';
 import ReportsScreen from './src/screens/tabs/reports/index';
 // Other
 import PaymentScreen from './src/screens/payment';
@@ -76,19 +75,22 @@ function TabNavigator() {
         <Tab.Navigator
           screenOptions={({ route }) => ({
             headerShown: false,
-            tabBarStyle: { display: isDesktop ? 'none' : 'flex' },
+            tabBarStyle: { 
+              display: isDesktop ? 'none' : 'flex',
+              backgroundColor: colors.surface,
+              borderTopColor: colors.border
+            },
             tabBarIcon: ({ focused, color, size }) => {
               let iconName: any = 'home';
               if (route.name === '/tabs/dashboard') iconName = focused ? 'home' : 'home-outline';
               else if (route.name === '/tabs/transactions') iconName = focused ? 'list' : 'list-outline';
               else if (route.name === '/tabs/customers') iconName = focused ? 'people' : 'people-outline';
               else if (route.name === '/tabs/settings') iconName = focused ? 'settings' : 'settings-outline';
-              else if (route.name === '/tabs/profile') iconName = focused ? 'person' : 'person-outline';
               else if (route.name === '/tabs/reports') iconName = focused ? 'bar-chart' : 'bar-chart-outline';
               return <Ionicons name={iconName} size={size} color={color} />;
             },
-            tabBarActiveTintColor: '#6366f1',
-            tabBarInactiveTintColor: 'gray',
+            tabBarActiveTintColor: colors.primary,
+            tabBarInactiveTintColor: colors.textSecondary,
           })}
         >
           <Tab.Screen name="/tabs/dashboard" component={DashboardScreen} options={{ tabBarLabel: 'Home' }} />
@@ -98,7 +100,6 @@ function TabNavigator() {
           )}
           <Tab.Screen name="/tabs/reports" component={ReportsScreen} options={{ tabBarLabel: 'Reports' }} />
           <Tab.Screen name="/tabs/settings" component={SettingsScreen} options={{ tabBarLabel: 'Settings' }} />
-          <Tab.Screen name="/tabs/profile" component={ProfileScreen} options={{ tabBarLabel: 'Profile', tabBarItemStyle: { display: 'none' }, tabBarButton: () => null }} />
           <Tab.Screen name="/tabs/subscription" component={SubscriptionIndexScreen} options={{ tabBarLabel: 'Subscriptions', tabBarItemStyle: { display: 'none' }, tabBarButton: () => null }} />
           <Tab.Screen name="/tabs/subscription/history" component={SubscriptionHistoryScreen} options={{ tabBarLabel: 'Billing History', tabBarItemStyle: { display: 'none' }, tabBarButton: () => null }} />
           <Tab.Screen name="/tabs/dashboard/ai-insights" component={AiInsightsScreen} options={{ tabBarLabel: 'AI Insights', tabBarItemStyle: { display: 'none' }, tabBarButton: () => null }} />

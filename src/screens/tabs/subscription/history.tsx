@@ -16,6 +16,7 @@ import Svg, { Path } from "react-native-svg";
 import { useAppTheme, Radius, Spacing, Shadows, Typography } from "../../../theme";
 import apiClient from "../../../api/apiClient";
 import { useAuthStore } from "../../../store/auth.store";
+import DashboardHeader from "../../../components/layout/DashboardHeader";
 
 export default function SubscriptionHistoryScreen() {
     const { width } = useWindowDimensions();
@@ -89,13 +90,18 @@ export default function SubscriptionHistoryScreen() {
     ];
 
     return (
-        <ScrollView
-            style={[styles.container, { backgroundColor: colors.background }]}
-            contentContainerStyle={[
-                styles.scrollContent,
-                isDesktop && { padding: Spacing.md, paddingBottom: Spacing.md }
-            ]}
-        >
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
+            <DashboardHeader
+                title="Billing History"
+                subtitle="Track your subscription payments, invoices, and billing statistics."
+            />
+            <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={[
+                    styles.scrollContent,
+                    isDesktop && { padding: Spacing.md, paddingBottom: Spacing.md }
+                ]}
+            >
             {/* Stat Cards Row */}
             <View
                 style={[
@@ -390,6 +396,7 @@ export default function SubscriptionHistoryScreen() {
                 </View>
             </View>
         </ScrollView>
+        </View>
     );
 }
 

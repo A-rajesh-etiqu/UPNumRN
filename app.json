@@ -1,7 +1,30 @@
 {
   "name": "UpNumRN",
-  "displayName": "UpNumRN",
+  "displayName": "UpNum",
   "expo": {
-    "userInterfaceStyle": "automatic"
+    "name": "UpNum",
+    "slug": "UpNumRN",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/logo.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/images/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "icon": "./assets/images/logo.png"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/logo.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "web": {
+      "favicon": "./assets/images/logo.png"
+    }
   }
 }

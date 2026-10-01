@@ -6,6 +6,7 @@
 
 export type PlanType =
     | "MONTHLY"
+    | "YEARLY"
     | "LIFETIME";
 
 export interface SubscriptionFeature {
@@ -35,6 +36,8 @@ export interface SubscriptionPlan {
     isLifetimeOffer: boolean;
 
     badge?: string;
+
+    billing?: string;
 
     features: SubscriptionFeature[];
 }

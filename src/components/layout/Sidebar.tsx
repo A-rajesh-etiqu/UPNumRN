@@ -91,7 +91,7 @@ export default function Sidebar({ items = SIDEBAR_ITEMS, activeTabOverride, onIt
             onItemPress(item);
         } else {
             setActiveTab(item.title);
-            router.replace(item.route as any);
+            router.push(item.route as any);
         }
     };
 

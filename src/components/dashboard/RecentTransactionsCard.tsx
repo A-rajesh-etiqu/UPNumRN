@@ -4,9 +4,11 @@ import {
     Text,
     View,
     FlatList,
+    TouchableOpacity,
 } from "react-native";
 import { useAppTheme } from "../../theme";
 import { useDashboardStore } from "../../store/dashboard.store";
+import { router } from "../../navigation/RootNavigation";
 
 const EMPTY_TRANSACTIONS: any[] = [];
 
@@ -23,11 +25,11 @@ const RecentTransactionsCard = () => {
         return (
             <View style={[styles.transactionRow, { borderBottomColor: colors.border }]}>
                 <View style={styles.transactionInfo}>
-                    <Text style={[styles.title, { color: colors.text }]}>
+                    <Text style={[styles.title, { color: colors.text }]} numberOfLines={1} ellipsizeMode="tail">
                         {item.title}
                     </Text>
 
-                    <Text style={[styles.category, { color: colors.textSecondary }]}>
+                    <Text style={[styles.category, { color: colors.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">
                         {item.category}
                     </Text>
 
@@ -71,6 +73,16 @@ const RecentTransactionsCard = () => {
                     scrollEnabled={false}
                 />
             )}
+
+            <TouchableOpacity
+                style={{ marginTop: 16 }}
+                activeOpacity={0.7}
+                onPress={() => router.push("/tabs/transactions" as any)}
+            >
+                <Text style={{ color: "#6C2CF4", fontWeight: "600", fontSize: 13 }}>
+                    View All Transactions →
+                </Text>
+            </TouchableOpacity>
         </View>
     );
 };

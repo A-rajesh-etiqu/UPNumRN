@@ -15,13 +15,9 @@ router.get("/history", async (req, res) => {
     try {
         // 1. Fetch Subscription Status
         const [subRows] = await db.query(`
-            SELECT s.*, p.name as plan_name, p.price, p.billing_cycle 
+            SELECT s.*, p.name as plan_name, p.price as plan_price, p.billing as plan_billing 
             FROM subscriptions s
-            LEFT JOIN (
-                SELECT 'free' as id, 'Free Tier' as name, 0 as price, 'MONTHLY' as billing_cycle
-                UNION ALL SELECT 'standard', 'Standard Plan', 50, 'MONTHLY'
-                UNION ALL SELECT 'lifetime', 'Founder Offer', 10, 'LIFETIME'
-            ) p ON s.plan_id = p.id
+            LEFT JOIN plans p ON CAST(p.id AS CHAR) = CAST(s.plan_id AS CHAR)
             WHERE s.user_id = ? 
             LIMIT 1;
         `, [userId]);
@@ -29,15 +25,32 @@ router.get("/history", async (req, res) => {
         let subscription = null;
         if (subRows.length > 0) {
             const s = subRows[0];
-            subscription = {
-                planId: s.plan_id,
-                planName: s.plan_name || "Standard Plan",
-                price: s.price,
-                status: s.status,
-                currentPeriodStart: s.trial_start || s.next_billing_date, // Simplified
-                nextBillingDate: s.next_billing_date,
-                autoRenew: s.status === 'ACTIVE'
-            };
+            const isTrial = s.plan_id === 'free-trial' || s.status === 'TRIAL';
+            const isExpired = isTrial && s.trial_end && new Date() > new Date(s.trial_end);
+
+            if (isTrial) {
+                subscription = {
+                    planId: 'free-trial',
+                    planName: isExpired ? "Free Trial (Expired)" : "Free Trial (1 Month)",
+                    price: 0,
+                    status: isExpired ? "EXPIRED" : "TRIAL",
+                    currentPeriodStart: s.trial_start,
+                    nextBillingDate: s.trial_end,
+                    autoRenew: false
+                };
+            } else {
+                const fallbackPrice = s.plan_id === '3' || s.plan_id === 'premium' ? 150 : (s.plan_id === '2' || s.plan_id === 'standard' ? 50 : 0);
+                const fallbackName = s.plan_id === '3' || s.plan_id === 'premium' ? "Premium Plan" : (s.plan_id === '2' || s.plan_id === 'standard' ? "Standard Plan" : "Free Tier");
+                subscription = {
+                    planId: s.plan_id,
+                    planName: s.plan_name || fallbackName,
+                    price: s.plan_price !== null && s.plan_price !== undefined ? parseFloat(s.plan_price) : fallbackPrice,
+                    status: s.status,
+                    currentPeriodStart: s.trial_start || s.next_billing_date,
+                    nextBillingDate: s.next_billing_date,
+                    autoRenew: s.status === 'ACTIVE'
+                };
+            }
         }
 
         // 2. Fetch Payments & Invoices

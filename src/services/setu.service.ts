@@ -3,11 +3,9 @@ import {
     SetuDataSessionResponse,
 } from "../types/setu";
 
+import { ENV } from "../config/env";
 
-const API_BASE_URL =
-    process.env.EXPO_PUBLIC_API_URL ??
-    "http://localhost:8085";
-
+const API_BASE_URL = ENV.API_BASE_URL.replace('/api', '');
 
 export interface CreateConsentRequest {
 

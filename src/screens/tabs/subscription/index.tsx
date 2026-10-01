@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
     View,
     Text,
@@ -14,61 +14,171 @@ import {
 } from "react-native";
 import { router } from "../../../navigation/RootNavigation";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { LinearGradient } from "expo-linear-gradient";
+import Svg, { Rect, Path, Ellipse, Circle, Stop, LinearGradient as SvgLinearGradient, Defs } from "react-native-svg";
 import DashboardHeader from "../../../components/layout/DashboardHeader";
-import Svg, { Rect, Path, Ellipse, Circle } from "react-native-svg";
 import { useAppTheme, Spacing, Shadows } from "../../../theme";
 import { useAuthStore } from "../../../store/auth.store";
+import { ENV } from "../../../config/env";
 
-const PLAN_FEATURES_FALLBACK = [
-    "All Dashboard Features",
-    "AI Insights & Suggestions",
-    "Unlimited Transactions",
-    "Priority Support",
-    "Secure Data & Backups",
+const DEFAULT_PLANS = [
+    { id: 1, name: "Free Tier", type: "Basic Features", price: 0, billing: "Monthly", status: "Active", subscribers: 12543, description: "Basic Dashboard Features,100 Transactions/mo,Community Support,Standard Data Backups" },
+    { id: 2, name: "Standard Plan", type: "Advanced Features", price: 50, billing: "Monthly", status: "Active", subscribers: 5234, description: "All Dashboard Features,AI Insights & Suggestions,Unlimited Transactions,Priority Support,Secure Data & Backups" },
+    { id: 3, name: "Premium Plan", type: "All Features", price: 150, billing: "Monthly", status: "Active", subscribers: 1845, description: "All Dashboard Features,AI Insights & Suggestions,Unlimited Transactions,24/7 Dedicated Support,Secure Data & Backups,API Access" },
+    { id: 4, name: "Lifetime Plan", type: "One-time Offer", price: 10, billing: "Monthly", status: "Active", subscribers: 980, description: "All Dashboard Features,AI Insights & Suggestions,Unlimited Transactions,Priority Support,Secure Data & Backups" },
+    { id: 5, name: "Standard Yearly", type: "Advanced Features", price: 500, billing: "Yearly", status: "Active", subscribers: 2100, description: "All Dashboard Features,AI Insights & Suggestions,Unlimited Transactions,Priority Support,Secure Data & Backups" },
+    { id: 6, name: "Premium Yearly", type: "All Features", price: 1400, billing: "Yearly", status: "Active", subscribers: 890, description: "All Dashboard Features,AI Insights & Suggestions,Unlimited Transactions,24/7 Dedicated Support,Secure Data & Backups,API Access" },
 ];
 
-const PLAN_COLORS: Record<number, { gradient: string[]; accent: string; light: string }> = {
-    0: { gradient: ["#7C3AED", "#4F46E5"], accent: "#7C3AED", light: "#F5F3FF" },
-    1: { gradient: ["#0EA5E9", "#2563EB"], accent: "#2563EB", light: "#EFF6FF" },
-    2: { gradient: ["#059669", "#0D9488"], accent: "#059669", light: "#ECFDF5" },
-    3: { gradient: ["#F59E0B", "#EF4444"], accent: "#F59E0B", light: "#FFFBEB" },
-};
-
-const FAQ_ITEMS = [
-    { q: "Can I cancel anytime?", a: "Yes. You can cancel your subscription at any time. Your plan remains active until the end of the billing period." },
-    { q: "Is my payment secure?", a: "Absolutely. All payments are processed via UPI — India's most secure payment infrastructure, backed by NPCI." },
-    { q: "What happens after the free trial?", a: "After the 30-day free trial, your selected plan will be activated. You'll receive a reminder before any charges." },
-    { q: "Do you offer refunds?", a: "Yes, we offer a 7-day money-back guarantee if you're not satisfied with the service." },
-];
+const Crown3D = () => (
+    <Svg width="72" height="72" viewBox="0 0 100 100" fill="none">
+        <Ellipse cx="50" cy="86" rx="34" ry="7" fill="#6366F1" fillOpacity="0.2" />
+        <Ellipse cx="50" cy="78" rx="28" ry="9" fill="#4F46E5" />
+        <Path d="M22 78 C22 85 78 85 78 78 L74 72 C74 77 26 77 26 72 Z" fill="#4338CA" />
+        <Path d="M24 70 L18 38 L38 52 L50 28 L62 52 L82 38 L76 70 Z" fill="url(#crown_gold)" />
+        <Circle cx="18" cy="36" r="5" fill="#FBBF24" />
+        <Circle cx="50" cy="26" r="6" fill="#F59E0B" />
+        <Circle cx="82" cy="36" r="5" fill="#FBBF24" />
+        <Circle cx="38" cy="52" r="3.5" fill="#EF4444" />
+        <Circle cx="62" cy="52" r="3.5" fill="#3B82F6" />
+        <Path d="M24 66 C24 70 76 70 76 66 L76 70 C76 74 24 74 24 70 Z" fill="#D97706" />
+        <Defs>
+            <SvgLinearGradient id="crown_gold" x1="18" y1="26" x2="82" y2="70" gradientUnits="userSpaceOnUse">
+                <Stop offset="0%" stopColor="#FDE047" />
+                <Stop offset="45%" stopColor="#F59E0B" />
+                <Stop offset="100%" stopColor="#D97706" />
+            </SvgLinearGradient>
+        </Defs>
+    </Svg>
+);
 
 export default function SubscriptionIndexScreen() {
     const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
     const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
     const [plans, setPlans] = useState<any[]>([]);
     const [loadingPlans, setLoadingPlans] = useState(true);
-    const [openFaq, setOpenFaq] = useState<number | null>(null);
     const [copied, setCopied] = useState(false);
-    const [hoveredPlanId, setHoveredPlanId] = useState<string | null>(null);
+
+    // Carousel state & ref
+    const [carouselIndex, setCarouselIndex] = useState(0);
+    const carouselRef = useRef<ScrollView>(null);
 
     const { width } = useWindowDimensions();
-    const isDesktop = width >= 900;
+    const isDesktop = width >= 960;
     const { user } = useAuthStore();
     const { colors, isDark } = useAppTheme();
 
-    useEffect(() => {
-        fetch("http://localhost:8085/api/plans")
-            .then(res => res.json())
-            .then(data => { setPlans(data); setLoadingPlans(false); })
-            .catch(() => setLoadingPlans(false));
-    }, []);
+    const isBusinessUser = user?.userType === "BUSINESS";
+    const userEmailOrHandle = user?.email || user?.mobile || "you@upi";
 
-    const handleSubscribe = () => {
-        if (!selectedPlanId) {
+    useEffect(() => {
+        let isMounted = true;
+        const loadPlans = async () => {
+            const findDefaultPlanId = (plansList: any[]) => {
+                if (user?.subscription?.id) {
+                    const subIdStr = user.subscription.id.toString();
+                    const match = plansList.find((p: any) => p.id.toString() === subIdStr);
+                    if (match) return match.id.toString();
+                }
+                if (user?.subscription?.name) {
+                    const subName = user.subscription.name.toLowerCase();
+                    const match = plansList.find((p: any) => (p.name || "").toLowerCase() === subName);
+                    if (match) return match.id.toString();
+                }
+                return plansList[0] ? plansList[0].id.toString() : null;
+            };
+
+            try {
+                const url = `${ENV.API_BASE_URL}/plans${user?.id ? `?userId=${user.id}` : ""}`;
+                const res = await fetch(url);
+                if (res.ok) {
+                    let data = await res.json();
+                    if (isMounted && Array.isArray(data) && data.length > 0) {
+                        const activePlans = data.filter((p: any) => (p.status || "Active").toLowerCase() === "active");
+                        const listToUse = activePlans.length > 0 ? activePlans : data;
+                        setPlans(listToUse);
+                        setSelectedPlanId(prev => (prev && listToUse.some((d: any) => d.id.toString() === prev)) ? prev : findDefaultPlanId(listToUse));
+                        setLoadingPlans(false);
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.log("Error loading plans from backend, using default fallback plans:", err);
+            }
+
+            if (isMounted) {
+                setPlans(DEFAULT_PLANS);
+                setSelectedPlanId(prev => (prev && DEFAULT_PLANS.some((f: any) => f.id.toString() === prev)) ? prev : findDefaultPlanId(DEFAULT_PLANS));
+                setLoadingPlans(false);
+            }
+        };
+
+        loadPlans();
+        return () => { isMounted = false; };
+    }, [user?.id, user?.subscription?.id, user?.subscription?.name]);
+
+    const visiblePlans = useMemo(() => {
+        return plans.filter((plan: any) => {
+            const b = (plan.billing || "").toLowerCase();
+            if (billingCycle === "monthly") {
+                return b === "monthly" || b === "month";
+            } else {
+                return b === "yearly" || b === "annual";
+            }
+        });
+    }, [plans, billingCycle]);
+
+    useEffect(() => {
+        if (visiblePlans.length > 0 && !visiblePlans.some((p: any) => p.id.toString() === selectedPlanId)) {
+            setSelectedPlanId(visiblePlans[0].id.toString());
+        }
+        setCarouselIndex(0);
+    }, [visiblePlans]);
+
+    const selectedPlan = useMemo(() => {
+        return plans.find(p => p.id.toString() === selectedPlanId) || visiblePlans[0] || plans[0];
+    }, [plans, visiblePlans, selectedPlanId]);
+
+    const isOfferPlan = (plan: any) => {
+        if (!plan) return false;
+        const name = (plan.name || "").toLowerCase();
+        const type = (plan.type || "").toLowerCase();
+        const billing = (plan.billing || "").toLowerCase();
+        return (
+            name.includes("lifetime") ||
+            name.includes("welcome") ||
+            type.includes("one-time") ||
+            billing === "one-time" ||
+            plan.id === 4 ||
+            plan.id === "4"
+        );
+    };
+
+    const getNextBillingDateStr = () => {
+        const d = new Date();
+        d.setDate(d.getDate() + 30);
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const day = String(d.getDate()).padStart(2, "0");
+        const month = months[d.getMonth()];
+        const year = d.getFullYear();
+        return `${day} ${month}, ${year}`;
+    };
+
+    const handleSubscribe = (planIdToSub?: string) => {
+        const targetId = planIdToSub || selectedPlanId;
+        if (!targetId) {
             Alert.alert("Select a Plan", "Please choose a plan before continuing.");
             return;
         }
-        router.push("/payment", { planId: selectedPlanId });
+        const targetPlan = plans.find(p => p.id.toString() === targetId) || selectedPlan;
+        const checkoutAmt = targetPlan ? (parseFloat(targetPlan.price) || 0) : 50;
+        const cycle = targetPlan && (targetPlan.billing || "").toLowerCase() === "yearly" ? "yearly" : "monthly";
+
+        router.push("/payment", {
+            planId: targetId,
+            amount: String(checkoutAmt),
+            planName: targetPlan?.name || "Selected Plan",
+            billingCycle: cycle,
+        });
     };
 
     const handleCopy = (text: string) => {
@@ -81,16 +191,130 @@ export default function SubscriptionIndexScreen() {
         setTimeout(() => setCopied(false), 2000);
     };
 
-    const getSelectedPlan = () => plans.find(p => p.id.toString() === selectedPlanId);
+    // Carousel page-based state (2 plans visible per page)
+    const totalPages = useMemo(() => Math.max(1, Math.ceil(visiblePlans.length / 2)), [visiblePlans]);
 
-    const getDisplayPrice = (plan: any) => {
-        const monthly = parseFloat(plan.price) || 0;
-        return billingCycle === "yearly" ? Math.floor(monthly * 0.8) : monthly;
+    const scrollCarouselToPage = (pageIdx: number) => {
+        if (pageIdx < 0 || pageIdx >= totalPages) return;
+        setCarouselIndex(pageIdx);
+        carouselRef.current?.scrollTo({ x: pageIdx * 540, animated: true });
+    };
+
+    const renderPlanCard = (plan: any, isCarouselMode: boolean = false) => {
+        const isSelected = selectedPlanId === plan.id.toString();
+        const isOffer = isOfferPlan(plan);
+        const isPopular = plan.name.toLowerCase().includes("standard") || plan.id === 2 || plan.id === "2";
+        const priceNum = parseFloat(plan.price) || 0;
+
+        const accentColor = isOffer ? "#F97316" : (isPopular ? "#6366F1" : "#4F46E5");
+        const borderColor = isSelected
+            ? accentColor
+            : (isOffer ? "#FDBA74" : (isPopular ? "#C7D2FE" : (isDark ? colors.border : "#E2E8F0")));
+
+        const defaultFeatures = plan.description ? plan.description.split(",") : [
+            "All Dashboard Features",
+            "AI Insights & Suggestions",
+            "Unlimited Transactions",
+            "Priority Support",
+            "Secure Data & Backups"
+        ];
+
+        let features = defaultFeatures;
+        if (isBusinessUser) {
+            const pIdStr = plan.id ? plan.id.toString() : "";
+            const nameLower = (plan.name || "").toLowerCase();
+            if (pIdStr === "1" || nameLower.includes("free")) {
+                features = ["Customer Directory & Ledger", "100 Transactions/mo", "Basic GST Reports", "Community Support"];
+            } else if (pIdStr === "2" || nameLower.includes("standard")) {
+                features = ["Unlimited Customer Ledgers", "Automated Payment Reminders", "AI Sales & Revenue Insights", "Unlimited Transactions", "Priority Business Support"];
+            } else if (pIdStr === "3" || nameLower.includes("premium")) {
+                features = ["All Standard Features", "Multi-user & Employee Roles", "Advanced GST & Tax Export", "WhatsApp / SMS Links", "24/7 Dedicated Support"];
+            } else if (pIdStr === "4" || nameLower.includes("lifetime") || nameLower.includes("offer")) {
+                features = ["Introductory Business Suite", "Unlimited Customer Ledgers", "AI Sales Insights", "Priority Support", "Secure Data & Backups"];
+            } else if (nameLower.includes("yearly")) {
+                features = ["All Standard & Premium Features", "Annual Billing Savings", "Priority Business Support", "Secure Cloud Backups"];
+            }
+        }
+
+        const periodStr = (plan.billing || "").toLowerCase() === "yearly" ? "/year" : "/month";
+
+        return (
+            <Pressable
+                key={plan.id}
+                onPress={() => setSelectedPlanId(plan.id.toString())}
+                style={[
+                    styles.planCard,
+                    isCarouselMode && { width: 262, flex: undefined },
+                    {
+                        backgroundColor: isDark ? colors.surface : "#FFF",
+                        borderColor: borderColor,
+                        borderWidth: isSelected || isPopular || isOffer ? 2 : 1,
+                    },
+                    isSelected && Shadows.md,
+                ]}
+            >
+                {/* Floating Badge at Top Center */}
+                {isPopular && (
+                    <View style={[styles.floatingBadge, { backgroundColor: "#6366F1" }]}>
+                        <Text style={styles.floatingBadgeText}>MOST POPULAR</Text>
+                    </View>
+                )}
+                {isOffer && (
+                    <View style={[styles.floatingBadge, { backgroundColor: "#FFF7ED", borderWidth: 1, borderColor: "#FED7AA" }]}>
+                        <Text style={[styles.floatingBadgeText, { color: "#EA580C" }]}>🎁 LIMITED TIME OFFER</Text>
+                    </View>
+                )}
+
+                <View style={styles.planCardHeader}>
+                    <Text style={[styles.planCardTitle, { color: colors.text }]}>{plan.name}</Text>
+                    <Text style={[styles.planCardSubtitle, { color: colors.textSecondary }]}>
+                        {isOffer ? "One-time offer for early users" : (isBusinessUser ? "Perfect for small businesses" : "Full feature personal access")}
+                    </Text>
+
+                    <View style={styles.planPriceRow}>
+                        <Text style={[styles.planPriceSymbol, { color: accentColor }]}>₹</Text>
+                        <Text style={[styles.planPriceAmount, { color: accentColor }]}>{priceNum}</Text>
+                        <Text style={[styles.planPricePeriod, { color: colors.textSecondary }]}>{periodStr}</Text>
+                    </View>
+
+                    {isOffer && (
+                        <Text style={styles.offerSubNote}>For 1st 1000 users only</Text>
+                    )}
+                </View>
+
+                {/* Feature Checklist */}
+                <View style={styles.planFeaturesList}>
+                    {features.map((feat: string, fi: number) => (
+                        <View key={fi} style={styles.featureItemRow}>
+                            <View style={[styles.featureCheckCircle, { borderColor: accentColor }]}>
+                                <Ionicons name="checkmark" size={12} color={accentColor} />
+                            </View>
+                            <Text style={[styles.featureItemText, { color: colors.text }]}>{feat.trim()}</Text>
+                        </View>
+                    ))}
+                </View>
+
+                {/* Subscribe Button */}
+                <TouchableOpacity
+                    activeOpacity={0.88}
+                    onPress={() => handleSubscribe(plan.id.toString())}
+                    style={[styles.planCardBtn, { backgroundColor: accentColor }]}
+                >
+                    <Text style={styles.planCardBtnText}>
+                        Subscribe for ₹{priceNum}
+                    </Text>
+                </TouchableOpacity>
+
+                <Text style={[styles.planCardSubtext, { color: colors.textSecondary }]}>
+                    {isOffer ? "One-time offer. Limited seats!" : `Billed ${(plan.billing || "monthly").toLowerCase()} via UPI`}
+                </Text>
+            </Pressable>
+        );
     };
 
     const renderQR = () => (
-        <View style={[styles.qrBox, { backgroundColor: "#FFF", borderColor: isDark ? colors.border : "#E2E8F0" }]}>
-            <Svg width="100" height="100" viewBox="0 0 21 21">
+        <View style={styles.qrBox}>
+            <Svg width="110" height="110" viewBox="0 0 21 21">
                 <Rect x="0" y="0" width="7" height="7" fill="#111827" />
                 <Rect x="1" y="1" width="5" height="5" fill="#FFF" />
                 <Rect x="2" y="2" width="3" height="3" fill="#111827" />
@@ -108,436 +332,463 @@ export default function SubscriptionIndexScreen() {
                 <Rect x="13" y="14" width="3" height="1" fill="#111827" /><Rect x="17" y="11" width="2" height="2" fill="#111827" />
                 <Rect x="9" y="17" width="3" height="1" fill="#111827" /><Rect x="13" y="16" width="2" height="3" fill="#111827" />
                 <Rect x="7.5" y="7.5" width="6" height="6" fill="#FFF" rx="1" />
-                <Rect x="8.5" y="8.5" width="4" height="4" fill="#7C3AED" rx="0.5" />
+                <Rect x="8.5" y="8.5" width="4" height="4" fill="#6366F1" rx="0.5" />
             </Svg>
         </View>
     );
 
     return (
-        <View style={{ flex: 1, backgroundColor: colors.background }}>
-            <DashboardHeader title="Subscription" subtitle="Simple, Transparent Pricing" />
+        <View style={[styles.container, { backgroundColor: isDark ? colors.background : "#F8FAFC" }]}>
+            <DashboardHeader
+                title="Subscription"
+                subtitle={
+                    isBusinessUser
+                        ? "Choose the best plan to grow your business with AI-powered insights."
+                        : "Choose the best plan to manage your personal finances with AI-powered insights."
+                }
+            />
             <ScrollView
-                style={styles.container}
+                style={{ flex: 1 }}
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
             >
-
-            {/* ── Page Header ── */}
-            <View style={styles.pageHeader}>
-                <View style={[styles.headerBadge, { backgroundColor: isDark ? "#1E1433" : "#F5F3FF" }]}>
-                    <Ionicons name="sparkles" size={14} color="#7C3AED" />
-                    <Text style={[styles.headerBadgeText, { color: "#7C3AED" }]}>Upgrade your plan</Text>
-                </View>
-
-                {/* Billing Toggle */}
-                <View style={[styles.toggleWrap, { backgroundColor: isDark ? colors.surface : "#F1F5F9" }]}>
-                    {(["monthly", "yearly"] as const).map(cycle => (
+                {/* ── Monthly / Yearly Pill Toggle ── */}
+                <View style={styles.toggleRowWrap}>
+                    <View style={[styles.toggleContainer, { backgroundColor: isDark ? colors.surface : "#FFF", borderColor: isDark ? colors.border : "#E2E8F0" }]}>
                         <TouchableOpacity
-                            key={cycle}
-                            onPress={() => setBillingCycle(cycle)}
                             activeOpacity={0.85}
-                            style={[
-                                styles.toggleBtn,
-                                billingCycle === cycle && { backgroundColor: colors.primary, ...Shadows.sm },
-                            ]}
+                            onPress={() => setBillingCycle("monthly")}
+                            style={[styles.togglePill, billingCycle === "monthly" && styles.togglePillActive]}
                         >
-                            <Text style={[
-                                styles.toggleBtnText,
-                                { color: billingCycle === cycle ? "#FFF" : colors.textSecondary },
-                            ]}>
-                                {cycle === "monthly" ? "Monthly" : "Yearly  🎉 −20%"}
-                            </Text>
+                            <Text style={[styles.togglePillText, billingCycle === "monthly" && styles.togglePillTextActive]}>Monthly</Text>
                         </TouchableOpacity>
-                    ))}
+                        <TouchableOpacity
+                            activeOpacity={0.85}
+                            onPress={() => setBillingCycle("yearly")}
+                            style={[styles.togglePill, billingCycle === "yearly" && styles.togglePillActive]}
+                        >
+                            <Text style={[styles.togglePillText, billingCycle === "yearly" && styles.togglePillTextActive]}>Yearly</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
-            </View>
 
-            {/* ── Plan Cards ── */}
-            {loadingPlans ? (
-                <ActivityIndicator size="large" color={colors.primary} style={{ marginVertical: 40 }} />
-            ) : (
-                <ScrollView 
-                    horizontal 
-                    showsHorizontalScrollIndicator={false} 
-                    contentContainerStyle={styles.plansCarousel}
-                >
-                    {plans.map((plan, idx) => {
-                        const palette = PLAN_COLORS[idx % 4];
-                        const price = getDisplayPrice(plan);
-                        const yearlyTotal = Math.floor(parseFloat(plan.price) * 12 * 0.8);
-                        const isSelected = selectedPlanId === plan.id.toString();
-                        const features = plan.description ? plan.description.split(",") : PLAN_FEATURES_FALLBACK;
+                {/* ── Main Layout (Left Content + Right Sidebar) ── */}
+                <View style={[styles.mainLayoutRow, !isDesktop && styles.mainLayoutColumn]}>
 
-                        const isHovered = hoveredPlanId === plan.id.toString();
-                        const isOtherHovered = hoveredPlanId !== null && !isHovered;
+                    {/* LEFT CONTENT AREA */}
+                    <View style={[styles.leftContentArea, isDesktop && { width: 550 }]}>
 
-                        return (
-                            <Pressable
-                                key={plan.id}
-                                onPress={() => setSelectedPlanId(plan.id.toString())}
-                                // @ts-ignore - onHoverIn/onHoverOut are available in React Native Web for Pressable
-                                onHoverIn={() => setHoveredPlanId(plan.id.toString())}
-                                onHoverOut={() => setHoveredPlanId(null)}
-                                style={({ pressed }) => [
-                                    styles.planCard,
-                                    {
-                                        backgroundColor: colors.surface,
-                                        borderColor: isSelected ? palette.accent : (isDark ? colors.border : "#E2E8F0"),
-                                        borderWidth: isSelected ? 2 : 1,
-                                        transform: [{ scale: isHovered ? 1.08 : (pressed ? 0.98 : (isOtherHovered ? 0.95 : 1)) }],
-                                        opacity: pressed ? 0.9 : (isOtherHovered ? 0.4 : 1),
-                                        zIndex: isHovered ? 10 : 1,
-                                    },
-                                    (isSelected || isHovered) && { ...Shadows.md },
-                                    isOtherHovered && Platform.OS === "web" ? { filter: "blur(2px)" } as any : {},
-                                ]}
+                        {/* Plan Cards: Carousel showing strictly 2 plans side-by-side initially if > 2 */}
+                        {loadingPlans ? (
+                            <ActivityIndicator size="large" color="#6366F1" style={{ marginVertical: 40 }} />
+                        ) : visiblePlans.length > 2 ? (
+                        <View style={styles.carouselWrap}>
+                            <ScrollView
+                                ref={carouselRef}
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                contentContainerStyle={styles.carouselScrollContent}
+                                onScroll={(e) => {
+                                    const x = e.nativeEvent.contentOffset.x;
+                                    const page = Math.round(x / 540);
+                                    if (page !== carouselIndex && page >= 0 && page < totalPages) {
+                                        setCarouselIndex(page);
+                                    }
+                                }}
+                                scrollEventThrottle={16}
                             >
-                                {/* Card top gradient strip */}
-                                <LinearGradient
-                                    colors={palette.gradient as [string, string, ...string[]]}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 0 }}
-                                    style={styles.planCardStrip}
-                                />
+                                {visiblePlans.map(plan => renderPlanCard(plan, true))}
+                            </ScrollView>
 
-                                {/* Selected check */}
-                                {isSelected && (
-                                    <View style={[styles.selectedCheck, { backgroundColor: palette.accent }]}>
-                                        <Ionicons name="checkmark" size={12} color="#FFF" />
-                                    </View>
-                                )}
+                            {/* Carousel Navigation Bar (Dots & Page Arrows) */}
+                            <View style={styles.carouselNavRow}>
+                                <TouchableOpacity
+                                    disabled={carouselIndex === 0}
+                                    onPress={() => scrollCarouselToPage(carouselIndex - 1)}
+                                    style={[
+                                        styles.carouselArrowBtn,
+                                        { backgroundColor: isDark ? colors.surface : "#FFF", borderColor: isDark ? colors.border : "#E2E8F0" },
+                                        carouselIndex === 0 && { opacity: 0.3 }
+                                    ]}
+                                >
+                                    <Ionicons name="chevron-back" size={18} color="#6366F1" />
+                                </TouchableOpacity>
 
-                                <View style={styles.planCardBody}>
-                                    <View style={[styles.planIconCircle, { backgroundColor: isDark ? `${palette.accent}30` : palette.light }]}>
-                                        <Ionicons name="flash" size={20} color={palette.accent} />
-                                    </View>
-                                    <Text style={[styles.planName, { color: colors.text }]}>{plan.name}</Text>
-                                    <Text style={[styles.planType, { color: colors.textSecondary }]}>{plan.type}</Text>
-
-                                    <View style={styles.priceRow}>
-                                        <Text style={[styles.priceSymbol, { color: colors.text }]}>₹</Text>
-                                        <Text style={[styles.priceValue, { color: colors.text }]}>{price}</Text>
-                                        <Text style={[styles.pricePeriod, { color: colors.textSecondary }]}>/mo</Text>
-                                    </View>
-                                    {billingCycle === "yearly" && (
-                                        <Text style={[styles.yearlyNote, { color: palette.accent }]}>
-                                            ₹{yearlyTotal} billed yearly
-                                        </Text>
-                                    )}
-
-                                    <View style={[styles.planDivider, { backgroundColor: isDark ? colors.border : "#F1F5F9" }]} />
-
-                                    {features.map((feat: string, fi: number) => (
-                                        <View key={fi} style={styles.featureRow}>
-                                            <View style={[styles.featureCheck, { backgroundColor: isDark ? `${palette.accent}30` : palette.light }]}>
-                                                <Ionicons name="checkmark" size={11} color={palette.accent} />
-                                            </View>
-                                            <Text style={[styles.featureText, { color: colors.text }]}>{feat.trim()}</Text>
-                                        </View>
+                                <View style={styles.carouselDotsContainer}>
+                                    {Array.from({ length: totalPages }).map((_, dotIdx) => (
+                                        <TouchableOpacity
+                                            key={dotIdx}
+                                            onPress={() => scrollCarouselToPage(dotIdx)}
+                                            style={[
+                                                styles.carouselDotItem,
+                                                dotIdx === carouselIndex && styles.carouselDotItemActive
+                                            ]}
+                                        />
                                     ))}
                                 </View>
 
                                 <TouchableOpacity
-                                    activeOpacity={0.9}
-                                    onPress={() => { setSelectedPlanId(plan.id.toString()); }}
-                                    style={styles.selectBtnWrap}
+                                    disabled={carouselIndex >= totalPages - 1}
+                                    onPress={() => scrollCarouselToPage(carouselIndex + 1)}
+                                    style={[
+                                        styles.carouselArrowBtn,
+                                        { backgroundColor: isDark ? colors.surface : "#FFF", borderColor: isDark ? colors.border : "#E2E8F0" },
+                                        carouselIndex >= totalPages - 1 && { opacity: 0.3 }
+                                    ]}
                                 >
-                                    <LinearGradient
-                                        colors={isSelected ? (palette.gradient as [string, string, ...string[]]) : (isDark ? ["#1E293B", "#1E293B"] : ["#F8FAFC", "#F1F5F9"])}
-                                        start={{ x: 0, y: 0 }}
-                                        end={{ x: 1, y: 0 }}
-                                        style={styles.selectBtn}
-                                    >
-                                        <Text style={[styles.selectBtnText, { color: isSelected ? "#FFF" : colors.textSecondary }]}>
-                                            {isSelected ? "✓  Selected" : "Select Plan"}
-                                        </Text>
-                                    </LinearGradient>
+                                    <Ionicons name="chevron-forward" size={18} color="#6366F1" />
                                 </TouchableOpacity>
-                            </Pressable>
-                        );
-                    })}
-                </ScrollView>
-            )}
-
-            {/* ── Checkout Panel ── */}
-            <View style={[
-                styles.checkoutPanel,
-                isDesktop && styles.checkoutPanelRow,
-                { backgroundColor: isDark ? colors.surface : "#FAFAFA", borderColor: isDark ? colors.border : "#E2E8F0" },
-            ]}>
-                {/* Left — Order Summary */}
-                <View style={styles.checkoutLeft}>
-                    <Text style={[styles.sectionTitle, { color: colors.text }]}>Order Summary</Text>
-
-                    <View style={[styles.summaryBox, { backgroundColor: isDark ? colors.background : "#FFF", borderColor: isDark ? colors.border : "#E2E8F0" }]}>
-                        {getSelectedPlan() ? (
-                            <>
-                                <View style={styles.summaryRow}>
-                                    <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Plan</Text>
-                                    <Text style={[styles.summaryValue, { color: colors.text }]}>{getSelectedPlan()?.name}</Text>
-                                </View>
-                                <View style={[styles.summaryDivider, { backgroundColor: isDark ? colors.border : "#F1F5F9" }]} />
-                                <View style={styles.summaryRow}>
-                                    <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Billing</Text>
-                                    <Text style={[styles.summaryValue, { color: colors.text }]}>{billingCycle === "monthly" ? "Monthly" : "Yearly"}</Text>
-                                </View>
-                                <View style={[styles.summaryDivider, { backgroundColor: isDark ? colors.border : "#F1F5F9" }]} />
-                                <View style={styles.summaryRow}>
-                                    <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Free Trial</Text>
-                                    <Text style={[styles.summaryValue, { color: "#10B981" }]}>30 days free</Text>
-                                </View>
-                                <View style={[styles.summaryDivider, { backgroundColor: isDark ? colors.border : "#F1F5F9" }]} />
-                                <View style={styles.summaryRow}>
-                                    <Text style={[styles.summaryTotalLabel, { color: colors.text }]}>Total Today</Text>
-                                    <Text style={[styles.summaryTotalValue, { color: colors.text }]}>₹0.00</Text>
-                                </View>
-                                <View style={styles.summaryRow}>
-                                    <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Then</Text>
-                                    <Text style={[styles.summaryValue, { color: colors.text }]}>
-                                        ₹{getDisplayPrice(getSelectedPlan())}/{billingCycle === "yearly" ? "mo (billed yearly)" : "month"}
-                                    </Text>
-                                </View>
-                            </>
-                        ) : (
-                            <View style={styles.noSelectionBox}>
-                                <Ionicons name="receipt-outline" size={28} color={colors.textSecondary} />
-                                <Text style={[styles.noSelectionText, { color: colors.textSecondary }]}>Select a plan to see order summary</Text>
                             </View>
-                        )}
-                    </View>
+                        </View>
+                    ) : (
+                        <View style={styles.planCardsGrid}>
+                            {visiblePlans.map(plan => renderPlanCard(plan, false))}
+                        </View>
+                    )}
 
-                    {/* Current plan info */}
-                    <View style={[styles.currentPlanChip, { backgroundColor: isDark ? colors.background : "#F0FDF4", borderColor: isDark ? colors.border : "#BBF7D0" }]}>
-                        <Ionicons name="shield-checkmark" size={15} color="#10B981" />
-                        <Text style={[styles.currentPlanChipText, { color: isDark ? "#10B981" : "#166534" }]}>
-                            Current plan: {user?.subscription?.name || "Free Tier"} · {user?.subscription?.status || "ACTIVE"}
-                        </Text>
-                    </View>
-
-                    {/* CTA */}
-                    <TouchableOpacity
-                        onPress={handleSubscribe}
-                        activeOpacity={0.88}
-                        style={[styles.ctaWrap, !selectedPlanId && { opacity: 0.5 }]}
-                    >
-                        <LinearGradient
-                            colors={["#7C3AED", "#4F46E5"]}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 0 }}
-                            style={styles.ctaBtn}
-                        >
-                            <Ionicons name="flash" size={18} color="#FFF" />
-                            <Text style={styles.ctaBtnText}>
-                                {selectedPlanId ? `Continue with ${getSelectedPlan()?.name}` : "Select a plan to continue"}
-                            </Text>
-                        </LinearGradient>
-                    </TouchableOpacity>
-
-                    <Text style={[styles.ctaNote, { color: colors.textSecondary }]}>
-                        🔒 30-day free trial · Cancel anytime · No hidden fees
-                    </Text>
-
-                    {/* Trust badges */}
-                    <View style={styles.trustRow}>
-                        {[
-                            { icon: "shield-checkmark-outline", label: "256-bit SSL" },
-                            { icon: "card-outline", label: "UPI Secured" },
-                            { icon: "refresh-outline", label: "Easy Cancel" },
-                        ].map((t, i) => (
-                            <View key={i} style={[styles.trustBadge, { backgroundColor: isDark ? colors.background : "#FFF", borderColor: isDark ? colors.border : "#E2E8F0" }]}>
-                                <Ionicons name={t.icon as any} size={14} color={colors.textSecondary} />
-                                <Text style={[styles.trustLabel, { color: colors.textSecondary }]}>{t.label}</Text>
-                            </View>
-                        ))}
-                    </View>
-                </View>
-
-                {/* Right — Pay with UPI */}
-                <View style={styles.checkoutRight}>
-                    <Text style={[styles.sectionTitle, { color: colors.text }]}>Pay with UPI</Text>
-
-                    <View style={[styles.upiCard, { backgroundColor: isDark ? colors.background : "#FFF", borderColor: isDark ? colors.border : "#E2E8F0" }]}>
-                        {/* QR */}
-                        <View style={styles.qrCenter}>
-                            {renderQR()}
-                            <Text style={[styles.qrLabel, { color: colors.textSecondary }]}>Scan with any UPI app</Text>
+                    {/* Why Upgrade to Premium? Banner */}
+                    <View style={[styles.whyBannerCard, { backgroundColor: isDark ? "#1E1B4B" : "#FAF5FF", borderColor: isDark ? colors.border : "#F3E8FF" }]}>
+                        <View style={styles.whyBannerLeft}>
+                            <Crown3D />
                         </View>
 
-                        <View style={styles.upiOrRow}>
-                            <View style={[styles.upiOrLine, { backgroundColor: isDark ? colors.border : "#E2E8F0" }]} />
-                            <Text style={[styles.upiOrText, { color: colors.textSecondary }]}>or copy UPI ID</Text>
-                            <View style={[styles.upiOrLine, { backgroundColor: isDark ? colors.border : "#E2E8F0" }]} />
-                        </View>
+                        <View style={styles.whyBannerContent}>
+                            <Text style={[styles.whyBannerTitle, { color: colors.text }]}>Why Upgrade to Premium?</Text>
 
-                        {/* UPI ID Copy */}
-                        <TouchableOpacity
-                            onPress={() => handleCopy("platform@upnum")}
-                            activeOpacity={0.85}
-                            style={[styles.upiIdRow, { backgroundColor: isDark ? colors.surface : "#F8FAFC", borderColor: isDark ? colors.border : "#E2E8F0" }]}
-                        >
-                            <View style={[styles.upiIdIconBox, { backgroundColor: isDark ? "#1E1433" : "#F5F3FF" }]}>
-                                <Ionicons name="wallet-outline" size={16} color="#7C3AED" />
-                            </View>
-                            <Text style={[styles.upiIdText, { color: colors.text }]}>platform@upnum</Text>
-                            <View style={[styles.copyBadge, { backgroundColor: copied ? "#10B981" : (isDark ? colors.border : "#E2E8F0") }]}>
-                                <Ionicons name={copied ? "checkmark" : "copy-outline"} size={13} color={copied ? "#FFF" : colors.textSecondary} />
-                                <Text style={[styles.copyBadgeText, { color: copied ? "#FFF" : colors.textSecondary }]}>
-                                    {copied ? "Copied!" : "Copy"}
-                                </Text>
-                            </View>
-                        </TouchableOpacity>
-
-                        {/* UPI Apps */}
-                        <Text style={[styles.upiAppsLabel, { color: colors.textSecondary }]}>Accepted on all UPI apps</Text>
-                        <View style={styles.upiAppsRow}>
-                            {[
-                                { label: "G", color: "#4285F4", name: "GPay" },
-                                { label: "Pe", color: "#6D28D9", name: "PhonePe" },
-                                { label: "P", color: "#00B9F1", name: "Paytm" },
-                                { label: "B", color: "#FF6600", name: "BHIM" },
-                                { label: "+", color: "#64748B", name: "More" },
-                            ].map((app, i) => (
-                                <View key={i} style={styles.upiAppItem}>
-                                    <View style={[styles.upiAppCircle, { backgroundColor: `${app.color}18` }]}>
-                                        <Text style={[styles.upiAppLetter, { color: app.color }]}>{app.label}</Text>
+                            <View style={styles.whyFeaturesGrid}>
+                                <View style={styles.whyFeatureItem}>
+                                    <View style={[styles.whyIconCircle, { backgroundColor: "#F3E8FF" }]}>
+                                        <Ionicons name="sparkles" size={16} color="#7C3AED" />
                                     </View>
-                                    <Text style={[styles.upiAppName, { color: colors.textSecondary }]}>{app.name}</Text>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={[styles.whyFeatureTitle, { color: colors.text }]}>AI Powered Insights</Text>
+                                        <Text style={[styles.whyFeatureDesc, { color: colors.textSecondary }]}>
+                                            {isBusinessUser ? "Get smart suggestions to boost your sales" : "Get smart suggestions to boost your savings"}
+                                        </Text>
+                                    </View>
                                 </View>
-                            ))}
+
+                                <View style={styles.whyFeatureItem}>
+                                    <View style={[styles.whyIconCircle, { backgroundColor: "#EFF6FF" }]}>
+                                        <Ionicons name="stats-chart" size={16} color="#2563EB" />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={[styles.whyFeatureTitle, { color: colors.text }]}>Real-time Analytics</Text>
+                                        <Text style={[styles.whyFeatureDesc, { color: colors.textSecondary }]}>
+                                            {isBusinessUser ? "Track your business performance in real-time" : "Track your personal spending in real-time"}
+                                        </Text>
+                                    </View>
+                                </View>
+
+                                <View style={styles.whyFeatureItem}>
+                                    <View style={[styles.whyIconCircle, { backgroundColor: "#F5F3FF" }]}>
+                                        <Ionicons name="trending-up" size={16} color="#6366F1" />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={[styles.whyFeatureTitle, { color: colors.text }]}>Unlimited Growth</Text>
+                                        <Text style={[styles.whyFeatureDesc, { color: colors.textSecondary }]}>
+                                            No limits on transactions or data history
+                                        </Text>
+                                    </View>
+                                </View>
+
+                                <View style={styles.whyFeatureItem}>
+                                    <View style={[styles.whyIconCircle, { backgroundColor: "#ECFDF5" }]}>
+                                        <Ionicons name="headset" size={16} color="#059669" />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={[styles.whyFeatureTitle, { color: colors.text }]}>Priority Support</Text>
+                                        <Text style={[styles.whyFeatureDesc, { color: colors.textSecondary }]}>
+                                            Get faster support whenever you need
+                                        </Text>
+                                    </View>
+                                </View>
+                            </View>
                         </View>
                     </View>
-                </View>
-            </View>
 
-            {/* ── FAQ ── */}
-            <View style={styles.faqSection}>
-                <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 16 }]}>Frequently Asked Questions</Text>
-                {FAQ_ITEMS.map((item, idx) => (
-                    <TouchableOpacity
-                        key={idx}
-                        activeOpacity={0.85}
-                        onPress={() => setOpenFaq(openFaq === idx ? null : idx)}
-                        style={[styles.faqItem, { backgroundColor: colors.surface, borderColor: isDark ? colors.border : "#E2E8F0" }]}
-                    >
-                        <View style={styles.faqHeader}>
-                            <Text style={[styles.faqQ, { color: colors.text }]}>{item.q}</Text>
-                            <Ionicons
-                                name={openFaq === idx ? "chevron-up" : "chevron-down"}
-                                size={16}
-                                color={colors.textSecondary}
-                            />
+                    {/* 1st Month Free Banner */}
+                    <View style={[styles.freeTrialBanner, { backgroundColor: isDark ? "#422006" : "#FEFCE8", borderColor: "#FDE68A" }]}>
+                        <View style={styles.freeTrialIconBadge}>
+                            <Ionicons name="timer-outline" size={20} color="#EA580C" />
                         </View>
-                        {openFaq === idx && (
-                            <Text style={[styles.faqA, { color: colors.textSecondary }]}>{item.a}</Text>
-                        )}
-                    </TouchableOpacity>
-                ))}
+                        <View style={{ flex: 1, gap: 2 }}>
+                            <Text style={[styles.freeTrialTitle, { color: isDark ? "#FEF08A" : "#854D0E" }]}>
+                                1st Month Free for All Users!
+                            </Text>
+                            <Text style={[styles.freeTrialSubtitle, { color: isDark ? "#FDE68A" : "#A16207" }]}>
+                                Your subscription will start after the free trial period.
+                            </Text>
+                        </View>
+                        <TouchableOpacity style={[styles.freeTrialBtn, { borderColor: "#6366F1" }]}>
+                            <Text style={styles.freeTrialBtnText}>Learn More</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                </View>
+
+
+                {/* RIGHT SIDEBAR (Checkout & UPI Payment) */}
+                <View style={styles.rightSidebar}>
+
+                    {/* 1. Plan Details Box */}
+                    <View style={[styles.sidebarCard, { backgroundColor: isDark ? colors.surface : "#FFF", borderColor: isDark ? colors.border : "#E2E8F0" }]}>
+                        <Text style={[styles.sidebarCardTitle, { color: colors.text }]}>Plan Details</Text>
+
+                        <View style={styles.planDetailRow}>
+                            <View style={styles.planDetailLeft}>
+                                <View style={[styles.planDetailIconBox, { backgroundColor: "#F5F3FF" }]}>
+                                    <Ionicons name="calendar-outline" size={16} color="#6366F1" />
+                                </View>
+                                <Text style={[styles.planDetailLabel, { color: colors.textSecondary }]}>Billing Cycle</Text>
+                            </View>
+                            <Text style={[styles.planDetailValue, { color: colors.text }]}>
+                                {selectedPlan ? (selectedPlan.billing || billingCycle) : "Monthly"}
+                            </Text>
+                        </View>
+
+                        <View style={styles.planDetailRow}>
+                            <View style={styles.planDetailLeft}>
+                                <View style={[styles.planDetailIconBox, { backgroundColor: "#F5F3FF" }]}>
+                                    <Ionicons name="cash-outline" size={16} color="#6366F1" />
+                                </View>
+                                <Text style={[styles.planDetailLabel, { color: colors.textSecondary }]}>Amount</Text>
+                            </View>
+                            <Text style={[styles.planDetailValue, { color: colors.text }]}>
+                                ₹{selectedPlan ? parseFloat(selectedPlan.price) || 0 : 50} / {(selectedPlan?.billing || billingCycle).toLowerCase() === "yearly" ? "year" : "month"}
+                            </Text>
+                        </View>
+
+                        <View style={styles.planDetailRow}>
+                            <View style={styles.planDetailLeft}>
+                                <View style={[styles.planDetailIconBox, { backgroundColor: "#F5F3FF" }]}>
+                                    <Ionicons name="time-outline" size={16} color="#6366F1" />
+                                </View>
+                                <Text style={[styles.planDetailLabel, { color: colors.textSecondary }]}>Next Billing Date</Text>
+                            </View>
+                            <Text style={[styles.planDetailValue, { color: colors.text }]}>
+                                {getNextBillingDateStr()}
+                            </Text>
+                        </View>
+                    </View>
+
+
+                    {/* 2. Pay with UPI Box */}
+                    <View style={[styles.sidebarCard, { backgroundColor: isDark ? colors.surface : "#FFF", borderColor: isDark ? colors.border : "#E2E8F0" }]}>
+                        <Text style={[styles.sidebarCardTitle, { color: colors.text }]}>Pay with UPI</Text>
+                        <Text style={[styles.sidebarCardSubtitle, { color: colors.textSecondary }]}>Scan any QR using your UPI app</Text>
+
+                        {/* Centered QR */}
+                        <View style={styles.qrContainer}>
+                            {renderQR()}
+                            <View style={styles.upiIdRowSmall}>
+                                <Text style={[styles.upiIdLabel, { color: colors.textSecondary }]}>UPI ID:</Text>
+                                <Text style={[styles.upiIdValue, { color: colors.text }]}>you@upi</Text>
+                                <TouchableOpacity onPress={() => handleCopy("you@upi")}>
+                                    <Ionicons name="copy-outline" size={14} color="#6366F1" />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
+                        {/* Divider */}
+                        <View style={styles.orDividerRow}>
+                            <View style={[styles.orLine, { backgroundColor: isDark ? colors.border : "#E2E8F0" }]} />
+                            <Text style={[styles.orText, { color: colors.textSecondary }]}>or pay using UPI ID</Text>
+                            <View style={[styles.orLine, { backgroundColor: isDark ? colors.border : "#E2E8F0" }]} />
+                        </View>
+
+                        {/* Copy UPI Box */}
+                        <View style={[styles.upiCopyBox, { backgroundColor: isDark ? colors.background : "#F8FAFC", borderColor: isDark ? colors.border : "#E2E8F0" }]}>
+                            <Text style={[styles.upiCopyInputText, { color: colors.text }]}>you@upi</Text>
+                            <TouchableOpacity
+                                activeOpacity={0.85}
+                                onPress={() => handleCopy("you@upi")}
+                                style={[styles.upiCopyBtn, { backgroundColor: copied ? "#10B981" : "#6366F1" }]}
+                            >
+                                <Text style={styles.upiCopyBtnText}>{copied ? "Copied" : "Copy"}</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Accepted Apps Logos */}
+                        <Text style={[styles.acceptedTitle, { color: colors.textSecondary }]}>Accepted on all UPI Apps</Text>
+                        <View style={styles.upiLogosRow}>
+                            <View style={styles.upiLogoItem}>
+                                <View style={[styles.upiLogoBadge, { backgroundColor: "#EFF6FF" }]}>
+                                    <Text style={{ fontSize: 13, fontWeight: "900", color: "#2563EB" }}>G</Text>
+                                </View>
+                                <Text style={styles.upiLogoName}>Google Pay</Text>
+                            </View>
+                            <View style={styles.upiLogoItem}>
+                                <View style={[styles.upiLogoBadge, { backgroundColor: "#F5F3FF" }]}>
+                                    <Text style={{ fontSize: 13, fontWeight: "900", color: "#6D28D9" }}>Pe</Text>
+                                </View>
+                                <Text style={styles.upiLogoName}>PhonePe</Text>
+                            </View>
+                            <View style={styles.upiLogoItem}>
+                                <View style={[styles.upiLogoBadge, { backgroundColor: "#ECFEFF" }]}>
+                                    <Text style={{ fontSize: 13, fontWeight: "900", color: "#0891B2" }}>P</Text>
+                                </View>
+                                <Text style={styles.upiLogoName}>Paytm</Text>
+                            </View>
+                            <View style={styles.upiLogoItem}>
+                                <View style={[styles.upiLogoBadge, { backgroundColor: "#FFF7ED" }]}>
+                                    <Text style={{ fontSize: 13, fontWeight: "900", color: "#EA580C" }}>B</Text>
+                                </View>
+                                <Text style={styles.upiLogoName}>BHIM</Text>
+                            </View>
+                            <View style={styles.upiLogoItem}>
+                                <View style={[styles.upiLogoBadge, { backgroundColor: "#FEF3C7" }]}>
+                                    <Text style={{ fontSize: 13, fontWeight: "900", color: "#D97706" }}>a</Text>
+                                </View>
+                                <Text style={styles.upiLogoName}>Amazon Pay</Text>
+                            </View>
+                            <View style={styles.upiLogoItem}>
+                                <View style={[styles.upiLogoBadge, { backgroundColor: "#F1F5F9" }]}>
+                                    <Ionicons name="ellipsis-horizontal" size={14} color="#64748B" />
+                                </View>
+                                <Text style={styles.upiLogoName}>and more</Text>
+                            </View>
+                        </View>
+
+                        {/* 100% Secure Payments Footer */}
+                        <View style={[styles.securePaymentsBox, { backgroundColor: isDark ? colors.background : "#F0FDF4", borderColor: isDark ? colors.border : "#DCFCE7" }]}>
+                            <Ionicons name="shield-checkmark" size={20} color="#16A34A" />
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.securePaymentsTitle, { color: isDark ? "#4ADE80" : "#15803D" }]}>100% Secure Payments</Text>
+                                <Text style={[styles.securePaymentsSubtitle, { color: isDark ? "#86EFAC" : "#166534" }]}>Your payments are safe and encrypted</Text>
+                            </View>
+                        </View>
+
+                    </View>
+
+                </View>
+
             </View>
-            </ScrollView>
-        </View>
-    );
+        </ScrollView>
+    </View>
+);
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    scrollContent: { padding: Spacing.xl, paddingBottom: 80, gap: 32 },
+    scrollContent: { padding: 24, paddingBottom: 60, gap: 20 },
 
-    // Header
-    pageHeader: { alignItems: "center", gap: 12 },
-    headerBadge: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 100 },
-    headerBadgeText: { fontSize: 12, fontWeight: "700" },
-    pageTitle: { fontSize: 28, fontWeight: "800", textAlign: "center", lineHeight: 36 },
-    pageSubtitle: { fontSize: 14, textAlign: "center", lineHeight: 22 },
-    toggleWrap: { flexDirection: "row", borderRadius: 14, padding: 4, gap: 4, marginTop: 4 },
-    toggleBtn: { paddingHorizontal: 20, paddingVertical: 9, borderRadius: 10 },
-    toggleBtnText: { fontSize: 13, fontWeight: "700" },
+    // Toggle
+    toggleRowWrap: { alignItems: "center", marginVertical: 8 },
+    toggleContainer: { flexDirection: "row", borderRadius: 10, padding: 4, borderWidth: 1 },
+    togglePill: { paddingHorizontal: 24, paddingVertical: 8, borderRadius: 8 },
+    togglePillActive: { backgroundColor: "#6366F1" },
+    togglePillText: { fontSize: 13, fontWeight: "700", color: "#64748B" },
+    togglePillTextActive: { color: "#FFF" },
 
-    // Plan cards
-    plansCarousel: { gap: 16, paddingVertical: 10, paddingHorizontal: 4 },
+    // Main Layout
+    mainLayoutRow: { flexDirection: "row", gap: 24, justifyContent: "flex-start", alignItems: "flex-start" },
+    mainLayoutColumn: { flexDirection: "column" },
+
+    // Left Content Area
+    leftContentArea: { gap: 20, width: "100%", maxWidth: 550 },
+
+    // Cards Grid (when <= 2 plans)
+    planCardsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 20 },
+
+    // Carousel Styles (when > 2 plans)
+    carouselWrap: { width: "100%", maxWidth: 550, overflow: "hidden", alignSelf: "flex-start", gap: 12 },
+    carouselScrollContent: { paddingVertical: 12, paddingHorizontal: 4, gap: 16 },
+    carouselNavRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 4 },
+    carouselArrowBtn: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+    carouselDotsContainer: { flexDirection: "row", alignItems: "center", gap: 6 },
+    carouselDotItem: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#CBD5E1" },
+    carouselDotItemActive: { width: 22, height: 8, borderRadius: 4, backgroundColor: "#6366F1" },
+
     planCard: {
-        width: 260, borderRadius: 20, overflow: "hidden",
-        ...Shadows.sm,
+        flex: 1,
+        minWidth: 260,
+        borderRadius: 20,
+        padding: 24,
+        paddingTop: 32,
+        position: "relative",
+        justifyContent: "space-between",
     },
-    planCardStrip: { height: 5 },
-    selectedCheck: {
-        position: "absolute", top: 16, right: 16,
-        width: 22, height: 22, borderRadius: 11,
-        alignItems: "center", justifyContent: "center",
+    floatingBadge: {
+        position: "absolute",
+        top: -12,
+        alignSelf: "center",
+        paddingHorizontal: 14,
+        paddingVertical: 4,
+        borderRadius: 12,
     },
-    planCardBody: { padding: 20, gap: 6 },
-    planIconCircle: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", marginBottom: 6 },
-    planName: { fontSize: 17, fontWeight: "800" },
-    planType: { fontSize: 12, marginBottom: 4 },
-    priceRow: { flexDirection: "row", alignItems: "baseline", gap: 2, marginVertical: 8 },
-    priceSymbol: { fontSize: 18, fontWeight: "700" },
-    priceValue: { fontSize: 34, fontWeight: "900" },
-    pricePeriod: { fontSize: 13, marginLeft: 2 },
-    yearlyNote: { fontSize: 11, fontWeight: "600", marginTop: -6, marginBottom: 4 },
-    planDivider: { height: 1, marginVertical: 12 },
-    featureRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 4 },
-    featureCheck: { width: 20, height: 20, borderRadius: 6, alignItems: "center", justifyContent: "center" },
-    featureText: { fontSize: 13, flex: 1 },
-    selectBtnWrap: { margin: 16, marginTop: 4, borderRadius: 12, overflow: "hidden" },
-    selectBtn: { height: 44, alignItems: "center", justifyContent: "center", borderRadius: 12 },
-    selectBtnText: { fontSize: 14, fontWeight: "700" },
+    floatingBadgeText: { fontSize: 11, fontWeight: "800", color: "#FFF" },
+    planCardHeader: { gap: 4, marginBottom: 16 },
+    planCardTitle: { fontSize: 20, fontWeight: "800" },
+    planCardSubtitle: { fontSize: 12, marginBottom: 8 },
+    planPriceRow: { flexDirection: "row", alignItems: "baseline", gap: 2, marginTop: 4 },
+    planPriceSymbol: { fontSize: 22, fontWeight: "800" },
+    planPriceAmount: { fontSize: 38, fontWeight: "900" },
+    planPricePeriod: { fontSize: 13, marginLeft: 2 },
+    offerSubNote: { fontSize: 12, fontWeight: "700", color: "#EA580C", marginTop: 2 },
 
-    // Checkout Panel
-    checkoutPanel: {
-        borderRadius: 24, borderWidth: 1, overflow: "hidden",
-        ...Shadows.sm,
-    },
-    checkoutPanelRow: { flexDirection: "row" },
-    checkoutLeft: { flex: 1.2, padding: 24, gap: 16 },
-    checkoutRight: { flex: 1, padding: 24, gap: 16 },
-    sectionTitle: { fontSize: 16, fontWeight: "800" },
+    planFeaturesList: { gap: 10, marginVertical: 16 },
+    featureItemRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    featureCheckCircle: { width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
+    featureItemText: { fontSize: 13, fontWeight: "500", flex: 1 },
 
-    // Summary
-    summaryBox: { borderRadius: 16, borderWidth: 1, padding: 16, gap: 4 },
-    summaryRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8 },
-    summaryDivider: { height: 1 },
-    summaryLabel: { fontSize: 13 },
-    summaryValue: { fontSize: 13, fontWeight: "600" },
-    summaryTotalLabel: { fontSize: 14, fontWeight: "800" },
-    summaryTotalValue: { fontSize: 18, fontWeight: "900" },
-    noSelectionBox: { alignItems: "center", gap: 10, paddingVertical: 24 },
-    noSelectionText: { fontSize: 13, textAlign: "center" },
+    planCardBtn: { height: 46, borderRadius: 12, alignItems: "center", justifyContent: "center", marginTop: 12 },
+    planCardBtnText: { color: "#FFF", fontSize: 14, fontWeight: "800" },
+    planCardSubtext: { fontSize: 11, textAlign: "center", marginTop: 8 },
 
-    currentPlanChip: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, padding: 10, borderWidth: 1 },
-    currentPlanChipText: { fontSize: 12, fontWeight: "600", flex: 1 },
+    // Why Banner Card
+    whyBannerCard: { borderRadius: 20, borderWidth: 1, padding: 24, flexDirection: "row", gap: 20, alignItems: "center", flexWrap: "wrap" },
+    whyBannerLeft: { alignItems: "center", justifyContent: "center" },
+    whyBannerContent: { flex: 1, minWidth: 260, gap: 16 },
+    whyBannerTitle: { fontSize: 18, fontWeight: "800" },
+    whyFeaturesGrid: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
+    whyFeatureItem: { width: "47%", minWidth: 200, flexDirection: "row", alignItems: "center", gap: 10 },
+    whyIconCircle: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+    whyFeatureTitle: { fontSize: 13, fontWeight: "700" },
+    whyFeatureDesc: { fontSize: 11, lineHeight: 15 },
 
-    ctaWrap: { borderRadius: 16, overflow: "hidden" },
-    ctaBtn: { height: 52, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 16 },
-    ctaBtnText: { color: "#FFF", fontSize: 15, fontWeight: "800" },
-    ctaNote: { fontSize: 11, textAlign: "center" },
+    // 1st Month Free Banner
+    freeTrialBanner: { borderRadius: 16, borderWidth: 1, padding: 16, flexDirection: "row", alignItems: "center", gap: 14, flexWrap: "wrap" },
+    freeTrialIconBadge: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#FFEDD5", alignItems: "center", justifyContent: "center" },
+    freeTrialTitle: { fontSize: 14, fontWeight: "800" },
+    freeTrialSubtitle: { fontSize: 12 },
+    freeTrialBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, borderWidth: 1.5, backgroundColor: "#FFF" },
+    freeTrialBtnText: { fontSize: 13, fontWeight: "700", color: "#6366F1" },
 
-    trustRow: { flexDirection: "row", gap: 8 },
-    trustBadge: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, borderWidth: 1, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 6 },
-    trustLabel: { fontSize: 10, fontWeight: "600" },
+    // Right Sidebar
+    rightSidebar: { flex: 1, minWidth: 300, gap: 20 },
+    sidebarCard: { borderRadius: 20, borderWidth: 1, padding: 20, gap: 16 },
+    sidebarCardTitle: { fontSize: 16, fontWeight: "800" },
+    sidebarCardSubtitle: { fontSize: 12, marginTop: -12 },
 
-    // UPI
-    upiCard: { borderRadius: 16, borderWidth: 1, padding: 20, gap: 16, alignItems: "stretch" },
-    qrCenter: { alignItems: "center", gap: 10 },
-    qrBox: { width: 120, height: 120, borderRadius: 14, borderWidth: 1, padding: 10, alignItems: "center", justifyContent: "center" },
-    qrLabel: { fontSize: 12 },
-    upiOrRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-    upiOrLine: { flex: 1, height: 1 },
-    upiOrText: { fontSize: 11, fontWeight: "600" },
-    upiIdRow: { flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, padding: 10, gap: 10 },
-    upiIdIconBox: { width: 32, height: 32, borderRadius: 8, alignItems: "center", justifyContent: "center" },
-    upiIdText: { flex: 1, fontSize: 13, fontWeight: "700" },
-    copyBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
-    copyBadgeText: { fontSize: 11, fontWeight: "700" },
-    upiAppsLabel: { fontSize: 11, fontWeight: "600" },
-    upiAppsRow: { flexDirection: "row", justifyContent: "space-between" },
-    upiAppItem: { alignItems: "center", gap: 4 },
-    upiAppCircle: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-    upiAppLetter: { fontSize: 14, fontWeight: "900" },
-    upiAppName: { fontSize: 9, fontWeight: "600" },
+    planDetailRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+    planDetailLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
+    planDetailIconBox: { width: 32, height: 32, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+    planDetailLabel: { fontSize: 13, fontWeight: "500" },
+    planDetailValue: { fontSize: 13, fontWeight: "700" },
 
-    // FAQ
-    faqSection: { gap: 10 },
-    faqItem: { borderRadius: 14, borderWidth: 1, padding: 16, gap: 10 },
-    faqHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-    faqQ: { fontSize: 14, fontWeight: "700", flex: 1, marginRight: 10 },
-    faqA: { fontSize: 13, lineHeight: 20 },
+    qrContainer: { alignItems: "center", gap: 10, paddingVertical: 6 },
+    qrBox: { width: 130, height: 130, borderRadius: 14, backgroundColor: "#FFF", borderWidth: 1, borderColor: "#E2E8F0", padding: 10, alignItems: "center", justifyContent: "center" },
+    upiIdRowSmall: { flexDirection: "row", alignItems: "center", gap: 6 },
+    upiIdLabel: { fontSize: 12 },
+    upiIdValue: { fontSize: 13, fontWeight: "700" },
+
+    orDividerRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    orLine: { flex: 1, height: 1 },
+    orText: { fontSize: 11, fontWeight: "600" },
+
+    upiCopyBox: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 12, borderWidth: 1, padding: 8, paddingLeft: 14 },
+    upiCopyInputText: { fontSize: 13, fontWeight: "600" },
+    upiCopyBtn: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 8 },
+    upiCopyBtnText: { color: "#FFF", fontSize: 12, fontWeight: "700" },
+
+    acceptedTitle: { fontSize: 11, fontWeight: "600" },
+    upiLogosRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+    upiLogoItem: { alignItems: "center", gap: 4 },
+    upiLogoBadge: { width: 32, height: 32, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+    upiLogoName: { fontSize: 9, fontWeight: "500", color: "#64748B" },
+
+    securePaymentsBox: { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 12, borderWidth: 1, padding: 12 },
+    securePaymentsTitle: { fontSize: 13, fontWeight: "800" },
+    securePaymentsSubtitle: { fontSize: 11 },
 });

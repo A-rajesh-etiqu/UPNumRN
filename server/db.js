@@ -1,5 +1,6 @@
 const mysql = require("mysql2/promise");
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 let pool;
 
@@ -115,6 +116,7 @@ async function createTables() {
             CREATE TABLE IF NOT EXISTS payments (
                 id VARCHAR(50) PRIMARY KEY,
                 user_id VARCHAR(50) NOT NULL,
+                plan_id VARCHAR(50),
                 amount DECIMAL(10, 2) NOT NULL,
                 gateway_ref VARCHAR(100),
                 provider VARCHAR(50),
@@ -128,6 +130,12 @@ async function createTables() {
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );
         `);
+
+        try {
+            await connection.query(`ALTER TABLE payments ADD COLUMN plan_id VARCHAR(50);`);
+        } catch (e) {
+            // Column may already exist
+        }
 
         await connection.query(`
             CREATE TABLE IF NOT EXISTS invoices (
@@ -379,7 +387,9 @@ async function seedDatabase() {
             { id: 1, name: "Free Tier", type: "Basic Features", price: 0, billing: "Monthly", status: "Active", subscribers: 12543, description: "Basic Dashboard Features,100 Transactions/mo,Community Support,Standard Data Backups" },
             { id: 2, name: "Standard Plan", type: "Advanced Features", price: 50, billing: "Monthly", status: "Active", subscribers: 5234, description: "All Dashboard Features,AI Insights & Suggestions,Unlimited Transactions,Priority Support,Secure Data & Backups" },
             { id: 3, name: "Premium Plan", type: "All Features", price: 150, billing: "Monthly", status: "Active", subscribers: 1845, description: "All Dashboard Features,AI Insights & Suggestions,Unlimited Transactions,24/7 Dedicated Support,Secure Data & Backups,API Access" },
-            { id: 4, name: "Lifetime Plan", type: "One-time Offer", price: 10, billing: "Monthly", status: "Active", subscribers: 980, description: "All Dashboard Features,AI Insights & Suggestions,Unlimited Transactions,Priority Support,Secure Data & Backups" }
+            { id: 4, name: "Standard Yearly", type: "Advanced Features", price: 500, billing: "Yearly", status: "Active", subscribers: 2100, description: "All Dashboard Features,AI Insights & Suggestions,Unlimited Transactions,Priority Support,Secure Data & Backups" },
+            { id: 5, name: "Premium Yearly", type: "All Features", price: 1400, billing: "Yearly", status: "Active", subscribers: 890, description: "All Dashboard Features,AI Insights & Suggestions,Unlimited Transactions,24/7 Dedicated Support,Secure Data & Backups,API Access" },
+            { id: 6, name: "Enterprise Plan", type: "Enterprise Features", price: 999, billing: "Yearly", status: "Active", subscribers: 495, description: "All Dashboard Features,AI Insights & Suggestions,Unlimited Transactions,Priority Support,Secure Data & Backups" }
         ];
         for (const p of plans) {
             await connection.query(`

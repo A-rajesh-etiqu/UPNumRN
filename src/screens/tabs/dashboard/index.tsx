@@ -27,6 +27,7 @@ import { useAuthStore } from "../../../store/auth.store";
 import { setuService } from "../../../services/setu.service";
 import apiClient from "../../../api/apiClient";
 import { openBrowserAuth } from "../../../utils/browser";
+import SetuWebViewModal from "../../../components/SetuWebViewModal";
 
 // Helper to calculate nice chart boundaries
 const calculateNiceYAxis = (data: any[], data2?: any[]) => {
@@ -97,6 +98,8 @@ export default function DashboardScreen() {
     const [filterPeriod, setFilterPeriod] = useState("This Month");
     const [isSyncModalVisible, setIsSyncModalVisible] = useState(false);
     const [phoneNumber, setPhoneNumber] = useState(user?.mobile || "");
+    const [isSetuWebViewVisible, setIsSetuWebViewVisible] = useState(false);
+    const [setuUrl, setSetuUrl] = useState("");
 
     useEffect(() => {
         if (user?.mobile && !phoneNumber) {
@@ -157,21 +160,11 @@ export default function DashboardScreen() {
 
             if (response.data?.url) {
                 setIsSyncModalVisible(false);
-                const browserResult = await openBrowserAuth(
-                    response.data.url,
-                    redirectUrl
-                );
-
-                if (browserResult.type === 'success') {
-                    try {
-                        const consentId = response.data.id || response.data.ConsentHandle;
-                        await apiClient.post('/setu-flow/sync-consent', { consentId });
-                        Alert.alert("Success", "UPI History Synced Successfully!");
-                        loadDashboard(user?.id);
-                    } catch (err) {
-                        Alert.alert("Warning", "Consent approved, but failed to sync data immediately.");
-                        loadDashboard(user?.id);
-                    }
+                if (Platform.OS === 'web') {
+                    (globalThis as any).window.location.href = response.data.url;
+                } else {
+                    setSetuUrl(response.data.url);
+                    setIsSetuWebViewVisible(true);
                 }
             } else {
                 Alert.alert("Error", "Failed to generate Setu Consent link");
@@ -180,6 +173,19 @@ export default function DashboardScreen() {
             Alert.alert("Error", error.message || "Failed to start sync");
         } finally {
             setIsSyncing(false);
+        }
+    };
+
+    const handleSetuSuccess = async (consentId: string) => {
+        setIsSetuWebViewVisible(false);
+        try {
+            Alert.alert("Syncing", "Fetching your latest UPI transactions...");
+            await apiClient.post('/setu-flow/sync-consent', { consentId });
+            Alert.alert("Success", "UPI History Synced Successfully!");
+            loadDashboard(user?.id);
+        } catch (err) {
+            Alert.alert("Warning", "Consent approved, but failed to sync data immediately.");
+            loadDashboard(user?.id);
         }
     };
 
@@ -316,6 +322,12 @@ export default function DashboardScreen() {
                         </View>
                     </View>
                 </Modal>
+                <SetuWebViewModal 
+                    visible={isSetuWebViewVisible}
+                    url={setuUrl}
+                    onClose={() => setIsSetuWebViewVisible(false)}
+                    onSuccess={handleSetuSuccess}
+                />
             </DashboardLayout>
         </View>
     );
@@ -457,21 +469,23 @@ function PersonalDashboard({ data, recentTransactions }: { data: any, recentTran
                         <View style={styles.listContainer}>
                             {recentTransactions.length > 0 ? (
                                 recentTransactions.slice(0, 5).map((tx, index) => (
-                                    <View key={tx.id || index} style={styles.listItemRow}>
-                                        <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                                            <View style={[localStyles.iconCircle, { backgroundColor: tx.type === 'expense' ? "#FEE2E2" : "#DCFCE7", width: 32, height: 32, borderRadius: 16 }]}>
-                                                <Ionicons name={tx.type === 'expense' ? "cart" : "cash"} size={14} color={tx.type === 'expense' ? "#EF4444" : "#16A34A"} />
-                                            </View>
-                                            <Text style={[styles.listLabelText, { color: colors.text, marginLeft: 12 }]} numberOfLines={1}>
+                                    <View key={tx.id || index} style={[styles.listItemRow, { gap: 8 }]}>
+                                        <View style={[localStyles.iconCircle, { backgroundColor: tx.type === 'expense' ? "#FEE2E2" : "#DCFCE7", width: 32, height: 32, borderRadius: 16, flexShrink: 0 }]}>
+                                            <Ionicons name={tx.type === 'expense' ? "cart" : "cash"} size={14} color={tx.type === 'expense' ? "#EF4444" : "#16A34A"} />
+                                        </View>
+                                        <View style={{ flex: 1, flexDirection: "row", alignItems: "center", minWidth: 0, gap: 6, marginRight: 4 }}>
+                                            <Text
+                                                style={[styles.listLabelText, { color: colors.text, flexShrink: 1 }]}
+                                                numberOfLines={1}
+                                                ellipsizeMode="tail"
+                                            >
                                                 {tx.title || tx.category || "Transaction"}
                                             </Text>
-                                        </View>
-                                        <View style={{ width: 100, alignItems: "center" }}>
-                                            <View style={localStyles.badge}>
-                                                <Text style={localStyles.badgeText}>{tx.category || "General"}</Text>
+                                            <View style={[localStyles.badge, { flexShrink: 0 }]}>
+                                                <Text style={localStyles.badgeText} numberOfLines={1}>{tx.category || "General"}</Text>
                                             </View>
                                         </View>
-                                        <View style={{ width: 80, alignItems: "flex-end" }}>
+                                        <View style={{ flexShrink: 0, alignItems: "flex-end", minWidth: 70 }}>
                                             <Text style={[
                                                 styles.listAmount,
                                                 { color: colors.text }
@@ -484,7 +498,7 @@ function PersonalDashboard({ data, recentTransactions }: { data: any, recentTran
                             ) : (
                                 <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 10 }}>No recent transactions</Text>
                             )}
-                            <TouchableOpacity style={{ marginTop: 16 }}>
+                            <TouchableOpacity style={{ marginTop: 16 }} onPress={() => router.push("/tabs/transactions" as any)}>
                                 <Text style={{ color: "#6C2CF4", fontWeight: "600", fontSize: 13 }}>View All Transactions →</Text>
                             </TouchableOpacity>
                         </View>
@@ -525,6 +539,12 @@ function BusinessDashboard({ data, recentTransactions }: { data: any, recentTran
     const { colors, isDark } = useAppTheme();
     const { width } = useWindowDimensions();
     const isDesktop = width >= 1024;
+
+    const localStyles = {
+        iconCircle: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center' as const, alignItems: 'center' as const },
+        badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
+        badgeText: { fontSize: 10, fontWeight: '600' as const, color: colors.textSecondary }
+    };
 
     const chartDataSales = (data?.salesChart?.length ? data.salesChart : [{ value: 0 }]).map((item: any) => ({
         ...item,
@@ -676,24 +696,41 @@ function BusinessDashboard({ data, recentTransactions }: { data: any, recentTran
                 <SectionHeader title="Recent Transactions" />
                 <View style={styles.listContainer}>
                     {recentTransactions.length > 0 ? (
-                        recentTransactions.map((tx, index) => (
-                            <View key={tx.id || index} style={styles.listItemRow}>
-                                <Text style={[styles.listLabelText, { color: colors.textSecondary }]}>
-                                    {tx.category || tx.title}
-                                </Text>
-                                <Text style={[
-                                    styles.listAmount,
-                                    { color: tx.type === 'expense' ? colors.danger : colors.success }
-                                ]}>
-                                    {tx.type === 'expense' ? '-' : '+'}₹{Math.abs(tx.amount).toLocaleString('en-IN')}
-                                </Text>
+                        recentTransactions.slice(0, 5).map((tx, index) => (
+                            <View key={tx.id || index} style={[styles.listItemRow, { gap: 8 }]}>
+                                <View style={[localStyles.iconCircle, { backgroundColor: tx.type === 'expense' ? "#FEE2E2" : "#DCFCE7", width: 32, height: 32, borderRadius: 16, flexShrink: 0 }]}>
+                                    <Ionicons name={tx.type === 'expense' ? "cart" : "cash"} size={14} color={tx.type === 'expense' ? "#EF4444" : "#16A34A"} />
+                                </View>
+                                <View style={{ flex: 1, flexDirection: "row", alignItems: "center", minWidth: 0, gap: 6, marginRight: 4 }}>
+                                    <Text
+                                        style={[styles.listLabelText, { color: colors.text, flexShrink: 1 }]}
+                                        numberOfLines={1}
+                                        ellipsizeMode="tail"
+                                    >
+                                        {tx.title || tx.category || "Transaction"}
+                                    </Text>
+                                    <View style={[localStyles.badge, { flexShrink: 0 }]}>
+                                        <Text style={localStyles.badgeText} numberOfLines={1}>{tx.category || "General"}</Text>
+                                    </View>
+                                </View>
+                                <View style={{ flexShrink: 0, alignItems: "flex-end", minWidth: 70 }}>
+                                    <Text style={[
+                                        styles.listAmount,
+                                        { color: tx.type === 'expense' ? colors.danger : colors.success }
+                                    ]}>
+                                        {tx.type === 'expense' ? '-' : '+'}₹{Math.abs(tx.amount).toLocaleString('en-IN')}
+                                    </Text>
+                                </View>
                             </View>
                         ))
                     ) : (
                         <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 10 }}>No recent transactions</Text>
                     )}
+                    <TouchableOpacity style={{ marginTop: 16 }} onPress={() => router.push("/tabs/transactions" as any)}>
+                        <Text style={{ color: "#6C2CF4", fontWeight: "600", fontSize: 13 }}>View All Transactions →</Text>
+                    </TouchableOpacity>
                 </View>
-            </SectionCard>
+        </SectionCard>
         </ScrollView>
     );
 }

@@ -16,6 +16,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import DatePickerField from "../../../components/common/DatePickerField";
 import { LineChart, PieChart, BarChart } from "react-native-gifted-charts";
 import dayjs from "dayjs";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { router } from "../../../navigation/RootNavigation";
 import DashboardHeader from "../../../components/layout/DashboardHeader";
 
@@ -30,6 +31,8 @@ export default function ReportsScreen() {
     const [startDate, setStartDate] = useState("");
     const [endDate, setEndDate] = useState("");
     const [activeFilter, setActiveFilter] = useState("This Month");
+    const [showStartPicker, setShowStartPicker] = useState(false);
+    const [showEndPicker, setShowEndPicker] = useState(false);
 
     // Brand Colors from Design
     const colorIncome = "#10B981";
@@ -45,18 +48,14 @@ export default function ReportsScreen() {
 
     const setPresetFilter = (filter: string) => {
         setActiveFilter(filter);
-        const today = new Date();
-        const yyyyMmDd = (d: Date) => d.toISOString().split("T")[0];
+        const today = dayjs();
 
-        setEndDate(yyyyMmDd(today));
+        setEndDate(today.format("YYYY-MM-DD"));
 
         if (filter === "Last 7 Days") {
-            const last7 = new Date(today);
-            last7.setDate(today.getDate() - 7);
-            setStartDate(yyyyMmDd(last7));
+            setStartDate(today.subtract(7, 'day').format("YYYY-MM-DD"));
         } else if (filter === "This Month") {
-            const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-            setStartDate(yyyyMmDd(thisMonth));
+            setStartDate(today.startOf('month').format("YYYY-MM-DD"));
         } else if (filter === "All Time") {
             setStartDate("");
             setEndDate("");
@@ -71,13 +70,9 @@ export default function ReportsScreen() {
     const filteredTransactions = useMemo(() => {
         return transactions.filter(tx => {
             if (!startDate && !endDate) return true;
-            const txDate = new Date((tx as any).date_time || tx.date);
-            if (startDate && txDate < new Date(startDate)) return false;
-            if (endDate) {
-                const eDate = new Date(endDate);
-                eDate.setHours(23, 59, 59, 999);
-                if (txDate > eDate) return false;
-            }
+            const txDate = dayjs((tx as any).date_time || tx.date);
+            if (startDate && txDate.isBefore(dayjs(startDate), 'day')) return false;
+            if (endDate && txDate.isAfter(dayjs(endDate), 'day')) return false;
             return true;
         });
     }, [transactions, startDate, endDate]);
@@ -184,8 +179,8 @@ export default function ReportsScreen() {
     // Monthly Comparison Data (Bar Chart)
     const { barChartData, maxBarValue } = useMemo(() => {
         const groupedByMonth: Record<string, { inc: number; exp: number }> = {};
-        // Use all transactions for monthly to show history, not just filtered
-        transactions.forEach(tx => {
+        
+        filteredTransactions.forEach(tx => {
             const monthStr = dayjs((tx as any).date_time || tx.date).format("MMM");
             if (!groupedByMonth[monthStr]) groupedByMonth[monthStr] = { inc: 0, exp: 0 };
             if (tx.type === "income") groupedByMonth[monthStr].inc += Math.abs(tx.amount);
@@ -218,7 +213,7 @@ export default function ReportsScreen() {
         }
 
         return { barChartData: bData, maxBarValue: maxVal };
-    }, [transactions, colors]);
+    }, [filteredTransactions, colors]);
 
     const stepBar = Math.max(Math.ceil(maxBarValue / 4 / 1000) * 1000, 100);
     const maxBarRounded = stepBar * 4;
@@ -293,229 +288,275 @@ export default function ReportsScreen() {
 
     return (
         <View style={{ flex: 1, backgroundColor: bgColor }}>
-            <DashboardHeader 
+            <DashboardHeader
                 title="Reports"
-                subtitle="Get detailed insights about your spending, savings and financial habits"
+                subtitle="Get detailed insights about your spendings."
             />
             <ScrollView style={styles.container}>
 
-            <View style={[styles.headerRow, { flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'center' : 'flex-end', paddingTop: 16 }]}>
+                <View style={[styles.headerRow, { flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'center' : 'flex-end', paddingTop: 16 }]}>
 
-                <View style={styles.headerActions}>
-                    {Platform.OS === 'web' && (
-                        <View style={styles.datePickerRow}>
-                            <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} style={{ marginRight: 8 }} />
-                            {renderWebDatePicker("", startDate, setStartDate)}
-                            <Text style={{ marginHorizontal: 8, color: colors.textSecondary }}>-</Text>
-                            {renderWebDatePicker("", endDate, setEndDate)}
-                        </View>
-                    )}
-                    <TouchableOpacity style={[styles.downloadBtn, { borderColor: colorSpending }]}>
-                        <Ionicons name="download-outline" size={16} color={colorSpending} style={{ marginRight: 8 }} />
-                        <Text style={{ color: colorSpending, fontWeight: '600', fontSize: 13 }}>Download Report</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-
-            {/* Top Stats Row */}
-            <View style={[styles.statsRow, { flexDirection: isDesktop ? 'row' : 'row', flexWrap: isDesktop ? 'nowrap' : 'wrap', justifyContent: 'space-between' }]}>
-                {renderStatCard("Total Income", `₹${totalIncome.toLocaleString()}`, "trending-up", colorIncome, "12%", true)}
-                {renderStatCard("Total Spending", `₹${totalSpending.toLocaleString()}`, "swap-vertical", colors.danger, "8%", false)}
-                {renderStatCard("Savings", `₹${totalSavings.toLocaleString()}`, "wallet-outline", colorSavings, "25%", true)}
-                {renderStatCard("Transactions", transactionsCount.toString(), "calendar-outline", colorTransactions, "10%", true)}
-            </View>
-
-            {/* Middle Row: Trend Line Chart & Donut Chart */}
-            <View style={[styles.flexRow, { flexDirection: isDesktop ? 'row' : 'column', gap: 20 }]}>
-                {/* Trend Chart */}
-                <View style={[styles.card, { flex: isDesktop ? 2 : 1, backgroundColor: cardBg, borderColor: colors.border, overflow: 'hidden' }]}>
-                    <View style={[styles.cardHeader, { flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'center' : 'flex-start', gap: 8 }]}>
-                        <Text style={[styles.cardTitle, { color: colors.text }]}>Income vs Spending Trend</Text>
-                        <View style={styles.legendWrap}>
-                            <View style={styles.legendItem}>
-                                <View style={[styles.legendDot, { backgroundColor: colorIncome }]} />
-                                <Text style={[styles.legendText, { color: colors.textSecondary }]}>Income</Text>
+                    <View style={styles.headerActions}>
+                        {Platform.OS === 'web' ? (
+                            <View style={styles.datePickerRow}>
+                                <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} style={{ marginRight: 8 }} />
+                                {renderWebDatePicker("", startDate, setStartDate)}
+                                <Text style={{ marginHorizontal: 8, color: colors.textSecondary }}>-</Text>
+                                {renderWebDatePicker("", endDate, setEndDate)}
                             </View>
-                            <View style={styles.legendItem}>
-                                <View style={[styles.legendDot, { backgroundColor: colorSpending }]} />
-                                <Text style={[styles.legendText, { color: colors.textSecondary }]}>Spending</Text>
-                            </View>
-                        </View>
-                    </View>
-                    <View style={{ marginTop: 20 }}>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                            <LineChart
-                                data={incomeChartData}
-                                data2={expenseChartData}
-                                maxValue={maxLineRounded}
-                                stepValue={stepLine}
-                                noOfSections={4}
-                                color1={colorIncome}
-                                color2={colorSpending}
-                                dataPointsColor1={colorIncome}
-                                dataPointsColor2={colorSpending}
-                                startFillColor1={colorIncome}
-                                startFillColor2={colorSpending}
-                                startOpacity={0.2}
-                                endOpacity={0.05}
-                                thickness={3}
-                                initialSpacing={20}
-                                spacing={40}
-                                yAxisColor={"transparent"}
-                                yAxisThickness={0}
-                                xAxisColor={colors.border}
-                                xAxisThickness={1}
-                                yAxisTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
-                                rulesColor={colors.border}
-                                rulesType="solid"
-                                areaChart
-                                curved
-                                isAnimated
-                                hideDataPoints
-                            />
-                        </ScrollView>
-                    </View>
-                </View>
+                        ) : (
+                            <View style={styles.datePickerRow}>
+                                <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} style={{ marginRight: 8 }} />
+                                <TouchableOpacity 
+                                    style={{ paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 8, backgroundColor: isDark ? colors.inputBackground : '#FFF' }}
+                                    onPress={() => setShowStartPicker(true)}
+                                >
+                                    <Text style={{ color: colors.text, fontSize: 13 }}>{startDate || 'Start Date'}</Text>
+                                </TouchableOpacity>
+                                <Text style={{ marginHorizontal: 8, color: colors.textSecondary }}>-</Text>
+                                <TouchableOpacity 
+                                    style={{ paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 8, backgroundColor: isDark ? colors.inputBackground : '#FFF' }}
+                                    onPress={() => setShowEndPicker(true)}
+                                >
+                                    <Text style={{ color: colors.text, fontSize: 13 }}>{endDate || 'End Date'}</Text>
+                                </TouchableOpacity>
 
-                {/* Donut Chart */}
-                <View style={[styles.card, { flex: isDesktop ? 1 : 1, backgroundColor: cardBg, borderColor: colors.border }]}>
-                    <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 20 }]}>Spending by Category</Text>
-                    <View style={[styles.donutContainer, { flexDirection: isDesktop ? 'row' : 'column' }]}>
-                        <View style={{ alignItems: 'center' }}>
-                            <PieChart
-                                data={pieChartData}
-                                donut
-                                radius={isDesktop ? 80 : 100}
-                                innerRadius={isDesktop ? 50 : 65}
-                                innerCircleColor={cardBg}
-                                centerLabelComponent={() => (
-                                    <View style={{ justifyContent: 'center', alignItems: 'center' }}>
-                                        <Text style={{ fontSize: isDesktop ? 16 : 20, color: colors.text, fontWeight: '700' }}>
-                                            ₹{(totalSpending / 1000).toFixed(1)}k
-                                        </Text>
-                                        <Text style={{ fontSize: 10, color: colors.textSecondary }}>Total Spending</Text>
-                                    </View>
+                                {showStartPicker && (
+                                    <DateTimePicker
+                                        value={startDate ? new Date(startDate) : new Date()}
+                                        mode="date"
+                                        display={Platform.OS === "ios" ? "spinner" : "default"}
+                                        onChange={(event, date) => {
+                                            setShowStartPicker(false);
+                                            if (date) {
+                                                setStartDate(dayjs(date).format("YYYY-MM-DD"));
+                                                setActiveFilter("Custom");
+                                            }
+                                        }}
+                                    />
                                 )}
-                            />
-                        </View>
-                        <View style={[styles.donutLegend, { marginTop: isDesktop ? 0 : 20, marginLeft: isDesktop ? 20 : 0 }]}>
-                            {topCategories.map((item, index) => (
-                                <View key={index} style={styles.donutLegendItem}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 2 }}>
-                                        <View style={[styles.legendDot, { backgroundColor: item.color }]} />
-                                        <Text style={[styles.legendText, { color: colors.textSecondary }]} numberOfLines={1}>{item.text}</Text>
-                                    </View>
-                                    <Text style={[styles.legendText, { color: colors.textSecondary, flex: 1, textAlign: 'right' }]}>{item.percent.toFixed(0)}%</Text>
-                                    <Text style={[styles.legendText, { color: colors.text, flex: 1, textAlign: 'right', fontWeight: '500' }]}>₹{item.value.toLocaleString()}</Text>
-                                </View>
-                            ))}
-                        </View>
-                    </View>
-                </View>
-            </View>
-
-            {/* Bottom Row: Top Categories, Recent Tx, Monthly Comparison */}
-            <View style={[styles.flexRow, { flexDirection: isDesktop ? 'row' : 'column', gap: 20 }]}>
-
-                {/* Top Categories Progress */}
-                <View style={[styles.card, { flex: 1, backgroundColor: cardBg, borderColor: colors.border }]}>
-                    <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 20 }]}>Top Spending Categories</Text>
-                    {topCategories.slice(0, 5).map((item, index) => (
-                        <View key={index} style={styles.topCatRow}>
-                            <View style={styles.topCatHeader}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    <View style={[styles.catIcon, { backgroundColor: item.color + "15" }]}>
-                                        <Ionicons name="basket-outline" size={16} color={item.color} />
-                                    </View>
-                                    <Text style={[styles.catName, { color: colors.text }]}>{item.text}</Text>
-                                </View>
-                                <View style={{ alignItems: 'flex-end' }}>
-                                    <Text style={[styles.catAmount, { color: colors.text }]}>₹{item.value.toLocaleString()}</Text>
-                                    <Text style={[styles.catPercent, { color: colors.textSecondary }]}>{item.percent.toFixed(0)}%</Text>
-                                </View>
+                                {showEndPicker && (
+                                    <DateTimePicker
+                                        value={endDate ? new Date(endDate) : new Date()}
+                                        mode="date"
+                                        display={Platform.OS === "ios" ? "spinner" : "default"}
+                                        onChange={(event, date) => {
+                                            setShowEndPicker(false);
+                                            if (date) {
+                                                setEndDate(dayjs(date).format("YYYY-MM-DD"));
+                                                setActiveFilter("Custom");
+                                            }
+                                        }}
+                                    />
+                                )}
                             </View>
-                            <View style={[styles.progressBarBg, { backgroundColor: colors.border }]}>
-                                <View style={[styles.progressBarFill, { backgroundColor: item.color, width: `${item.percent}%` }]} />
-                            </View>
-                        </View>
-                    ))}
-                </View>
-
-                {/* Recent Transactions */}
-                <View style={[styles.card, { flex: 1.5, backgroundColor: cardBg, borderColor: colors.border }]}>
-                    <View style={styles.cardHeader}>
-                        <Text style={[styles.cardTitle, { color: colors.text }]}>Recent Transactions</Text>
-                        <TouchableOpacity onPress={() => router.push("/tabs/transactions")}>
-                            <Text style={{ color: colorSpending, fontSize: 13, fontWeight: '600' }}>View All</Text>
+                        )}
+                        <TouchableOpacity style={[styles.downloadBtn, { borderColor: colorSpending }]}>
+                            <Ionicons name="download-outline" size={16} color={colorSpending} style={{ marginRight: 8 }} />
+                            <Text style={{ color: colorSpending, fontWeight: '600', fontSize: 13 }}>Report</Text>
                         </TouchableOpacity>
                     </View>
-                    <View style={styles.tableHeader}>
-                        <Text style={[styles.th, { color: colors.textSecondary, flex: 1.5 }]}>Date</Text>
-                        <Text style={[styles.th, { color: colors.textSecondary, flex: 2 }]}>Description</Text>
-                        <Text style={[styles.th, { color: colors.textSecondary, flex: 1.5 }]}>Category</Text>
-                        <Text style={[styles.th, { color: colors.textSecondary, flex: 1, textAlign: 'right' }]}>Amount</Text>
-                    </View>
-                    {recentTx.map((tx, index) => {
-                        const dateStr = tx.date || (tx as any).date_time || "";
-                        const displayDate = dayjs(dateStr).isValid() && !dateStr.includes("May,") ? dayjs(dateStr).format("DD MMM YYYY") : dateStr;
-                        return (
-                            <View key={tx.id || index.toString()} style={[styles.tr, { borderBottomColor: colors.border, borderBottomWidth: index === recentTx.length - 1 ? 0 : 1 }]}>
-                                <View style={{ flex: 1.5, flexDirection: 'row', alignItems: 'center', paddingRight: 4 }}>
-                                    <View style={[styles.txTinyIcon, { backgroundColor: tx.type === 'income' ? colorIncome + "15" : colors.danger + "15" }]}>
-                                        <Ionicons name={tx.type === 'income' ? "arrow-down" : "arrow-up"} size={12} color={tx.type === 'income' ? colorIncome : colors.danger} />
-                                    </View>
-                                    <Text style={[styles.td, { color: colors.textSecondary, flex: 1 }]} numberOfLines={1}>{displayDate}</Text>
-                                </View>
-                                <Text style={[styles.td, { color: colors.text, flex: 2, fontWeight: '500', paddingRight: 4 }]} numberOfLines={1}>{tx.title || tx.category || "Transaction"}</Text>
-                                <Text style={[styles.td, { color: colors.textSecondary, flex: 1.5, paddingRight: 4 }]} numberOfLines={1}>{tx.category || "General"}</Text>
-                                <Text style={[styles.td, { flex: 1, textAlign: 'right', fontWeight: '600', color: tx.type === 'income' ? colorIncome : colors.danger }]} numberOfLines={1} adjustsFontSizeToFit>
-                                    {tx.type === 'income' ? "+" : "-"}₹{Math.abs(tx.amount || 0).toLocaleString()}
-                                </Text>
-                            </View>
-                        );
-                    })}
                 </View>
 
-                {/* Monthly Comparison */}
-                <View style={[styles.card, { flex: 1, backgroundColor: cardBg, borderColor: colors.border, overflow: 'hidden' }]}>
-                    <View style={styles.cardHeader}>
-                        <Text style={[styles.cardTitle, { color: colors.text }]}>Monthly Comparison</Text>
-                        <View style={styles.legendWrap}>
-                            <View style={styles.legendItem}>
-                                <View style={[styles.legendDot, { backgroundColor: colorIncome }]} />
-                                <Text style={[styles.legendText, { color: colors.textSecondary }]}>Income</Text>
+                {/* Top Stats Row */}
+                <View style={[styles.statsRow, { flexDirection: isDesktop ? 'row' : 'row', flexWrap: isDesktop ? 'nowrap' : 'wrap', justifyContent: 'space-between' }]}>
+                    {renderStatCard("Total Income", `₹${totalIncome.toLocaleString()}`, "trending-up", colorIncome, "12%", true)}
+                    {renderStatCard("Total Spending", `₹${totalSpending.toLocaleString()}`, "swap-vertical", colors.danger, "8%", false)}
+                    {renderStatCard("Savings", `₹${totalSavings.toLocaleString()}`, "wallet-outline", colorSavings, "25%", true)}
+                    {renderStatCard("Transactions", transactionsCount.toString(), "calendar-outline", colorTransactions, "10%", true)}
+                </View>
+
+                {/* Middle Row: Trend Line Chart & Donut Chart */}
+                <View style={[styles.flexRow, { flexDirection: isDesktop ? 'row' : 'column', gap: 20 }]}>
+                    {/* Trend Chart */}
+                    <View style={[styles.card, { flex: isDesktop ? 2 : 1, backgroundColor: cardBg, borderColor: colors.border, overflow: 'hidden' }]}>
+                        <View style={[styles.cardHeader, { flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'center' : 'flex-start', gap: 8 }]}>
+                            <Text style={[styles.cardTitle, { color: colors.text }]}>Income vs Spending Trend</Text>
+                            <View style={styles.legendWrap}>
+                                <View style={styles.legendItem}>
+                                    <View style={[styles.legendDot, { backgroundColor: colorIncome }]} />
+                                    <Text style={[styles.legendText, { color: colors.textSecondary }]}>Income</Text>
+                                </View>
+                                <View style={styles.legendItem}>
+                                    <View style={[styles.legendDot, { backgroundColor: colorSpending }]} />
+                                    <Text style={[styles.legendText, { color: colors.textSecondary }]}>Spending</Text>
+                                </View>
                             </View>
-                            <View style={styles.legendItem}>
-                                <View style={[styles.legendDot, { backgroundColor: colorSpending }]} />
-                                <Text style={[styles.legendText, { color: colors.textSecondary }]}>Spending</Text>
+                        </View>
+                        <View style={{ marginTop: 20 }}>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                <LineChart
+                                    data={incomeChartData}
+                                    data2={expenseChartData}
+                                    maxValue={maxLineRounded}
+                                    stepValue={stepLine}
+                                    noOfSections={4}
+                                    color1={colorIncome}
+                                    color2={colorSpending}
+                                    dataPointsColor1={colorIncome}
+                                    dataPointsColor2={colorSpending}
+                                    startFillColor1={colorIncome}
+                                    startFillColor2={colorSpending}
+                                    startOpacity={0.2}
+                                    endOpacity={0.05}
+                                    thickness={3}
+                                    initialSpacing={20}
+                                    spacing={40}
+                                    yAxisColor={"transparent"}
+                                    yAxisThickness={0}
+                                    xAxisColor={colors.border}
+                                    xAxisThickness={1}
+                                    yAxisTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
+                                    rulesColor={colors.border}
+                                    rulesType="solid"
+                                    areaChart
+                                    curved
+                                    isAnimated
+                                    hideDataPoints
+                                />
+                            </ScrollView>
+                        </View>
+                    </View>
+
+                    {/* Donut Chart */}
+                    <View style={[styles.card, { flex: isDesktop ? 1 : 1, backgroundColor: cardBg, borderColor: colors.border }]}>
+                        <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 20 }]}>Spending by Category</Text>
+                        <View style={[styles.donutContainer, { flexDirection: isDesktop ? 'row' : 'column' }]}>
+                            <View style={{ alignItems: 'center' }}>
+                                <PieChart
+                                    data={pieChartData}
+                                    donut
+                                    radius={isDesktop ? 80 : 100}
+                                    innerRadius={isDesktop ? 50 : 65}
+                                    innerCircleColor={cardBg}
+                                    centerLabelComponent={() => (
+                                        <View style={{ justifyContent: 'center', alignItems: 'center' }}>
+                                            <Text style={{ fontSize: isDesktop ? 16 : 20, color: colors.text, fontWeight: '700' }}>
+                                                ₹{(totalSpending / 1000).toFixed(1)}k
+                                            </Text>
+                                            <Text style={{ fontSize: 10, color: colors.textSecondary }}>Total Spending</Text>
+                                        </View>
+                                    )}
+                                />
+                            </View>
+                            <View style={[styles.donutLegend, { marginTop: isDesktop ? 0 : 20, marginLeft: isDesktop ? 20 : 0 }]}>
+                                {topCategories.map((item, index) => (
+                                    <View key={index} style={styles.donutLegendItem}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 2 }}>
+                                            <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                                            <Text style={[styles.legendText, { color: colors.textSecondary }]} numberOfLines={1}>{item.text}</Text>
+                                        </View>
+                                        <Text style={[styles.legendText, { color: colors.textSecondary, flex: 1, textAlign: 'right' }]}>{item.percent.toFixed(0)}%</Text>
+                                        <Text style={[styles.legendText, { color: colors.text, flex: 1, textAlign: 'right', fontWeight: '500' }]}>₹{item.value.toLocaleString()}</Text>
+                                    </View>
+                                ))}
                             </View>
                         </View>
                     </View>
-                    <View style={{ marginTop: 10 }}>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                            <BarChart
-                                data={barChartData}
-                                maxValue={maxBarRounded}
-                                stepValue={stepBar}
-                                noOfSections={4}
-                                barWidth={16}
-                                spacing={24}
-                                roundedTop
-                                roundedBottom
-                                xAxisThickness={1}
-                                yAxisThickness={0}
-                                yAxisTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
-                                yAxisColor={"transparent"}
-                                xAxisColor={colors.border}
-                                rulesColor={colors.border}
-                            />
-                        </ScrollView>
-                    </View>
                 </View>
 
-            </View>
+                {/* Bottom Row: Top Categories, Recent Tx, Monthly Comparison */}
+                <View style={[styles.flexRow, { flexDirection: isDesktop ? 'row' : 'column', gap: 20 }]}>
 
-            <View style={{ height: 60 }} />
+                    {/* Top Categories Progress */}
+                    <View style={[styles.card, { flex: 1, backgroundColor: cardBg, borderColor: colors.border }]}>
+                        <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 20 }]}>Top Spending Categories</Text>
+                        {topCategories.slice(0, 5).map((item, index) => (
+                            <View key={index} style={styles.topCatRow}>
+                                <View style={styles.topCatHeader}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <View style={[styles.catIcon, { backgroundColor: item.color + "15" }]}>
+                                            <Ionicons name="basket-outline" size={16} color={item.color} />
+                                        </View>
+                                        <Text style={[styles.catName, { color: colors.text }]}>{item.text}</Text>
+                                    </View>
+                                    <View style={{ alignItems: 'flex-end' }}>
+                                        <Text style={[styles.catAmount, { color: colors.text }]}>₹{item.value.toLocaleString()}</Text>
+                                        <Text style={[styles.catPercent, { color: colors.textSecondary }]}>{item.percent.toFixed(0)}%</Text>
+                                    </View>
+                                </View>
+                                <View style={[styles.progressBarBg, { backgroundColor: colors.border }]}>
+                                    <View style={[styles.progressBarFill, { backgroundColor: item.color, width: `${item.percent}%` }]} />
+                                </View>
+                            </View>
+                        ))}
+                    </View>
+
+                    {/* Recent Transactions */}
+                    <View style={[styles.card, { flex: 1.5, backgroundColor: cardBg, borderColor: colors.border }]}>
+                        <View style={styles.cardHeader}>
+                            <Text style={[styles.cardTitle, { color: colors.text }]}>Recent Transactions</Text>
+                            <TouchableOpacity onPress={() => router.push("/tabs/transactions")}>
+                                <Text style={{ color: colorSpending, fontSize: 13, fontWeight: '600' }}>View All</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <View style={styles.tableHeader}>
+                            <Text style={[styles.th, { color: colors.textSecondary, flex: 1.5 }]}>Date</Text>
+                            <Text style={[styles.th, { color: colors.textSecondary, flex: 2 }]}>Description</Text>
+                            <Text style={[styles.th, { color: colors.textSecondary, flex: 1.5 }]}>Category</Text>
+                            <Text style={[styles.th, { color: colors.textSecondary, flex: 1, textAlign: 'right' }]}>Amount</Text>
+                        </View>
+                        {recentTx.map((tx, index) => {
+                            const dateStr = tx.date || (tx as any).date_time || "";
+                            const displayDate = dayjs(dateStr).isValid() && !dateStr.includes("May,") ? dayjs(dateStr).format("DD MMM YYYY") : dateStr;
+                            return (
+                                <View key={tx.id || index.toString()} style={[styles.tr, { borderBottomColor: colors.border, borderBottomWidth: index === recentTx.length - 1 ? 0 : 1 }]}>
+                                    <View style={{ flex: 1.5, flexDirection: 'row', alignItems: 'center', paddingRight: 4 }}>
+                                        <View style={[styles.txTinyIcon, { backgroundColor: tx.type === 'income' ? colorIncome + "15" : colors.danger + "15" }]}>
+                                            <Ionicons name={tx.type === 'income' ? "arrow-down" : "arrow-up"} size={12} color={tx.type === 'income' ? colorIncome : colors.danger} />
+                                        </View>
+                                        <Text style={[styles.td, { color: colors.textSecondary, flex: 1 }]} numberOfLines={1}>{displayDate}</Text>
+                                    </View>
+                                    <Text style={[styles.td, { color: colors.text, flex: 2, fontWeight: '500', paddingRight: 4 }]} numberOfLines={1}>{tx.title || tx.category || "Transaction"}</Text>
+                                    <Text style={[styles.td, { color: colors.textSecondary, flex: 1.5, paddingRight: 4 }]} numberOfLines={1}>{tx.category || "General"}</Text>
+                                    <Text style={[styles.td, { flex: 1, textAlign: 'right', fontWeight: '600', color: tx.type === 'income' ? colorIncome : colors.danger }]} numberOfLines={1} adjustsFontSizeToFit>
+                                        {tx.type === 'income' ? "+" : "-"}₹{Math.abs(tx.amount || 0).toLocaleString()}
+                                    </Text>
+                                </View>
+                            );
+                        })}
+                    </View>
+
+                    {/* Monthly Comparison */}
+                    <View style={[styles.card, { flex: 1, backgroundColor: cardBg, borderColor: colors.border, overflow: 'hidden' }]}>
+                        <View style={styles.cardHeader}>
+                            <Text style={[styles.cardTitle, { color: colors.text }]}>Monthly Comparison</Text>
+                            <View style={styles.legendWrap}>
+                                <View style={styles.legendItem}>
+                                    <View style={[styles.legendDot, { backgroundColor: colorIncome }]} />
+                                    <Text style={[styles.legendText, { color: colors.textSecondary }]}>Income</Text>
+                                </View>
+                                <View style={styles.legendItem}>
+                                    <View style={[styles.legendDot, { backgroundColor: colorSpending }]} />
+                                    <Text style={[styles.legendText, { color: colors.textSecondary }]}>Spending</Text>
+                                </View>
+                            </View>
+                        </View>
+                        <View style={{ marginTop: 10 }}>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                <BarChart
+                                    data={barChartData}
+                                    maxValue={maxBarRounded}
+                                    stepValue={stepBar}
+                                    noOfSections={4}
+                                    barWidth={16}
+                                    spacing={24}
+                                    roundedTop
+                                    roundedBottom
+                                    xAxisThickness={1}
+                                    yAxisThickness={0}
+                                    yAxisTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
+                                    yAxisColor={"transparent"}
+                                    xAxisColor={colors.border}
+                                    rulesColor={colors.border}
+                                />
+                            </ScrollView>
+                        </View>
+                    </View>
+
+                </View>
+
+                <View style={{ height: 60 }} />
             </ScrollView>
         </View>
     );

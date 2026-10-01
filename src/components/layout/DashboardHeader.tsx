@@ -8,6 +8,8 @@ import {
     Image,
     ScrollView,
     Platform,
+    TextInput,
+    ActivityIndicator
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -38,7 +40,7 @@ export default function DashboardHeader({
 }: Props) {
     const { width } = useWindowDimensions();
     const isDesktop = width >= 900;
-    const { user, logout } = useAuthStore();
+    const { user, logout, updateUser } = useAuthStore();
     const [dropdownOpen, setDropdownOpen] = React.useState(false);
     const [notifDropdownOpen, setNotifDropdownOpen] = React.useState(false);
     const [notifications, setNotifications] = React.useState<any[]>([]);
@@ -196,29 +198,36 @@ export default function DashboardHeader({
                     </TouchableOpacity>
 
                     {notifDropdownOpen && (
-                        <View style={[styles.dropdownMenu, { backgroundColor: colors.surface, borderColor: colors.border, width: 300, right: isDesktop ? 16 : 8 }]}>
-                            <Text style={{ padding: 12, fontWeight: "700", color: colors.text, borderBottomWidth: 1, borderBottomColor: colors.border }}>Notifications</Text>
-                            <ScrollView style={{ maxHeight: 300 }}>
-                                {notifications.length === 0 ? (
-                                    <Text style={{ padding: 16, color: colors.textSecondary, textAlign: 'center' }}>No notifications</Text>
-                                ) : (
-                                    notifications.map((n, idx) => (
-                                        <TouchableOpacity
-                                            key={idx}
-                                            style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: n.is_read ? 'transparent' : colors.primary + '10' }}
-                                            onPress={() => !n.is_read && handleReadNotification(n.id)}
-                                        >
-                                            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                                                <Text style={{ fontWeight: n.is_read ? "500" : "700", color: colors.text, flex: 1 }} numberOfLines={1}>{n.title}</Text>
-                                                {!n.is_read && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary, marginTop: 4 }} />}
-                                            </View>
-                                            <Text style={{ fontSize: 12, color: colors.textSecondary }} numberOfLines={2}>{n.message}</Text>
-                                            <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 4 }}>{new Date(n.created_at).toLocaleString()}</Text>
-                                        </TouchableOpacity>
-                                    ))
-                                )}
-                            </ScrollView>
-                        </View>
+                        <>
+                            <TouchableOpacity
+                                style={styles.overlay}
+                                activeOpacity={1}
+                                onPress={() => setNotifDropdownOpen(false)}
+                            />
+                            <View style={[styles.dropdownMenu, { backgroundColor: colors.surface, borderColor: colors.border, width: 300, right: isDesktop ? 16 : 8 }]}>
+                                <Text style={{ padding: 12, fontWeight: "700", color: colors.text, borderBottomWidth: 1, borderBottomColor: colors.border }}>Notifications</Text>
+                                <ScrollView style={{ maxHeight: 300 }}>
+                                    {notifications.length === 0 ? (
+                                        <Text style={{ padding: 16, color: colors.textSecondary, textAlign: 'center' }}>No notifications</Text>
+                                    ) : (
+                                        notifications.map((n, idx) => (
+                                            <TouchableOpacity
+                                                key={idx}
+                                                style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: n.is_read ? 'transparent' : colors.primary + '10' }}
+                                                onPress={() => !n.is_read && handleReadNotification(n.id)}
+                                            >
+                                                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                                                    <Text style={{ fontWeight: n.is_read ? "500" : "700", color: colors.text, flex: 1 }} numberOfLines={1}>{n.title}</Text>
+                                                    {!n.is_read && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary, marginTop: 4 }} />}
+                                                </View>
+                                                <Text style={{ fontSize: 12, color: colors.textSecondary }} numberOfLines={2}>{n.message}</Text>
+                                                <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 4 }}>{new Date(n.created_at).toLocaleString()}</Text>
+                                            </TouchableOpacity>
+                                        ))
+                                    )}
+                                </ScrollView>
+                            </View>
+                        </>
                     )}
                 </View>
 
@@ -264,58 +273,31 @@ export default function DashboardHeader({
                             onPress={() => setDropdownOpen(false)}
                         />
                         <View style={[styles.dropdownMenu, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                            <TouchableOpacity
-                                style={styles.dropdownItem}
-                                onPress={() => {
-                                    setDropdownOpen(false);
-                                    router.push("/tabs/profile");
-                                }}
-                            >
-                                <Ionicons
-                                    name="person-outline"
-                                    size={16}
-                                    color={colors.textSecondary}
-                                    style={{ marginRight: 8 }}
-                                />
-                                <Text style={[styles.dropdownItemText, { color: colors.text }]}>Edit Profile</Text>
-                            </TouchableOpacity>
 
-                            <TouchableOpacity
-                                style={styles.dropdownItem}
-                                onPress={() => {
-                                    setDropdownOpen(false);
-                                    router.push("/tabs/settings");
-                                }}
-                            >
-                                <Ionicons
-                                    name="settings-outline"
-                                    size={16}
-                                    color={colors.textSecondary}
-                                    style={{ marginRight: 8 }}
-                                />
-                                <Text style={[styles.dropdownItemText, { color: colors.text }]}>Settings</Text>
-                            </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.dropdownItem}
+                                        onPress={() => {
+                                            setDropdownOpen(false);
+                                            router.push("/tabs/settings");
+                                        }}
+                                    >
+                                        <Ionicons name="settings-outline" size={16} color={colors.textSecondary} style={{ marginRight: 8 }} />
+                                        <Text style={[styles.dropdownItemText, { color: colors.text }]}>Settings</Text>
+                                    </TouchableOpacity>
 
-                            <View style={[styles.dropdownDivider, { backgroundColor: colors.border }]} />
+                                    <View style={[styles.dropdownDivider, { backgroundColor: colors.border }]} />
 
-                            <TouchableOpacity
-                                style={styles.dropdownItem}
-                                onPress={() => {
-                                    setDropdownOpen(false);
-                                    logout();
-                                    router.replace("/auth/login");
-                                }}
-                            >
-                                <Ionicons
-                                    name="log-out-outline"
-                                    size={16}
-                                    color="#EF4444"
-                                    style={{ marginRight: 8 }}
-                                />
-                                <Text style={[styles.dropdownItemText, styles.logoutText]}>
-                                    Logout
-                                </Text>
-                            </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.dropdownItem}
+                                        onPress={() => {
+                                            setDropdownOpen(false);
+                                            logout();
+                                            router.replace("/auth/login");
+                                        }}
+                                    >
+                                        <Ionicons name="log-out-outline" size={16} color="#EF4444" style={{ marginRight: 8 }} />
+                                        <Text style={[styles.dropdownItemText, styles.logoutText]}>Logout</Text>
+                                    </TouchableOpacity>
                         </View>
                     </>
                 )}
@@ -465,6 +447,13 @@ const styles = StyleSheet.create({
     logoutText: {
         color: "#EF4444",
         fontWeight: "700",
+    },
+    inputDropdown: {
+        borderWidth: 1,
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        fontSize: 13,
     },
     headerFilters: {
         flexDirection: "row",

@@ -15,7 +15,7 @@ import { useAppTheme, Colors, Radius, Spacing, Shadows, Typography } from "../..
 import { useAuthStore } from "../../../store/auth.store";
 import apiClient from "../../../api/apiClient";
 import DashboardHeader from "../../../components/layout/DashboardHeader";
-import { router } from "../../../navigation/RootNavigation";
+import { router, useLocalSearchParams } from "../../../navigation/RootNavigation";
 
 const SETTINGS_TABS = [
     { title: "General", badge: null },
@@ -32,8 +32,15 @@ export default function SettingsScreen() {
     const isDesktop = width >= 900;
     const { themeMode, resolvedTheme, colors, isDark, setThemeMode } = useAppTheme();
 
-    const [activeTab, setActiveTab] = useState("General");
+    const params = useLocalSearchParams<{ tab: string }>();
+    const [activeTab, setActiveTab] = useState(params.tab || "General");
     const [defaultDashboard, setDefaultDashboard] = useState<"overview" | "ai-insights">("overview");
+
+    useEffect(() => {
+        if (params.tab) {
+            setActiveTab(params.tab);
+        }
+    }, [params.tab]);
 
     // Privacy & Security State
     const [biometricLogin, setBiometricLogin] = useState(true);
@@ -67,10 +74,24 @@ export default function SettingsScreen() {
     const [upiAccounts, setUpiAccounts] = useState<any[]>([]);
     const [bankAccounts, setBankAccounts] = useState<any[]>([]);
     const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
+    const [subInfo, setSubInfo] = useState<any>(null);
+    const [billingHistory, setBillingHistory] = useState<any[]>([]);
 
     useEffect(() => {
         if ((activeTab === "UPI & Bank Accounts" || activeTab === "Data & Sync") && user) {
             fetchBankAccounts();
+        }
+        if (activeTab === "Billing & Subscription" && user?.id) {
+            apiClient.get("/billing/history", { params: { userId: user.id } })
+                .then(res => {
+                    if (res.data?.subscription) {
+                        setSubInfo(res.data.subscription);
+                    }
+                    if (res.data?.history) {
+                        setBillingHistory(res.data.history);
+                    }
+                })
+                .catch(err => console.warn("Failed to fetch subscription info in settings:", err));
         }
     }, [activeTab, user]);
 
@@ -94,6 +115,38 @@ export default function SettingsScreen() {
         } finally {
             setIsLoadingAccounts(false);
         }
+    };
+
+    const calculateNextBillingDate = () => {
+        if (subInfo?.nextBillingDate) {
+            return new Date(subInfo.nextBillingDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+        if (user?.subscription?.expiresAt) {
+            return new Date(user.subscription.expiresAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+
+        const sub = user?.subscription as any;
+        const rawStartDate = subInfo?.startDate || subInfo?.currentPeriodStart || subInfo?.created_at || subInfo?.createdAt || sub?.purchasedAt || user?.createdAt;
+        const startDate = rawStartDate ? new Date(rawStartDate) : new Date();
+
+        const cycle = (
+            subInfo?.billingCycle ||
+            subInfo?.billing ||
+            sub?.billingCycle ||
+            sub?.name ||
+            ""
+        ).toLowerCase();
+
+        const isYearly = cycle.includes("yearly") || cycle.includes("annual") || cycle.includes("year");
+
+        const nextDate = new Date(startDate);
+        if (isYearly) {
+            nextDate.setFullYear(nextDate.getFullYear() + 1);
+        } else {
+            nextDate.setMonth(nextDate.getMonth() + 1);
+        }
+
+        return nextDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     };
 
     const handleSyncNow = async () => {
@@ -202,753 +255,777 @@ export default function SettingsScreen() {
         </View>
     );
 
+    const hasProfileChanges = React.useMemo(() => {
+        return (
+            firstName !== (user?.firstName || "") ||
+            lastName !== (user?.lastName || "") ||
+            email !== (user?.email || "") ||
+            mobile !== (user?.mobile || "") ||
+            businessName !== (user?.businessName || "") ||
+            category !== (user?.category || "") ||
+            city !== (user?.city || "")
+        );
+    }, [user, firstName, lastName, email, mobile, businessName, category, city]);
+
     return (
         <View style={{ flex: 1, backgroundColor: colors.background }}>
-            <DashboardHeader title="Settings" subtitle="Manage your account settings and preferences" />
+            <DashboardHeader title="Settings" subtitle="Manage your account settings" />
             <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-            {/* Responsive grid for sub-menus & configuration sheet */}
-            <View style={[styles.layoutWrapper, isDesktop ? styles.rowLayout : styles.columnLayout]}>
+                {/* Responsive grid for sub-menus & configuration sheet */}
+                <View style={[styles.layoutWrapper, isDesktop ? styles.rowLayout : styles.columnLayout]}>
 
-                {/* Left Side Sub-Navigation */}
-                {isDesktop ? (
-                    <View style={styles.sideNavCol}>
-                        {SETTINGS_TABS.map((tab, idx) => {
-                            const isTabActive = activeTab === tab.title;
-                            return (
-                                <TouchableOpacity
-                                    key={idx}
-                                    onPress={() => setActiveTab(tab.title)}
-                                    style={[styles.sideNavBtn, isTabActive && { backgroundColor: isDark ? "#1E1B4B" : "#EDE9FE" }]}
-                                    activeOpacity={0.8}
-                                >
-                                    <Text style={[styles.sideNavBtnText, { color: colors.textSecondary }, isTabActive && { color: colors.primary, fontWeight: "700" }]}>
-                                        {tab.title}
-                                    </Text>
-                                    {tab.badge && (
-                                        <View style={styles.businessBadge}>
-                                            <Text style={styles.businessBadgeText}>{tab.badge}</Text>
-                                        </View>
-                                    )}
-                                </TouchableOpacity>
-                            );
-                        })}
-                    </View>
-                ) : (
-                    // Horizontal scroll menu for mobile
-                    <View style={{ marginBottom: 16 }}>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalNavScroll} contentContainerStyle={styles.horizontalNavInner}>
+                    {/* Left Side Sub-Navigation */}
+                    {isDesktop ? (
+                        <View style={styles.sideNavCol}>
                             {SETTINGS_TABS.map((tab, idx) => {
                                 const isTabActive = activeTab === tab.title;
                                 return (
                                     <TouchableOpacity
                                         key={idx}
                                         onPress={() => setActiveTab(tab.title)}
-                                        style={[
-                                            styles.horizNavBtn,
-                                            { backgroundColor: isDark ? colors.border : "#F8FAFC", borderColor: isDark ? colors.border : "#E2E8F0" },
-                                            isTabActive && { backgroundColor: colors.primary, borderColor: colors.primary, ...Shadows.sm }
-                                        ]}
+                                        style={[styles.sideNavBtn, isTabActive && { backgroundColor: isDark ? "#1E1B4B" : "#EDE9FE" }]}
                                         activeOpacity={0.8}
                                     >
-                                        <Text style={[
-                                            styles.horizNavBtnText,
-                                            { color: isDark ? "#94A3B8" : "#64748B" },
-                                            isTabActive && { color: "#FFFFFF", fontWeight: "700" }
-                                        ]}>
+                                        <Text style={[styles.sideNavBtnText, { color: colors.textSecondary }, isTabActive && { color: colors.primary, fontWeight: "700" }]}>
                                             {tab.title}
                                         </Text>
+                                        {tab.badge && (
+                                            <View style={styles.businessBadge}>
+                                                <Text style={styles.businessBadgeText}>{tab.badge}</Text>
+                                            </View>
+                                        )}
                                     </TouchableOpacity>
                                 );
                             })}
-                        </ScrollView>
-                    </View>
-                )}
-
-                {/* Right Side Settings Sheet */}
-                <View style={styles.mainSettingsCol}>
-
-                    {activeTab === "General" && (
-                        <>
-                            {/* 1. General Settings Block */}
-                            <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                                <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>General Settings</Text>
-                                <Text style={[styles.cardHeaderSub, { color: colors.textSecondary }]}>Manage general preferences for your account.</Text>
-
-                                <View style={[styles.selectorsGrid, isDesktop && styles.rowLayout]}>
-                                    <View style={{ flex: 1 }}>
-                                        <RenderSelector label="Language" value="English (India)" />
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                        <RenderSelector label="Currency" value="INR - Indian Rupee (₹)" />
-                                    </View>
-                                </View>
-
-                                {/* Theme selector pills */}
-                                <Text style={[styles.sectionLabel, { color: colors.text }]}>Theme</Text>
-                                <Text style={[styles.sectionSubLabel, { color: colors.textSecondary }]}>Choose your preferred theme</Text>
-                                <View style={styles.themeSelectorContainer}>
-                                    <TouchableOpacity
-                                        onPress={() => setThemeMode("light")}
-                                        style={[styles.themeBtn, { backgroundColor: colors.surface, borderColor: colors.border }, themeMode === "light" && { borderColor: colors.primary, backgroundColor: isDark ? "#1E1B4B" : "#F5F3FF" }]}
-                                        activeOpacity={0.8}
-                                    >
-                                        <Ionicons name="sunny-outline" size={16} color={themeMode === "light" ? colors.primary : colors.textSecondary} />
-                                        <Text style={[styles.themeBtnText, { color: colors.textSecondary }, themeMode === "light" && { color: colors.primary }]}>Light</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        onPress={() => setThemeMode("dark")}
-                                        style={[styles.themeBtn, { backgroundColor: colors.surface, borderColor: colors.border }, themeMode === "dark" && { borderColor: colors.primary, backgroundColor: isDark ? "#1E1B4B" : "#F5F3FF" }]}
-                                        activeOpacity={0.8}
-                                    >
-                                        <Ionicons name="moon-outline" size={16} color={themeMode === "dark" ? colors.primary : colors.textSecondary} />
-                                        <Text style={[styles.themeBtnText, { color: colors.textSecondary }, themeMode === "dark" && { color: colors.primary }]}>Dark</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        onPress={() => setThemeMode("system")}
-                                        style={[styles.themeBtn, { backgroundColor: colors.surface, borderColor: colors.border }, themeMode === "system" && { borderColor: colors.primary, backgroundColor: isDark ? "#1E1B4B" : "#F5F3FF" }]}
-                                        activeOpacity={0.8}
-                                    >
-                                        <Ionicons name="desktop-outline" size={16} color={themeMode === "system" ? colors.primary : colors.textSecondary} />
-                                        <Text style={[styles.themeBtnText, { color: colors.textSecondary }, themeMode === "system" && { color: colors.primary }]}>System</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-
-                            {/* 2. Date & Time Preferences */}
-                            <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                                <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>Date & Time Preferences</Text>
-                                <Text style={[styles.cardHeaderSub, { color: colors.textSecondary }]}>Customize how dates and time are shown.</Text>
-
-                                <View style={[styles.selectorsGrid, isDesktop && styles.rowLayout]}>
-                                    <View style={{ flex: 1 }}>
-                                        <RenderSelector label="Date Format" value="31 May, 2024 (DD MMM, YYYY)" />
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                        <RenderSelector label="Time Format" value="12 Hour (01:30 PM)" />
-                                    </View>
-                                </View>
-                            </View>
-
-                            {/* 3. Dashboard Preferences */}
-                            <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                                <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>Dashboard Preferences</Text>
-                                <Text style={[styles.cardHeaderSub, { color: colors.textSecondary }]}>Customize your dashboard experience.</Text>
-
-                                {/* Default Dashboard pills */}
-                                <Text style={[styles.sectionLabel, { color: colors.text }]}>Default Dashboard</Text>
-                                <Text style={[styles.sectionSubLabel, { color: colors.textSecondary }]}>Choose what you see after login</Text>
-                                <View style={[styles.dashSelectorContainer, { backgroundColor: isDark ? colors.border : "#E2E8F0" }]}>
-                                    <TouchableOpacity
-                                        onPress={() => setDefaultDashboard("overview")}
-                                        style={[styles.dashBtn, defaultDashboard === "overview" && { backgroundColor: colors.surface }]}
-                                        activeOpacity={0.8}
-                                    >
-                                        <Text style={[styles.dashBtnText, { color: colors.textSecondary }, defaultDashboard === "overview" && { color: colors.text }]}>
-                                            Overview
-                                        </Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        onPress={() => setDefaultDashboard("ai-insights")}
-                                        style={[styles.dashBtn, defaultDashboard === "ai-insights" && { backgroundColor: colors.surface }]}
-                                        activeOpacity={0.8}
-                                    >
-                                        <Text style={[styles.dashBtnText, { color: colors.textSecondary }, defaultDashboard === "ai-insights" && { color: colors.text }]}>
-                                            AI Insights
-                                        </Text>
-                                    </TouchableOpacity>
-                                </View>
-
-                                <View style={[styles.selectorsGrid, isDesktop && styles.rowLayout, { marginTop: 16 }]}>
-                                    <View style={{ flex: 1 }}>
-                                        <RenderSelector label="Default Date Range" value="This Month" />
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                        <RenderSelector label="Number Format" value="1,234.56" />
-                                    </View>
-                                </View>
-                            </View>
-
-                            {/* 4. Other Settings Switches */}
-                            <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                                <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>Other Settings</Text>
-
-                                <View style={styles.switchesContainer}>
-                                    {/* Row 1 */}
-                                    <View style={[styles.switchGridRow, isDesktop && styles.rowLayout]}>
-                                        <View style={[styles.switchGridItem, { backgroundColor: isDark ? colors.surface : "#F8FAFC", borderColor: colors.border }]}>
-                                            <View style={styles.switchTextCol}>
-                                                <Text style={[styles.switchLabelTitle, { color: colors.text }]}>Show Balance on Dashboard</Text>
-                                                <Text style={[styles.switchLabelSub, { color: colors.textSecondary }]}>Display total balance on dashboard</Text>
-                                            </View>
-                                            <RenderSwitch value={showBalance} onValueChange={() => setShowBalance(!showBalance)} />
-                                        </View>
-                                        <View style={[styles.switchGridItem, { backgroundColor: isDark ? colors.surface : "#F8FAFC", borderColor: colors.border }]}>
-                                            <View style={styles.switchTextCol}>
-                                                <Text style={[styles.switchLabelTitle, { color: colors.text }]}>WhatsApp Reports</Text>
-                                                <Text style={[styles.switchLabelSub, { color: colors.textSecondary }]}>Receive daily summary on WhatsApp</Text>
-                                            </View>
-                                            <RenderSwitch value={whatsappReports} onValueChange={() => setWhatsappReports(!whatsappReports)} />
-                                        </View>
-                                    </View>
-
-                                    {/* Row 2 */}
-                                    <View style={[styles.switchGridRow, isDesktop && styles.rowLayout]}>
-                                        <View style={[styles.switchGridItem, { backgroundColor: isDark ? colors.surface : "#F8FAFC", borderColor: colors.border }]}>
-                                            <View style={styles.switchTextCol}>
-                                                <Text style={[styles.switchLabelTitle, { color: colors.text }]}>Email Reports</Text>
-                                                <Text style={[styles.switchLabelSub, { color: colors.textSecondary }]}>Receive weekly summary reports via email</Text>
-                                            </View>
-                                            <RenderSwitch value={emailReports} onValueChange={() => setEmailReports(!emailReports)} />
-                                        </View>
-                                        <View style={[styles.switchGridItem, { backgroundColor: isDark ? colors.surface : "#F8FAFC", borderColor: colors.border }]}>
-                                            <View style={styles.switchTextCol}>
-                                                <Text style={[styles.switchLabelTitle, { color: colors.text }]}>Marketing Communications</Text>
-                                                <Text style={[styles.switchLabelSub, { color: colors.textSecondary }]}>Receive updates about new features and offers</Text>
-                                            </View>
-                                            <RenderSwitch value={marketingComms} onValueChange={() => setMarketingComms(!marketingComms)} />
-                                        </View>
-                                    </View>
-
-                                    {/* Row 3 */}
-                                    <View style={[styles.switchGridRow, isDesktop && styles.rowLayout]}>
-                                        <View style={[styles.switchGridItem, { backgroundColor: isDark ? colors.surface : "#F8FAFC", borderColor: colors.border }]}>
-                                            <View style={styles.switchTextCol}>
-                                                <Text style={[styles.switchLabelTitle, { color: colors.text }]}>Auto Categorization</Text>
-                                                <Text style={[styles.switchLabelSub, { color: colors.textSecondary }]}>Automatically categorize transactions using AI</Text>
-                                            </View>
-                                            <RenderSwitch value={autoCategorization} onValueChange={() => setAutoCategorization(!autoCategorization)} />
-                                        </View>
-                                        <View style={[styles.switchGridItem, { backgroundColor: isDark ? colors.surface : "#F8FAFC", borderColor: colors.border }]}>
-                                            <View style={styles.switchTextCol}>
-                                                <Text style={[styles.switchLabelTitle, { color: colors.text }]}>Beta Features</Text>
-                                                <Text style={[styles.switchLabelSub, { color: colors.textSecondary }]}>Get early access to new features</Text>
-                                            </View>
-                                            <RenderSwitch value={betaFeatures} onValueChange={() => setBetaFeatures(!betaFeatures)} />
-                                        </View>
-                                    </View>
-                                </View>
-                            </View>
-                        </>
-                    )}
-
-                    {activeTab === "UPI & Bank Accounts" && (
-                        <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                            <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>UPI & Bank Accounts</Text>
-                            <Text style={[styles.cardHeaderSub, { color: colors.textSecondary }]}>Manage your linked UPI IDs and Bank Accounts via Setu AA.</Text>
-
-                            {isLoadingAccounts ? (
-                                <Text style={{ color: colors.textSecondary, marginVertical: 20 }}>Loading accounts...</Text>
-                            ) : (
-                                <>
-                                    <View style={{ marginBottom: 24 }}>
-                                        <Text style={[styles.sectionLabel, { color: colors.text, marginBottom: 12 }]}>Linked UPI IDs</Text>
-                                        {upiAccounts.length === 0 ? (
-                                            <Text style={{ color: colors.textSecondary, fontSize: 13 }}>No UPI IDs linked yet.</Text>
-                                        ) : (
-                                            upiAccounts.map((account) => (
-                                                <View key={account.id} style={[styles.accountCard, { backgroundColor: isDark ? colors.border : "#F8FAFC", borderColor: colors.border }]}>
-                                                    <View style={styles.accountIconBox}>
-                                                        <Ionicons name="at-circle-outline" size={24} color={colors.primary} />
-                                                    </View>
-                                                    <View style={styles.accountInfo}>
-                                                        <Text style={[styles.accountTitle, { color: colors.text }]}>{account.upiId}</Text>
-                                                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
-                                                            {account.isPrimary && (
-                                                                <View style={styles.primaryBadge}>
-                                                                    <Text style={styles.primaryBadgeText}>Primary</Text>
-                                                                </View>
-                                                            )}
-                                                            {account.isVerified ? (
-                                                                <Text style={{ fontSize: 11, color: "#10B981", fontWeight: "600" }}>✓ Verified</Text>
-                                                            ) : (
-                                                                <Text style={{ fontSize: 11, color: "#F59E0B", fontWeight: "600" }}>Pending Verification</Text>
-                                                            )}
-                                                        </View>
-                                                    </View>
-                                                </View>
-                                            ))
-                                        )}
-                                    </View>
-
-                                    <View>
-                                        <Text style={[styles.sectionLabel, { color: colors.text, marginBottom: 12 }]}>Linked Bank Accounts (Setu AA)</Text>
-                                        {bankAccounts.length === 0 ? (
-                                            <Text style={{ color: colors.textSecondary, fontSize: 13 }}>No bank accounts synced via Setu AA.</Text>
-                                        ) : (
-                                            bankAccounts.map((account) => (
-                                                <View key={account.id} style={[styles.accountCard, { backgroundColor: isDark ? colors.border : "#F8FAFC", borderColor: colors.border }]}>
-                                                    <View style={styles.accountIconBox}>
-                                                        <Ionicons name="business-outline" size={24} color={colors.primary} />
-                                                    </View>
-                                                    <View style={styles.accountInfo}>
-                                                        <Text style={[styles.accountTitle, { color: colors.text }]}>{account.vua}</Text>
-                                                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
-                                                            <View style={[styles.statusBadge, { backgroundColor: account.status === "ACTIVE" || account.status === "READY" ? "#ECFDF5" : "#FEF2F2" }]}>
-                                                                <Text style={[styles.statusBadgeText, { color: account.status === "ACTIVE" || account.status === "READY" ? "#10B981" : "#EF4444" }]}>
-                                                                    {account.status}
-                                                                </Text>
-                                                            </View>
-                                                            {account.createdAt && (
-                                                                <Text style={{ fontSize: 11, color: colors.textSecondary }}>Synced on {new Date(account.createdAt).toLocaleDateString()}</Text>
-                                                            )}
-                                                        </View>
-                                                    </View>
-                                                </View>
-                                            ))
-                                        )}
-                                    </View>
-                                </>
-                            )}
+                        </View>
+                    ) : (
+                        // Horizontal scroll menu for mobile
+                        <View style={{ marginBottom: 16 }}>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalNavScroll} contentContainerStyle={styles.horizontalNavInner}>
+                                {SETTINGS_TABS.map((tab, idx) => {
+                                    const isTabActive = activeTab === tab.title;
+                                    return (
+                                        <TouchableOpacity
+                                            key={idx}
+                                            onPress={() => setActiveTab(tab.title)}
+                                            style={[
+                                                styles.horizNavBtn,
+                                                { backgroundColor: isDark ? colors.border : "#F8FAFC", borderColor: isDark ? colors.border : "#E2E8F0" },
+                                                isTabActive && { backgroundColor: colors.primary, borderColor: colors.primary, ...Shadows.sm }
+                                            ]}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Text style={[
+                                                styles.horizNavBtnText,
+                                                { color: isDark ? "#94A3B8" : "#64748B" },
+                                                isTabActive && { color: "#FFFFFF", fontWeight: "700" }
+                                            ]}>
+                                                {tab.title}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </ScrollView>
                         </View>
                     )}
 
-                    {activeTab === "Privacy & Security" && (
-                        <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                            <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>Security & Privacy</Text>
-                            <Text style={[styles.cardHeaderSub, { color: colors.textSecondary }]}>Keep your account safe and your data private</Text>
+                    {/* Right Side Settings Sheet */}
+                    <View style={styles.mainSettingsCol}>
 
-                            <View style={[styles.selectorsGrid, isDesktop && styles.rowLayout, { gap: 24 }]}>
-                                {/* Left Column: Security */}
-                                <View style={{ flex: 1, gap: 4 }}>
-                                    <TouchableOpacity style={styles.privacyListItem} activeOpacity={0.7}>
-                                        <View style={styles.privacyListIcon}>
-                                            <Ionicons name="key-outline" size={18} color="#6D28D9" />
-                                        </View>
-                                        <Text style={[styles.privacyListText, { color: colors.text }]}>Change Password</Text>
-                                        <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginLeft: "auto" }} />
-                                    </TouchableOpacity>
-
-                                    <View style={styles.privacyListItem}>
-                                        <View style={styles.privacyListIcon}>
-                                            <Ionicons name="finger-print-outline" size={18} color="#6D28D9" />
-                                        </View>
-                                        <Text style={[styles.privacyListText, { color: colors.text }]}>Enable Biometric Login</Text>
-                                        <View style={{ marginLeft: "auto" }}>
-                                            <RenderSwitch value={biometricLogin} onValueChange={() => setBiometricLogin(!biometricLogin)} />
-                                        </View>
-                                    </View>
-
-                                    <TouchableOpacity style={styles.privacyListItem} activeOpacity={0.7}>
-                                        <View style={styles.privacyListIcon}>
-                                            <Ionicons name="shield-checkmark-outline" size={18} color="#6D28D9" />
-                                        </View>
-                                        <Text style={[styles.privacyListText, { color: colors.text }]}>Two-Factor Authentication</Text>
-                                        <View style={[styles.offBadge, { backgroundColor: isDark ? colors.border : "#F1F5F9" }]}>
-                                            <Text style={styles.offBadgeText}>Off</Text>
-                                        </View>
-                                        <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-                                    </TouchableOpacity>
-
-                                    <TouchableOpacity style={styles.privacyListItem} activeOpacity={0.7}>
-                                        <View style={styles.privacyListIcon}>
-                                            <Ionicons name="phone-portrait-outline" size={18} color="#6D28D9" />
-                                        </View>
-                                        <Text style={[styles.privacyListText, { color: colors.text }]}>Active Devices</Text>
-                                        <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginLeft: "auto" }} />
-                                    </TouchableOpacity>
-
-                                    <TouchableOpacity style={styles.privacyListItem} activeOpacity={0.7}>
-                                        <View style={styles.privacyListIcon}>
-                                            <Ionicons name="time-outline" size={18} color="#6D28D9" />
-                                        </View>
-                                        <Text style={[styles.privacyListText, { color: colors.text }]}>Login History</Text>
-                                        <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginLeft: "auto" }} />
-                                    </TouchableOpacity>
-                                </View>
-
-                                {/* Right Column: Privacy */}
-                                <View style={{ flex: 1, gap: 4 }}>
-                                    <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 8, paddingHorizontal: 12 }}>
-                                        <View style={[styles.privacyListIcon, { backgroundColor: "#EDE9FE" }]}>
-                                            <Ionicons name="lock-closed" size={18} color="#6D28D9" />
-                                        </View>
-                                        <Text style={{ fontSize: 14, fontWeight: "700", color: colors.text }}>Privacy</Text>
-                                    </View>
-
-                                    <TouchableOpacity style={styles.privacyListItem} activeOpacity={0.7}>
-                                        <View style={styles.privacyListIcon}>
-                                            <Ionicons name="link-outline" size={18} color="#6D28D9" />
-                                        </View>
-                                        <Text style={[styles.privacyListText, { color: colors.text }]}>Transaction data sharing</Text>
-                                        <Text style={{ color: "#10B981", fontSize: 12, fontWeight: "600", marginLeft: "auto", marginRight: 8 }}>On</Text>
-                                        <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-                                    </TouchableOpacity>
-
-                                    <TouchableOpacity style={styles.privacyListItem} activeOpacity={0.7}>
-                                        <View style={styles.privacyListIcon}>
-                                            <Ionicons name="hardware-chip-outline" size={18} color="#6D28D9" />
-                                        </View>
-                                        <Text style={[styles.privacyListText, { color: colors.text }]}>AI data analysis permission</Text>
-                                        <Text style={{ color: "#10B981", fontSize: 12, fontWeight: "600", marginLeft: "auto", marginRight: 8 }}>On</Text>
-                                        <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-                                    </TouchableOpacity>
-
-                                    <TouchableOpacity style={styles.privacyListItem} activeOpacity={0.7}>
-                                        <View style={styles.privacyListIcon}>
-                                            <Ionicons name="options-outline" size={18} color="#6D28D9" />
-                                        </View>
-                                        <Text style={[styles.privacyListText, { color: colors.text }]}>Personalized insights</Text>
-                                        <Text style={{ color: "#10B981", fontSize: 12, fontWeight: "600", marginLeft: "auto", marginRight: 8 }}>On</Text>
-                                        <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-                                    </TouchableOpacity>
-
-                                    <TouchableOpacity style={styles.privacyListItem} activeOpacity={0.7}>
-                                        <View style={styles.privacyListIcon}>
-                                            <Ionicons name="cloud-download-outline" size={18} color="#6D28D9" />
-                                        </View>
-                                        <Text style={[styles.privacyListText, { color: colors.text }]}>Download my data</Text>
-                                        <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginLeft: "auto" }} />
-                                    </TouchableOpacity>
-
-                                    <TouchableOpacity style={styles.privacyListItem} activeOpacity={0.7}>
-                                        <View style={styles.privacyListIcon}>
-                                            <Ionicons name="trash-outline" size={18} color="#6D28D9" />
-                                        </View>
-                                        <Text style={[styles.privacyListText, { color: colors.text }]}>Delete account</Text>
-                                        <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginLeft: "auto" }} />
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        </View>
-                    )}
-
-                    {activeTab === "Data & Sync" && (
-                        <View style={{ gap: 16 }}>
-                            {/* Top Row: Transaction Sync & Auto Sync */}
-                            <View style={[styles.switchGridRow, isDesktop && styles.rowLayout]}>
-                                {/* Transaction Sync */}
-                                <View style={[styles.settingsCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 0 }]}>
-                                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-                                        <View>
-                                            <Text style={[styles.cardHeaderTitle, { color: colors.text, marginBottom: 4 }]}>Transaction Sync</Text>
-                                            <Text style={{ color: "#6366F1", fontSize: 13, fontWeight: "600" }}>Setu AA</Text>
-                                        </View>
-                                        <View style={[styles.statusBadge, { backgroundColor: "#ECFDF5" }]}>
-                                            <Text style={[styles.statusBadgeText, { color: "#10B981" }]}>Synced</Text>
-                                        </View>
-                                    </View>
-                                    <View style={{ marginBottom: 16 }}>
-                                        <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Last Sync</Text>
-                                        <Text style={{ fontSize: 13, color: colors.text, fontWeight: "500" }}>
-                                            {lastSyncDate ? lastSyncDate.toLocaleString('en-US', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "Never synced"}
-                                        </Text>
-                                    </View>
-                                    <TouchableOpacity 
-                                        style={[styles.saveBtn, { backgroundColor: "#6D28D9", marginTop: 0, opacity: isSyncing ? 0.7 : 1 }]} 
-                                        onPress={handleSyncNow}
-                                        disabled={isSyncing}
-                                    >
-                                        <Text style={styles.saveBtnText}>{isSyncing ? "Syncing..." : "Sync Now"}</Text>
-                                    </TouchableOpacity>
-                                </View>
-
-                                {/* Automatic Sync */}
-                                <View style={[styles.settingsCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 0 }]}>
-                                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                                        <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>Automatic Sync</Text>
-                                        <RenderSwitch value={autoSyncEnabled} onValueChange={() => setAutoSyncEnabled(!autoSyncEnabled)} />
-                                    </View>
-                                    <Text style={[styles.sectionLabel, { color: colors.text, marginBottom: 8 }]}>Sync Frequency</Text>
-                                    <TouchableOpacity 
-                                        style={[styles.input, { borderColor: colors.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }]} 
-                                        disabled={!autoSyncEnabled}
-                                    >
-                                        <Text style={{ color: autoSyncEnabled ? colors.text : colors.textSecondary }}>{syncFrequency}</Text>
-                                        <Ionicons name="chevron-down" size={16} color={colors.textSecondary} />
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-
-                            {/* Bottom Row: Data Management & Security Card */}
-                            <View style={[styles.switchGridRow, isDesktop && styles.rowLayout]}>
-                                {/* Data Management */}
-                                <View style={[styles.settingsCard, { flex: 1.5, backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 0 }]}>
-                                    <Text style={[styles.cardHeaderTitle, { color: colors.text, marginBottom: 16 }]}>Data Management</Text>
-                                    <View style={{ gap: 12 }}>
-                                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                                            <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                                                <View style={[styles.privacyListIcon, { backgroundColor: "#F8FAFC" }]}>
-                                                    <Ionicons name="document-text-outline" size={18} color="#64748B" />
-                                                </View>
-                                                <View>
-                                                    <Text style={[styles.privacyListText, { color: colors.text }]}>Export Transaction Data</Text>
-                                                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>Download your transaction history</Text>
-                                                </View>
-                                            </View>
-                                            <TouchableOpacity style={{ borderWidth: 1, borderColor: "#6D28D9", borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 }}>
-                                                <Text style={{ color: "#6D28D9", fontSize: 12, fontWeight: "600" }}>Export</Text>
-                                            </TouchableOpacity>
-                                        </View>
-                                        
-                                        <View style={{ height: 1, backgroundColor: colors.border }} />
-                                        
-                                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                                            <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                                                <View style={[styles.privacyListIcon, { backgroundColor: "#F8FAFC" }]}>
-                                                    <Ionicons name="bar-chart-outline" size={18} color="#64748B" />
-                                                </View>
-                                                <View>
-                                                    <Text style={[styles.privacyListText, { color: colors.text }]}>Download Financial Report</Text>
-                                                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>Get detailed report</Text>
-                                                </View>
-                                            </View>
-                                            <TouchableOpacity style={{ borderWidth: 1, borderColor: "#6D28D9", borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 }}>
-                                                <Text style={{ color: "#6D28D9", fontSize: 12, fontWeight: "600" }}>Download</Text>
-                                            </TouchableOpacity>
-                                        </View>
-                                        
-                                        <View style={{ height: 1, backgroundColor: colors.border }} />
-
-                                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                                            <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                                                <View style={[styles.privacyListIcon, { backgroundColor: "#FEF2F2" }]}>
-                                                    <Ionicons name="trash-bin-outline" size={18} color="#EF4444" />
-                                                </View>
-                                                <View>
-                                                    <Text style={[styles.privacyListText, { color: colors.text }]}>Clear Cached Data</Text>
-                                                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>Remove temporary files</Text>
-                                                </View>
-                                            </View>
-                                            <TouchableOpacity style={{ borderWidth: 1, borderColor: "#EF4444", borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 }}>
-                                                <Text style={{ color: "#EF4444", fontSize: 12, fontWeight: "600" }}>Clear Cache</Text>
-                                            </TouchableOpacity>
-                                        </View>
-                                    </View>
-                                </View>
-
-                                {/* Security Banner */}
-                                <View style={[{ flex: 1, backgroundColor: "#F5F3FF", borderRadius: 12, padding: 24, justifyContent: "center" }]}>
-                                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-                                        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#EDE9FE", justifyContent: "center", alignItems: "center" }}>
-                                            <Ionicons name="shield-checkmark" size={20} color="#6D28D9" />
-                                        </View>
-                                        <Ionicons name="lock-closed" size={48} color="#8B5CF6" style={{ opacity: 0.2 }} />
-                                    </View>
-                                    <Text style={{ fontSize: 16, fontWeight: "700", color: "#4C1D95", marginBottom: 8 }}>Your data is secure</Text>
-                                    <Text style={{ fontSize: 13, color: "#6D28D9", lineHeight: 20 }}>
-                                        We use bank-grade security to keep your data safe and private.
-                                    </Text>
-                                </View>
-                            </View>
-                        </View>
-                    )}
-                    {activeTab === "Billing & Subscription" && (
-                        <View style={{ gap: 16 }}>
-                            {/* Header */}
-                            <View style={{ marginBottom: 8, paddingHorizontal: 4 }}>
-                                <Text style={[styles.cardHeaderTitle, { color: colors.text, fontSize: 18 }]}>Billing & Subscription</Text>
-                                <Text style={[styles.cardHeaderSub, { color: colors.textSecondary }]}>Manage your plan, payment method and billing history</Text>
-                            </View>
-
-                            {/* Top Row: Current Plan & Payment Method */}
-                            <View style={[styles.switchGridRow, isDesktop && styles.rowLayout]}>
-                                {/* Current Plan Card */}
-                                <View style={[styles.settingsCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 0 }]}>
-                                    <Text style={[styles.cardHeaderTitle, { color: colors.text, fontSize: 14, marginBottom: 16 }]}>Current Plan</Text>
-                                    
-                                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-                                        <View style={{ flexDirection: "row", gap: 12 }}>
-                                            <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: "#FCE7F3", justifyContent: "center", alignItems: "center" }}>
-                                                <Ionicons name="sparkles" size={24} color="#DB2777" />
-                                            </View>
-                                            <View>
-                                                <Text style={{ fontSize: 16, fontWeight: "700", color: colors.text }}>Founder Plan</Text>
-                                                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>₹10 / month</Text>
-                                            </View>
-                                        </View>
-                                        <View style={[styles.statusBadge, { backgroundColor: "#ECFDF5", paddingHorizontal: 8, paddingVertical: 4 }]}>
-                                            <Text style={[styles.statusBadgeText, { color: "#10B981" }]}>Active</Text>
-                                        </View>
-                                    </View>
-                                    
-                                    <View style={{ marginTop: 24, marginBottom: 24 }}>
-                                        <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>Next Billing Date</Text>
-                                        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.text }}>15 Oct 2026</Text>
-                                    </View>
-                                    
-                                    <TouchableOpacity 
-                                        style={[styles.saveBtn, { backgroundColor: colors.primary, width: "100%", alignItems: "center" }]} 
-                                        activeOpacity={0.8}
-                                        onPress={() => router.push("/tabs/subscription")}
-                                    >
-                                        <Text style={styles.saveBtnText}>Manage Subscription</Text>
-                                    </TouchableOpacity>
-                                </View>
-
-                                {/* Payment Method Card */}
-                                <View style={[styles.settingsCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 0 }]}>
-                                    <Text style={[styles.cardHeaderTitle, { color: colors.text, fontSize: 14, marginBottom: 16 }]}>Payment Method</Text>
-                                    
-                                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, marginBottom: 12 }}>
-                                        <View style={{ flexDirection: "row", alignItems: "center", gap: 12, flexShrink: 1 }}>
-                                            <View style={{ backgroundColor: "#F8FAFC", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", gap: 4 }}>
-                                                <Ionicons name="logo-google" size={14} color="#EA4335" />
-                                                <Text style={{ fontSize: 12, fontWeight: "700", color: "#333" }}>UPI</Text>
-                                            </View>
-                                            <Text style={{ fontSize: 13, fontWeight: "500", color: colors.text, flexShrink: 1 }} numberOfLines={1}>rajesh@okaxis</Text>
-                                        </View>
-                                        <View style={[styles.statusBadge, { backgroundColor: "#ECFDF5", paddingHorizontal: 8, paddingVertical: 4, marginLeft: 8 }]}>
-                                            <Text style={[styles.statusBadgeText, { color: "#10B981" }]}>Active</Text>
-                                        </View>
-                                    </View>
-
-                                    <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, gap: 8 }} activeOpacity={0.7}>
-                                        <Ionicons name="sync-outline" size={16} color={colors.primary} />
-                                        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.primary }}>Change</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-
-                            {/* Billing History Card */}
-                            <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                                    <Text style={[styles.cardHeaderTitle, { color: colors.text, fontSize: 14, marginBottom: 0 }]}>Billing History</Text>
-                                    <TouchableOpacity activeOpacity={0.7} onPress={() => router.push("/tabs/subscription/history")}>
-                                        <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>View All</Text>
-                                    </TouchableOpacity>
-                                </View>
-
-                                {/* Table Container with horizontal scroll for small screens */}
-                                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                                    <View style={{ minWidth: 500, flex: 1 }}>
-                                        {/* Table Header */}
-                                        <View style={{ flexDirection: "row", backgroundColor: isDark ? colors.border : "#F8FAFC", padding: 12, borderRadius: 8, marginBottom: 8 }}>
-                                            <Text style={{ width: 120, fontSize: 12, fontWeight: "600", color: colors.textSecondary }}>Date</Text>
-                                            <Text style={{ width: 100, fontSize: 12, fontWeight: "600", color: colors.textSecondary }}>Amount</Text>
-                                            <Text style={{ width: 100, fontSize: 12, fontWeight: "600", color: colors.textSecondary }}>Status</Text>
-                                            <Text style={{ flex: 1, fontSize: 12, fontWeight: "600", color: colors.textSecondary }}>Invoice</Text>
-                                        </View>
-
-                                        {/* Table Rows */}
-                                        {[
-                                            { date: "15 Aug 2026", amount: "₹10", status: "Success" },
-                                            { date: "15 Jul 2026", amount: "₹10", status: "Success" },
-                                            { date: "15 Jun 2026", amount: "₹10", status: "Success" },
-                                            { date: "15 May 2026", amount: "₹10", status: "Success" },
-                                        ].map((item, idx) => (
-                                            <View key={idx} style={{ flexDirection: "row", padding: 12, borderBottomWidth: idx === 3 ? 0 : 1, borderBottomColor: colors.border, alignItems: "center" }}>
-                                                <Text style={{ width: 120, fontSize: 13, fontWeight: "500", color: colors.text }}>{item.date}</Text>
-                                                <Text style={{ width: 100, fontSize: 13, color: colors.text }}>{item.amount}</Text>
-                                                <View style={{ width: 100, alignItems: "flex-start" }}>
-                                                    <View style={[styles.statusBadge, { backgroundColor: "#ECFDF5", paddingHorizontal: 8, paddingVertical: 4 }]}>
-                                                        <Text style={[styles.statusBadgeText, { color: "#10B981" }]}>{item.status}</Text>
-                                                    </View>
-                                                </View>
-                                                <TouchableOpacity style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }} activeOpacity={0.7}>
-                                                    <Ionicons name="document-text-outline" size={14} color={colors.primary} />
-                                                    <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Download</Text>
-                                                </TouchableOpacity>
-                                            </View>
-                                        ))}
-                                    </View>
-                                </ScrollView>
-                            </View>
-
-                            {/* Actions Row */}
-                            <View style={[styles.switchGridRow, isDesktop && styles.rowLayout]}>
-                                {/* Invoice Actions */}
-                                <View style={[styles.settingsCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 0 }]}>
-                                    <Text style={[styles.cardHeaderTitle, { color: colors.text, fontSize: 14, marginBottom: 16 }]}>Invoice Actions</Text>
-                                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-                                        <TouchableOpacity style={{ flexGrow: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, gap: 6 }} activeOpacity={0.7}>
-                                            <Ionicons name="download-outline" size={16} color={colors.primary} />
-                                            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Download Invoice</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity style={{ flexGrow: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, gap: 6 }} activeOpacity={0.7}>
-                                            <Ionicons name="mail-outline" size={16} color={colors.primary} />
-                                            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Resend Invoice</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                </View>
-                                
-                                {/* Subscription Actions */}
-                                <View style={[styles.settingsCard, { flex: 1.5, backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 0 }]}>
-                                    <Text style={[styles.cardHeaderTitle, { color: colors.text, fontSize: 14, marginBottom: 16 }]}>Subscription Actions</Text>
-                                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-                                        <TouchableOpacity style={{ flexGrow: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, gap: 6 }} activeOpacity={0.7}>
-                                            <Ionicons name="swap-horizontal-outline" size={16} color={colors.primary} />
-                                            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Change Plan</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity style={{ flexGrow: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, gap: 6 }} activeOpacity={0.7}>
-                                            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Update Payment</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity style={{ flexGrow: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#FECACA", borderRadius: 10, padding: 10, gap: 6 }} activeOpacity={0.7}>
-                                            <Text style={{ fontSize: 12, fontWeight: "600", color: "#EF4444" }}>Cancel Subscription</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                </View>
-                            </View>
-                        </View>
-                    )}
-
-                    {activeTab === "Profile Information" && (
-                        <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                            <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>Profile Information</Text>
-                            <Text style={[styles.cardHeaderSub, { color: colors.textSecondary }]}>Update your personal and business details.</Text>
-
-                            <View style={styles.formRow}>
-                                <View style={styles.formGroup}>
-                                    <Text style={[styles.label, { color: colors.text }]}>First Name</Text>
-                                    <TextInput style={[styles.input, { backgroundColor: isDark ? colors.inputBackground : "#F8FAFC", color: colors.text, borderColor: colors.border }]} value={firstName} onChangeText={setFirstName} placeholder="First Name" placeholderTextColor={colors.placeholder} />
-                                </View>
-                                <View style={styles.formGroup}>
-                                    <Text style={[styles.label, { color: colors.text }]}>Last Name</Text>
-                                    <TextInput style={[styles.input, { backgroundColor: isDark ? colors.inputBackground : "#F8FAFC", color: colors.text, borderColor: colors.border }]} value={lastName} onChangeText={setLastName} placeholder="Last Name" placeholderTextColor={colors.placeholder} />
-                                </View>
-                            </View>
-
-                            <View style={styles.formGroup}>
-                                <Text style={[styles.label, { color: colors.text }]}>Email Address</Text>
-                                <TextInput style={[styles.input, { backgroundColor: isDark ? colors.inputBackground : "#F8FAFC", color: colors.text, borderColor: colors.border }]} value={email} onChangeText={setEmail} keyboardType="email-address" placeholder="Email Address" placeholderTextColor={colors.placeholder} />
-                            </View>
-
-                            <View style={styles.formGroup}>
-                                <Text style={[styles.label, { color: colors.text }]}>Mobile Number</Text>
-                                <TextInput style={[styles.input, { backgroundColor: isDark ? colors.inputBackground : "#F8FAFC", color: colors.text, borderColor: colors.border }]} value={mobile} onChangeText={setMobile} keyboardType="phone-pad" placeholder="Mobile Number" placeholderTextColor={colors.placeholder} />
-                            </View>
-
-                            {user?.userType === "BUSINESS" && (
-                                <>
-                                    <View style={styles.formGroup}>
-                                        <Text style={[styles.label, { color: colors.text }]}>Business Name</Text>
-                                        <TextInput style={[styles.input, { backgroundColor: isDark ? colors.inputBackground : "#F8FAFC", color: colors.text, borderColor: colors.border }]} value={businessName} onChangeText={setBusinessName} placeholder="Business Name" placeholderTextColor={colors.placeholder} />
-                                    </View>
-                                    <View style={styles.formRow}>
-                                        <View style={styles.formGroup}>
-                                            <Text style={[styles.label, { color: colors.text }]}>Category</Text>
-                                            <TextInput style={[styles.input, { backgroundColor: isDark ? colors.inputBackground : "#F8FAFC", color: colors.text, borderColor: colors.border }]} value={category} onChangeText={setCategory} placeholder="Category" placeholderTextColor={colors.placeholder} />
-                                        </View>
-                                        <View style={styles.formGroup}>
-                                            <Text style={[styles.label, { color: colors.text }]}>City</Text>
-                                            <TextInput style={[styles.input, { backgroundColor: isDark ? colors.inputBackground : "#F8FAFC", color: colors.text, borderColor: colors.border }]} value={city} onChangeText={setCity} placeholder="City" placeholderTextColor={colors.placeholder} />
-                                        </View>
-                                    </View>
-                                </>
-                            )}
-                        </View>
-                    )}
-
-                    {/* Bottom Action buttons */}
-                    <View style={styles.actionsRow}>
                         {activeTab === "General" && (
-                            <TouchableOpacity onPress={handleReset} style={[styles.resetBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.8}>
-                                <Text style={[styles.resetBtnText, { color: colors.text }]}>Reset to Default</Text>
-                            </TouchableOpacity>
+                            <>
+                                {/* 1. General Settings Block */}
+                                <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                                    <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>General Settings</Text>
+                                    <Text style={[styles.cardHeaderSub, { color: colors.textSecondary }]}>Manage general preferences for your account.</Text>
+
+                                    <View style={[styles.selectorsGrid, isDesktop && styles.rowLayout]}>
+                                        <View style={{ flex: 1 }}>
+                                            <RenderSelector label="Language" value="English (India)" />
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <RenderSelector label="Currency" value="INR - Indian Rupee (₹)" />
+                                        </View>
+                                    </View>
+
+                                    {/* Theme selector pills */}
+                                    <Text style={[styles.sectionLabel, { color: colors.text }]}>Theme</Text>
+                                    <Text style={[styles.sectionSubLabel, { color: colors.textSecondary }]}>Choose your preferred theme</Text>
+                                    <View style={styles.themeSelectorContainer}>
+                                        <TouchableOpacity
+                                            onPress={() => setThemeMode("light")}
+                                            style={[styles.themeBtn, { backgroundColor: colors.surface, borderColor: colors.border }, themeMode === "light" && { borderColor: colors.primary, backgroundColor: isDark ? "#1E1B4B" : "#F5F3FF" }]}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Ionicons name="sunny-outline" size={16} color={themeMode === "light" ? colors.primary : colors.textSecondary} />
+                                            <Text style={[styles.themeBtnText, { color: colors.textSecondary }, themeMode === "light" && { color: colors.primary }]}>Light</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            onPress={() => setThemeMode("dark")}
+                                            style={[styles.themeBtn, { backgroundColor: colors.surface, borderColor: colors.border }, themeMode === "dark" && { borderColor: colors.primary, backgroundColor: isDark ? "#1E1B4B" : "#F5F3FF" }]}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Ionicons name="moon-outline" size={16} color={themeMode === "dark" ? colors.primary : colors.textSecondary} />
+                                            <Text style={[styles.themeBtnText, { color: colors.textSecondary }, themeMode === "dark" && { color: colors.primary }]}>Dark</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+
+                                {/* 2. Date & Time Preferences */}
+                                <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                                    <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>Date & Time Preferences</Text>
+                                    <Text style={[styles.cardHeaderSub, { color: colors.textSecondary }]}>Customize how dates and time are shown.</Text>
+
+                                    <View style={[styles.selectorsGrid, isDesktop && styles.rowLayout]}>
+                                        <View style={{ flex: 1 }}>
+                                            <RenderSelector label="Date Format" value="31 May, 2024 (DD MMM, YYYY)" />
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <RenderSelector label="Time Format" value="12 Hour (01:30 PM)" />
+                                        </View>
+                                    </View>
+                                </View>
+
+                                {/* 3. Dashboard Preferences */}
+                                <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                                    <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>Dashboard Preferences</Text>
+                                    <Text style={[styles.cardHeaderSub, { color: colors.textSecondary }]}>Customize your dashboard experience.</Text>
+
+                                    {/* Default Dashboard pills */}
+                                    <Text style={[styles.sectionLabel, { color: colors.text }]}>Default Dashboard</Text>
+                                    <Text style={[styles.sectionSubLabel, { color: colors.textSecondary }]}>Choose what you see after login</Text>
+                                    <View style={[styles.dashSelectorContainer, { backgroundColor: isDark ? colors.border : "#E2E8F0" }]}>
+                                        <TouchableOpacity
+                                            onPress={() => setDefaultDashboard("overview")}
+                                            style={[styles.dashBtn, defaultDashboard === "overview" && { backgroundColor: colors.surface }]}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Text style={[styles.dashBtnText, { color: colors.textSecondary }, defaultDashboard === "overview" && { color: colors.text }]}>
+                                                Overview
+                                            </Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            onPress={() => setDefaultDashboard("ai-insights")}
+                                            style={[styles.dashBtn, defaultDashboard === "ai-insights" && { backgroundColor: colors.surface }]}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Text style={[styles.dashBtnText, { color: colors.textSecondary }, defaultDashboard === "ai-insights" && { color: colors.text }]}>
+                                                AI Insights
+                                            </Text>
+                                        </TouchableOpacity>
+                                    </View>
+
+                                    <View style={[styles.selectorsGrid, isDesktop && styles.rowLayout, { marginTop: 16 }]}>
+                                        <View style={{ flex: 1 }}>
+                                            <RenderSelector label="Default Date Range" value="This Month" />
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <RenderSelector label="Number Format" value="1,234.56" />
+                                        </View>
+                                    </View>
+                                </View>
+
+                                {/* 4. Other Settings Switches */}
+                                <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                                    <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>Other Settings</Text>
+
+                                    <View style={styles.switchesContainer}>
+                                        {/* Row 1 */}
+                                        <View style={[styles.switchGridRow, isDesktop && styles.rowLayout]}>
+                                            <View style={[styles.switchGridItem, { backgroundColor: isDark ? colors.surface : "#F8FAFC", borderColor: colors.border }]}>
+                                                <View style={styles.switchTextCol}>
+                                                    <Text style={[styles.switchLabelTitle, { color: colors.text }]}>Show Balance on Dashboard</Text>
+                                                    <Text style={[styles.switchLabelSub, { color: colors.textSecondary }]}>Display total balance on dashboard</Text>
+                                                </View>
+                                                <RenderSwitch value={showBalance} onValueChange={() => setShowBalance(!showBalance)} />
+                                            </View>
+                                            <View style={[styles.switchGridItem, { backgroundColor: isDark ? colors.surface : "#F8FAFC", borderColor: colors.border }]}>
+                                                <View style={styles.switchTextCol}>
+                                                    <Text style={[styles.switchLabelTitle, { color: colors.text }]}>WhatsApp Reports</Text>
+                                                    <Text style={[styles.switchLabelSub, { color: colors.textSecondary }]}>Receive daily summary on WhatsApp</Text>
+                                                </View>
+                                                <RenderSwitch value={whatsappReports} onValueChange={() => setWhatsappReports(!whatsappReports)} />
+                                            </View>
+                                        </View>
+
+                                        {/* Row 2 */}
+                                        <View style={[styles.switchGridRow, isDesktop && styles.rowLayout]}>
+                                            <View style={[styles.switchGridItem, { backgroundColor: isDark ? colors.surface : "#F8FAFC", borderColor: colors.border }]}>
+                                                <View style={styles.switchTextCol}>
+                                                    <Text style={[styles.switchLabelTitle, { color: colors.text }]}>Email Reports</Text>
+                                                    <Text style={[styles.switchLabelSub, { color: colors.textSecondary }]}>Receive weekly summary reports via email</Text>
+                                                </View>
+                                                <RenderSwitch value={emailReports} onValueChange={() => setEmailReports(!emailReports)} />
+                                            </View>
+                                            <View style={[styles.switchGridItem, { backgroundColor: isDark ? colors.surface : "#F8FAFC", borderColor: colors.border }]}>
+                                                <View style={styles.switchTextCol}>
+                                                    <Text style={[styles.switchLabelTitle, { color: colors.text }]}>Marketing Communications</Text>
+                                                    <Text style={[styles.switchLabelSub, { color: colors.textSecondary }]}>Receive updates about new features and offers</Text>
+                                                </View>
+                                                <RenderSwitch value={marketingComms} onValueChange={() => setMarketingComms(!marketingComms)} />
+                                            </View>
+                                        </View>
+
+                                        {/* Row 3 */}
+                                        <View style={[styles.switchGridRow, isDesktop && styles.rowLayout]}>
+                                            <View style={[styles.switchGridItem, { backgroundColor: isDark ? colors.surface : "#F8FAFC", borderColor: colors.border }]}>
+                                                <View style={styles.switchTextCol}>
+                                                    <Text style={[styles.switchLabelTitle, { color: colors.text }]}>Auto Categorization</Text>
+                                                    <Text style={[styles.switchLabelSub, { color: colors.textSecondary }]}>Automatically categorize transactions using AI</Text>
+                                                </View>
+                                                <RenderSwitch value={autoCategorization} onValueChange={() => setAutoCategorization(!autoCategorization)} />
+                                            </View>
+                                            <View style={[styles.switchGridItem, { backgroundColor: isDark ? colors.surface : "#F8FAFC", borderColor: colors.border }]}>
+                                                <View style={styles.switchTextCol}>
+                                                    <Text style={[styles.switchLabelTitle, { color: colors.text }]}>Beta Features</Text>
+                                                    <Text style={[styles.switchLabelSub, { color: colors.textSecondary }]}>Get early access to new features</Text>
+                                                </View>
+                                                <RenderSwitch value={betaFeatures} onValueChange={() => setBetaFeatures(!betaFeatures)} />
+                                            </View>
+                                        </View>
+                                    </View>
+                                </View>
+                            </>
                         )}
 
-                        <TouchableOpacity
-                            onPress={activeTab === "Profile Information" ? handleSaveProfile : handleSave}
-                            style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: isSavingProfile ? 0.7 : 1 }]}
-                            activeOpacity={0.8}
-                            disabled={isSavingProfile}
-                        >
-                            <Text style={styles.saveBtnText}>{isSavingProfile ? "Saving..." : "Save Changes"}</Text>
-                        </TouchableOpacity>
-                    </View>
+                        {activeTab === "UPI & Bank Accounts" && (
+                            <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                                <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>UPI & Bank Accounts</Text>
+                                <Text style={[styles.cardHeaderSub, { color: colors.textSecondary }]}>Manage your linked UPI IDs and Bank Accounts via Setu AA.</Text>
 
-                    <Text style={[styles.appVersionText, { color: colors.textSecondary }]}>App Version 1.0.0</Text>
+                                {isLoadingAccounts ? (
+                                    <Text style={{ color: colors.textSecondary, marginVertical: 20 }}>Loading accounts...</Text>
+                                ) : (
+                                    <>
+                                        <View style={{ marginBottom: 24 }}>
+                                            <Text style={[styles.sectionLabel, { color: colors.text, marginBottom: 12 }]}>Linked UPI IDs</Text>
+                                            {upiAccounts.length === 0 ? (
+                                                <Text style={{ color: colors.textSecondary, fontSize: 13 }}>No UPI IDs linked yet.</Text>
+                                            ) : (
+                                                upiAccounts.map((account) => (
+                                                    <View key={account.id} style={[styles.accountCard, { backgroundColor: isDark ? colors.border : "#F8FAFC", borderColor: colors.border }]}>
+                                                        <View style={styles.accountIconBox}>
+                                                            <Ionicons name="at-circle-outline" size={24} color={colors.primary} />
+                                                        </View>
+                                                        <View style={styles.accountInfo}>
+                                                            <Text style={[styles.accountTitle, { color: colors.text }]}>{account.upiId}</Text>
+                                                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
+                                                                {account.isPrimary && (
+                                                                    <View style={styles.primaryBadge}>
+                                                                        <Text style={styles.primaryBadgeText}>Primary</Text>
+                                                                    </View>
+                                                                )}
+                                                                {account.isVerified ? (
+                                                                    <Text style={{ fontSize: 11, color: "#10B981", fontWeight: "600" }}>✓ Verified</Text>
+                                                                ) : (
+                                                                    <Text style={{ fontSize: 11, color: "#F59E0B", fontWeight: "600" }}>Pending Verification</Text>
+                                                                )}
+                                                            </View>
+                                                        </View>
+                                                    </View>
+                                                ))
+                                            )}
+                                        </View>
+
+                                        <View>
+                                            <Text style={[styles.sectionLabel, { color: colors.text, marginBottom: 12 }]}>Linked Bank Accounts (Setu AA)</Text>
+                                            {bankAccounts.length === 0 ? (
+                                                <Text style={{ color: colors.textSecondary, fontSize: 13 }}>No bank accounts synced via Setu AA.</Text>
+                                            ) : (
+                                                bankAccounts.map((account) => (
+                                                    <View key={account.id} style={[styles.accountCard, { backgroundColor: isDark ? colors.border : "#F8FAFC", borderColor: colors.border }]}>
+                                                        <View style={styles.accountIconBox}>
+                                                            <Ionicons name="business-outline" size={24} color={colors.primary} />
+                                                        </View>
+                                                        <View style={styles.accountInfo}>
+                                                            <Text style={[styles.accountTitle, { color: colors.text }]}>{account.vua}</Text>
+                                                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
+                                                                <View style={[styles.statusBadge, { backgroundColor: account.status === "ACTIVE" || account.status === "READY" ? "#ECFDF5" : "#FEF2F2" }]}>
+                                                                    <Text style={[styles.statusBadgeText, { color: account.status === "ACTIVE" || account.status === "READY" ? "#10B981" : "#EF4444" }]}>
+                                                                        {account.status}
+                                                                    </Text>
+                                                                </View>
+                                                                {account.createdAt && (
+                                                                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>Synced on {new Date(account.createdAt).toLocaleDateString()}</Text>
+                                                                )}
+                                                            </View>
+                                                        </View>
+                                                    </View>
+                                                ))
+                                            )}
+                                        </View>
+                                    </>
+                                )}
+                            </View>
+                        )}
+
+                        {activeTab === "Privacy & Security" && (
+                            <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                                <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>Security & Privacy</Text>
+                                <Text style={[styles.cardHeaderSub, { color: colors.textSecondary }]}>Keep your account safe and your data private</Text>
+
+                                <View style={[styles.selectorsGrid, isDesktop && styles.rowLayout, { gap: 24 }]}>
+                                    {/* Left Column: Security */}
+                                    <View style={{ flex: 1, gap: 4 }}>
+                                        <TouchableOpacity style={styles.privacyListItem} activeOpacity={0.7}>
+                                            <View style={styles.privacyListIcon}>
+                                                <Ionicons name="key-outline" size={18} color="#6D28D9" />
+                                            </View>
+                                            <Text style={[styles.privacyListText, { color: colors.text }]}>Change Password</Text>
+                                            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginLeft: "auto" }} />
+                                        </TouchableOpacity>
+
+                                        <View style={styles.privacyListItem}>
+                                            <View style={styles.privacyListIcon}>
+                                                <Ionicons name="finger-print-outline" size={18} color="#6D28D9" />
+                                            </View>
+                                            <Text style={[styles.privacyListText, { color: colors.text }]}>Enable Biometric Login</Text>
+                                            <View style={{ marginLeft: "auto" }}>
+                                                <RenderSwitch value={biometricLogin} onValueChange={() => setBiometricLogin(!biometricLogin)} />
+                                            </View>
+                                        </View>
+
+                                        <TouchableOpacity style={styles.privacyListItem} activeOpacity={0.7}>
+                                            <View style={styles.privacyListIcon}>
+                                                <Ionicons name="shield-checkmark-outline" size={18} color="#6D28D9" />
+                                            </View>
+                                            <Text style={[styles.privacyListText, { color: colors.text }]}>Two-Factor Authentication</Text>
+                                            <View style={[styles.offBadge, { backgroundColor: isDark ? colors.border : "#F1F5F9" }]}>
+                                                <Text style={styles.offBadgeText}>Off</Text>
+                                            </View>
+                                            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity style={styles.privacyListItem} activeOpacity={0.7}>
+                                            <View style={styles.privacyListIcon}>
+                                                <Ionicons name="phone-portrait-outline" size={18} color="#6D28D9" />
+                                            </View>
+                                            <Text style={[styles.privacyListText, { color: colors.text }]}>Active Devices</Text>
+                                            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginLeft: "auto" }} />
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity style={styles.privacyListItem} activeOpacity={0.7}>
+                                            <View style={styles.privacyListIcon}>
+                                                <Ionicons name="time-outline" size={18} color="#6D28D9" />
+                                            </View>
+                                            <Text style={[styles.privacyListText, { color: colors.text }]}>Login History</Text>
+                                            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginLeft: "auto" }} />
+                                        </TouchableOpacity>
+                                    </View>
+
+                                    {/* Right Column: Privacy */}
+                                    <View style={{ flex: 1, gap: 4 }}>
+                                        <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 8, paddingHorizontal: 12 }}>
+                                            <View style={[styles.privacyListIcon, { backgroundColor: "#EDE9FE" }]}>
+                                                <Ionicons name="lock-closed" size={18} color="#6D28D9" />
+                                            </View>
+                                            <Text style={{ fontSize: 14, fontWeight: "700", color: colors.text }}>Privacy</Text>
+                                        </View>
+
+                                        <TouchableOpacity style={styles.privacyListItem} activeOpacity={0.7}>
+                                            <View style={styles.privacyListIcon}>
+                                                <Ionicons name="link-outline" size={18} color="#6D28D9" />
+                                            </View>
+                                            <Text style={[styles.privacyListText, { color: colors.text }]}>Transaction data sharing</Text>
+                                            <Text style={{ color: "#10B981", fontSize: 12, fontWeight: "600", marginLeft: "auto", marginRight: 8 }}>On</Text>
+                                            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity style={styles.privacyListItem} activeOpacity={0.7}>
+                                            <View style={styles.privacyListIcon}>
+                                                <Ionicons name="hardware-chip-outline" size={18} color="#6D28D9" />
+                                            </View>
+                                            <Text style={[styles.privacyListText, { color: colors.text }]}>AI data analysis permission</Text>
+                                            <Text style={{ color: "#10B981", fontSize: 12, fontWeight: "600", marginLeft: "auto", marginRight: 8 }}>On</Text>
+                                            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity style={styles.privacyListItem} activeOpacity={0.7}>
+                                            <View style={styles.privacyListIcon}>
+                                                <Ionicons name="options-outline" size={18} color="#6D28D9" />
+                                            </View>
+                                            <Text style={[styles.privacyListText, { color: colors.text }]}>Personalized insights</Text>
+                                            <Text style={{ color: "#10B981", fontSize: 12, fontWeight: "600", marginLeft: "auto", marginRight: 8 }}>On</Text>
+                                            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity style={styles.privacyListItem} activeOpacity={0.7}>
+                                            <View style={styles.privacyListIcon}>
+                                                <Ionicons name="cloud-download-outline" size={18} color="#6D28D9" />
+                                            </View>
+                                            <Text style={[styles.privacyListText, { color: colors.text }]}>Download my data</Text>
+                                            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginLeft: "auto" }} />
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity style={styles.privacyListItem} activeOpacity={0.7}>
+                                            <View style={styles.privacyListIcon}>
+                                                <Ionicons name="trash-outline" size={18} color="#6D28D9" />
+                                            </View>
+                                            <Text style={[styles.privacyListText, { color: colors.text }]}>Delete account</Text>
+                                            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginLeft: "auto" }} />
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            </View>
+                        )}
+
+                        {activeTab === "Data & Sync" && (
+                            <View style={{ gap: 16 }}>
+                                {/* Top Row: Transaction Sync & Auto Sync */}
+                                <View style={[styles.switchGridRow, isDesktop && styles.rowLayout]}>
+                                    {/* Transaction Sync */}
+                                    <View style={[styles.settingsCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 0 }]}>
+                                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                                            <View>
+                                                <Text style={[styles.cardHeaderTitle, { color: colors.text, marginBottom: 4 }]}>Transaction Sync</Text>
+                                                <Text style={{ color: "#6366F1", fontSize: 13, fontWeight: "600" }}>Setu AA</Text>
+                                            </View>
+                                            <View style={[styles.statusBadge, { backgroundColor: "#ECFDF5" }]}>
+                                                <Text style={[styles.statusBadgeText, { color: "#10B981" }]}>Synced</Text>
+                                            </View>
+                                        </View>
+                                        <View style={{ marginBottom: 16 }}>
+                                            <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Last Sync</Text>
+                                            <Text style={{ fontSize: 13, color: colors.text, fontWeight: "500" }}>
+                                                {lastSyncDate ? lastSyncDate.toLocaleString('en-US', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "Never synced"}
+                                            </Text>
+                                        </View>
+                                        <TouchableOpacity
+                                            style={[styles.saveBtn, { backgroundColor: "#6D28D9", marginTop: 0, opacity: isSyncing ? 0.7 : 1 }]}
+                                            onPress={handleSyncNow}
+                                            disabled={isSyncing}
+                                        >
+                                            <Text style={styles.saveBtnText}>{isSyncing ? "Syncing..." : "Sync Now"}</Text>
+                                        </TouchableOpacity>
+                                    </View>
+
+                                    {/* Automatic Sync */}
+                                    <View style={[styles.settingsCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 0 }]}>
+                                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                                            <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>Automatic Sync</Text>
+                                            <RenderSwitch value={autoSyncEnabled} onValueChange={() => setAutoSyncEnabled(!autoSyncEnabled)} />
+                                        </View>
+                                        <Text style={[styles.sectionLabel, { color: colors.text, marginBottom: 8 }]}>Sync Frequency</Text>
+                                        <TouchableOpacity
+                                            style={[styles.input, { borderColor: colors.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }]}
+                                            disabled={!autoSyncEnabled}
+                                        >
+                                            <Text style={{ color: autoSyncEnabled ? colors.text : colors.textSecondary }}>{syncFrequency}</Text>
+                                            <Ionicons name="chevron-down" size={16} color={colors.textSecondary} />
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+
+                                {/* Bottom Row: Data Management & Security Card */}
+                                <View style={[styles.switchGridRow, isDesktop && styles.rowLayout]}>
+                                    {/* Data Management */}
+                                    <View style={[styles.settingsCard, { flex: 1.5, backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 0 }]}>
+                                        <Text style={[styles.cardHeaderTitle, { color: colors.text, marginBottom: 16 }]}>Data Management</Text>
+                                        <View style={{ gap: 12 }}>
+                                            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                                                <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                                                    <View style={[styles.privacyListIcon, { backgroundColor: "#F8FAFC" }]}>
+                                                        <Ionicons name="document-text-outline" size={18} color="#64748B" />
+                                                    </View>
+                                                    <View>
+                                                        <Text style={[styles.privacyListText, { color: colors.text }]}>Export Transaction Data</Text>
+                                                        <Text style={{ fontSize: 11, color: colors.textSecondary }}>Download your transaction history</Text>
+                                                    </View>
+                                                </View>
+                                                <TouchableOpacity style={{ borderWidth: 1, borderColor: "#6D28D9", borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 }}>
+                                                    <Text style={{ color: "#6D28D9", fontSize: 12, fontWeight: "600" }}>Export</Text>
+                                                </TouchableOpacity>
+                                            </View>
+
+                                            <View style={{ height: 1, backgroundColor: colors.border }} />
+
+                                            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                                                <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                                                    <View style={[styles.privacyListIcon, { backgroundColor: "#F8FAFC" }]}>
+                                                        <Ionicons name="bar-chart-outline" size={18} color="#64748B" />
+                                                    </View>
+                                                    <View>
+                                                        <Text style={[styles.privacyListText, { color: colors.text }]}>Download Financial Report</Text>
+                                                        <Text style={{ fontSize: 11, color: colors.textSecondary }}>Get detailed report</Text>
+                                                    </View>
+                                                </View>
+                                                <TouchableOpacity style={{ borderWidth: 1, borderColor: "#6D28D9", borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 }}>
+                                                    <Text style={{ color: "#6D28D9", fontSize: 12, fontWeight: "600" }}>Download</Text>
+                                                </TouchableOpacity>
+                                            </View>
+
+                                            <View style={{ height: 1, backgroundColor: colors.border }} />
+
+                                            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                                                <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                                                    <View style={[styles.privacyListIcon, { backgroundColor: "#FEF2F2" }]}>
+                                                        <Ionicons name="trash-bin-outline" size={18} color="#EF4444" />
+                                                    </View>
+                                                    <View>
+                                                        <Text style={[styles.privacyListText, { color: colors.text }]}>Clear Cached Data</Text>
+                                                        <Text style={{ fontSize: 11, color: colors.textSecondary }}>Remove temporary files</Text>
+                                                    </View>
+                                                </View>
+                                                <TouchableOpacity style={{ borderWidth: 1, borderColor: "#EF4444", borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 }}>
+                                                    <Text style={{ color: "#EF4444", fontSize: 12, fontWeight: "600" }}>Clear Cache</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                        </View>
+                                    </View>
+
+                                    {/* Security Banner */}
+                                    <View style={[{ flex: 1, backgroundColor: "#F5F3FF", borderRadius: 12, padding: 24, justifyContent: "center" }]}>
+                                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+                                            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#EDE9FE", justifyContent: "center", alignItems: "center" }}>
+                                                <Ionicons name="shield-checkmark" size={20} color="#6D28D9" />
+                                            </View>
+                                            <Ionicons name="lock-closed" size={48} color="#8B5CF6" style={{ opacity: 0.2 }} />
+                                        </View>
+                                        <Text style={{ fontSize: 16, fontWeight: "700", color: "#4C1D95", marginBottom: 8 }}>Your data is secure</Text>
+                                        <Text style={{ fontSize: 13, color: "#6D28D9", lineHeight: 20 }}>
+                                            We use bank-grade security to keep your data safe and private.
+                                        </Text>
+                                    </View>
+                                </View>
+                            </View>
+                        )}
+                        {activeTab === "Billing & Subscription" && (
+                            <View style={{ gap: 16 }}>
+                                {/* Header */}
+                                <View style={{ marginBottom: 8, paddingHorizontal: 4 }}>
+                                    <Text style={[styles.cardHeaderTitle, { color: colors.text, fontSize: 18 }]}>Billing & Subscription</Text>
+                                    <Text style={[styles.cardHeaderSub, { color: colors.textSecondary }]}>Manage your plan, payment method and billing history</Text>
+                                </View>
+
+                                {/* Top Row: Current Plan & Payment Method */}
+                                <View style={[styles.switchGridRow, isDesktop && styles.rowLayout]}>
+                                    {/* Current Plan Card */}
+                                    <View style={[styles.settingsCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 0 }]}>
+                                        <Text style={[styles.cardHeaderTitle, { color: colors.text, fontSize: 14, marginBottom: 16 }]}>Current Plan</Text>
+
+                                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                                            <View style={{ flexDirection: "row", gap: 12 }}>
+                                                <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: "#FCE7F3", justifyContent: "center", alignItems: "center" }}>
+                                                    <Ionicons name="sparkles" size={24} color="#DB2777" />
+                                                </View>
+                                                <View>
+                                                    <Text style={{ fontSize: 16, fontWeight: "700", color: colors.text }}>
+                                                        {subInfo?.planName || user?.subscription?.name || "Free Tier"}
+                                                    </Text>
+                                                    <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>
+                                                        ₹{subInfo?.price ?? user?.subscription?.price ?? 0} / {((subInfo?.billingCycle || user?.subscription?.billingCycle || "MONTHLY")).toLowerCase() === "yearly" ? "year" : "month"}
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                            <View style={[styles.statusBadge, { backgroundColor: "#ECFDF5", paddingHorizontal: 8, paddingVertical: 4 }]}>
+                                                <Text style={[styles.statusBadgeText, { color: "#10B981" }]}>
+                                                    {subInfo?.status || user?.subscription?.status || "Active"}
+                                                </Text>
+                                            </View>
+                                        </View>
+
+                                        <View style={{ marginTop: 16, marginBottom: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                                            <Text style={{ fontSize: 13, color: colors.textSecondary }}>Next Billing Date</Text>
+                                            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.text }}>
+                                                {calculateNextBillingDate()}
+                                            </Text>
+                                        </View>
+
+                                        <TouchableOpacity
+                                            style={[styles.saveBtn, { backgroundColor: colors.primary, width: "100%", alignItems: "center" }]}
+                                            activeOpacity={0.8}
+                                            onPress={() => router.push("/tabs/subscription")}
+                                        >
+                                            <Text style={styles.saveBtnText}>Manage Subscription</Text>
+                                        </TouchableOpacity>
+                                    </View>
+
+                                    {/* Payment Method Card */}
+                                    <View style={[styles.settingsCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 0 }]}>
+                                        <Text style={[styles.cardHeaderTitle, { color: colors.text, fontSize: 14, marginBottom: 16 }]}>Payment Method</Text>
+
+                                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                                            <View style={{ flexDirection: "row", alignItems: "center", gap: 12, flexShrink: 1 }}>
+                                                <View style={{ backgroundColor: "#F8FAFC", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", gap: 4 }}>
+                                                    <Ionicons name="logo-google" size={14} color="#EA4335" />
+                                                    <Text style={{ fontSize: 12, fontWeight: "700", color: "#333" }}>UPI</Text>
+                                                </View>
+                                                <Text style={{ fontSize: 13, fontWeight: "500", color: colors.text, flexShrink: 1 }} numberOfLines={1}>rajesh@okaxis</Text>
+                                            </View>
+                                            <View style={[styles.statusBadge, { backgroundColor: "#ECFDF5", paddingHorizontal: 8, paddingVertical: 4, marginLeft: 8 }]}>
+                                                <Text style={[styles.statusBadgeText, { color: "#10B981" }]}>Active</Text>
+                                            </View>
+                                        </View>
+
+                                        <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, gap: 8 }} activeOpacity={0.7}>
+                                            <Ionicons name="sync-outline" size={16} color={colors.primary} />
+                                            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.primary }}>Change</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+
+                                {/* Billing History Card */}
+                                <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                                        <Text style={[styles.cardHeaderTitle, { color: colors.text, fontSize: 14, marginBottom: 0 }]}>Billing History</Text>
+                                        <TouchableOpacity activeOpacity={0.7} onPress={() => router.push("/tabs/subscription/history")}>
+                                            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>View All</Text>
+                                        </TouchableOpacity>
+                                    </View>
+
+                                    {/* Table Container with horizontal scroll for small screens */}
+                                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                        <View style={{ minWidth: 500, flex: 1 }}>
+                                            {/* Table Header */}
+                                            <View style={{ flexDirection: "row", backgroundColor: isDark ? colors.border : "#F8FAFC", padding: 12, borderRadius: 8, marginBottom: 8 }}>
+                                                <Text style={{ width: 120, fontSize: 12, fontWeight: "600", color: colors.textSecondary }}>Date</Text>
+                                                <Text style={{ width: 100, fontSize: 12, fontWeight: "600", color: colors.textSecondary }}>Amount</Text>
+                                                <Text style={{ width: 100, fontSize: 12, fontWeight: "600", color: colors.textSecondary }}>Status</Text>
+                                                <Text style={{ flex: 1, fontSize: 12, fontWeight: "600", color: colors.textSecondary }}>Invoice</Text>
+                                            </View>
+
+                                            {/* Table Rows */}
+                                            {(billingHistory.length > 0
+                                                ? billingHistory.slice(0, 5)
+                                                : [
+                                                    { date: "15 Aug 2026", amount: "₹10", status: "Success", invoiceNo: "INV-2026-001" },
+                                                    { date: "15 Jul 2026", amount: "₹10", status: "Success", invoiceNo: "INV-2026-002" },
+                                                    { date: "15 Jun 2026", amount: "₹10", status: "Success", invoiceNo: "INV-2026-003" },
+                                                    { date: "15 May 2026", amount: "₹10", status: "Success", invoiceNo: "INV-2026-004" },
+                                                ]
+                                            ).map((item, idx, arr) => {
+                                                const isSuccess = item.status === "Success" || item.status === "SUCCESS";
+                                                return (
+                                                    <View key={item.id || idx} style={{ flexDirection: "row", padding: 12, borderBottomWidth: idx === arr.length - 1 ? 0 : 1, borderBottomColor: colors.border, alignItems: "center" }}>
+                                                        <Text style={{ width: 120, fontSize: 13, fontWeight: "500", color: colors.text }}>{item.date}</Text>
+                                                        <Text style={{ width: 100, fontSize: 13, color: colors.text }}>{item.amount}</Text>
+                                                        <View style={{ width: 100, alignItems: "flex-start" }}>
+                                                            <View style={[styles.statusBadge, { backgroundColor: isSuccess ? "#ECFDF5" : "#FEE2E2", paddingHorizontal: 8, paddingVertical: 4 }]}>
+                                                                <Text style={[styles.statusBadgeText, { color: isSuccess ? "#10B981" : "#EF4444" }]}>{item.status}</Text>
+                                                            </View>
+                                                        </View>
+                                                        <TouchableOpacity
+                                                            style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }}
+                                                            activeOpacity={0.7}
+                                                            onPress={() => Alert.alert("Invoice Download", `Downloading invoice ${item.invoiceNo || item.id || ''}`)}
+                                                        >
+                                                            <Ionicons name="document-text-outline" size={14} color={colors.primary} />
+                                                            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Download</Text>
+                                                        </TouchableOpacity>
+                                                    </View>
+                                                );
+                                            })}
+                                        </View>
+                                    </ScrollView>
+                                </View>
+
+                                {/* Actions Row */}
+                                <View style={[styles.switchGridRow, isDesktop && styles.rowLayout]}>
+                                    {/* Invoice Actions */}
+                                    <View style={[styles.settingsCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 0 }]}>
+                                        <Text style={[styles.cardHeaderTitle, { color: colors.text, fontSize: 14, marginBottom: 16 }]}>Invoice Actions</Text>
+                                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                                            <TouchableOpacity style={{ flexGrow: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, gap: 6 }} activeOpacity={0.7}>
+                                                <Ionicons name="download-outline" size={16} color={colors.primary} />
+                                                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Download Invoice</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity style={{ flexGrow: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, gap: 6 }} activeOpacity={0.7}>
+                                                <Ionicons name="mail-outline" size={16} color={colors.primary} />
+                                                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Resend Invoice</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+
+                                    {/* Subscription Actions */}
+                                    <View style={[styles.settingsCard, { flex: 1.5, backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 0 }]}>
+                                        <Text style={[styles.cardHeaderTitle, { color: colors.text, fontSize: 14, marginBottom: 16 }]}>Subscription Actions</Text>
+                                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                                            <TouchableOpacity style={{ flexGrow: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, gap: 6 }} activeOpacity={0.7}>
+                                                <Ionicons name="swap-horizontal-outline" size={16} color={colors.primary} />
+                                                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Change Plan</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity style={{ flexGrow: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, gap: 6 }} activeOpacity={0.7}>
+                                                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Update Payment</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity style={{ flexGrow: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#FECACA", borderRadius: 10, padding: 10, gap: 6 }} activeOpacity={0.7}>
+                                                <Text style={{ fontSize: 12, fontWeight: "600", color: "#EF4444" }}>Cancel Subscription</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                </View>
+                            </View>
+                        )}
+
+                        {activeTab === "Profile Information" && (
+                            <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                                <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>Profile Information</Text>
+                                <Text style={[styles.cardHeaderSub, { color: colors.textSecondary }]}>Update your personal and business details.</Text>
+
+                                <View style={styles.formRow}>
+                                    <View style={styles.formGroup}>
+                                        <Text style={[styles.label, { color: colors.text }]}>First Name</Text>
+                                        <TextInput style={[styles.input, { backgroundColor: isDark ? colors.inputBackground : "#F8FAFC", color: colors.text, borderColor: colors.border }]} value={firstName} onChangeText={setFirstName} placeholder="First Name" placeholderTextColor={colors.placeholder} />
+                                    </View>
+                                    <View style={styles.formGroup}>
+                                        <Text style={[styles.label, { color: colors.text }]}>Last Name</Text>
+                                        <TextInput style={[styles.input, { backgroundColor: isDark ? colors.inputBackground : "#F8FAFC", color: colors.text, borderColor: colors.border }]} value={lastName} onChangeText={setLastName} placeholder="Last Name" placeholderTextColor={colors.placeholder} />
+                                    </View>
+                                </View>
+
+                                <View style={styles.formGroup}>
+                                    <Text style={[styles.label, { color: colors.text }]}>Email Address</Text>
+                                    <TextInput style={[styles.input, { backgroundColor: isDark ? colors.inputBackground : "#F8FAFC", color: colors.text, borderColor: colors.border }]} value={email} onChangeText={setEmail} keyboardType="email-address" placeholder="Email Address" placeholderTextColor={colors.placeholder} />
+                                </View>
+
+                                <View style={styles.formGroup}>
+                                    <Text style={[styles.label, { color: colors.text }]}>Mobile Number</Text>
+                                    <TextInput style={[styles.input, { backgroundColor: isDark ? colors.inputBackground : "#F8FAFC", color: colors.text, borderColor: colors.border }]} value={mobile} onChangeText={setMobile} keyboardType="phone-pad" placeholder="Mobile Number" placeholderTextColor={colors.placeholder} />
+                                </View>
+
+                                {user?.userType === "BUSINESS" && (
+                                    <>
+                                        <View style={styles.formGroup}>
+                                            <Text style={[styles.label, { color: colors.text }]}>Business Name</Text>
+                                            <TextInput style={[styles.input, { backgroundColor: isDark ? colors.inputBackground : "#F8FAFC", color: colors.text, borderColor: colors.border }]} value={businessName} onChangeText={setBusinessName} placeholder="Business Name" placeholderTextColor={colors.placeholder} />
+                                        </View>
+                                        <View style={styles.formRow}>
+                                            <View style={styles.formGroup}>
+                                                <Text style={[styles.label, { color: colors.text }]}>Category</Text>
+                                                <TextInput style={[styles.input, { backgroundColor: isDark ? colors.inputBackground : "#F8FAFC", color: colors.text, borderColor: colors.border }]} value={category} onChangeText={setCategory} placeholder="Category" placeholderTextColor={colors.placeholder} />
+                                            </View>
+                                            <View style={styles.formGroup}>
+                                                <Text style={[styles.label, { color: colors.text }]}>City</Text>
+                                                <TextInput style={[styles.input, { backgroundColor: isDark ? colors.inputBackground : "#F8FAFC", color: colors.text, borderColor: colors.border }]} value={city} onChangeText={setCity} placeholder="City" placeholderTextColor={colors.placeholder} />
+                                            </View>
+                                        </View>
+                                    </>
+                                )}
+                            </View>
+                        )}
+
+                        {/* Bottom Action buttons */}
+                        <View style={styles.actionsRow}>
+                            {activeTab === "General" && (
+                                <TouchableOpacity onPress={handleReset} style={[styles.resetBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.8}>
+                                    <Text style={[styles.resetBtnText, { color: colors.text }]}>Reset to Default</Text>
+                                </TouchableOpacity>
+                            )}
+
+                            {(!["Data & Sync", "UPI & Bank Accounts", "Privacy & Security"].includes(activeTab) && (activeTab !== "Profile Information" || hasProfileChanges)) && (
+                                <TouchableOpacity
+                                    onPress={activeTab === "Profile Information" ? handleSaveProfile : handleSave}
+                                    style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: isSavingProfile ? 0.7 : 1 }]}
+                                    activeOpacity={0.8}
+                                    disabled={isSavingProfile}
+                                >
+                                    <Text style={styles.saveBtnText}>{isSavingProfile ? "Saving..." : "Save Changes"}</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+
+                        <Text style={[styles.appVersionText, { color: colors.textSecondary }]}>App Version 1.0.0</Text>
+                    </View>
                 </View>
-            </View>
             </ScrollView>
         </View>
     );
