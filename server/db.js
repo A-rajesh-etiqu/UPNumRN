@@ -5,19 +5,22 @@ require("dotenv").config({ path: path.join(__dirname, ".env") });
 let pool;
 
 async function initDatabase() {
-    const hostEnv = process.env.DB_HOST || "localhost";
+    const hostEnv = (process.env.DB_HOST || "localhost").trim();
     const [host, portStr] = hostEnv.split(":");
     const port = portStr ? parseInt(portStr, 10) : 3306;
+
+    const dbUser = (process.env.DB_USER || "root").trim();
+    const dbPassword = process.env.DB_PASSWORD || "";
+    const dbName = (process.env.DB_NAME || "upnum").trim();
 
     // 1. Connect without database name to ensure the database exists
     const tempConnection = await mysql.createConnection({
         host: host,
         port: port,
-        user: process.env.DB_USER || "root",
-        password: process.env.DB_PASSWORD || "",
+        user: dbUser,
+        password: dbPassword,
     });
 
-    const dbName = process.env.DB_NAME || "upnum";
     await tempConnection.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\`;`);
     await tempConnection.end();
 
@@ -25,8 +28,8 @@ async function initDatabase() {
     pool = mysql.createPool({
         host: host,
         port: port,
-        user: process.env.DB_USER || "root",
-        password: process.env.DB_PASSWORD || "",
+        user: dbUser,
+        password: dbPassword,
         database: dbName,
         waitForConnections: true,
         connectionLimit: 10,
