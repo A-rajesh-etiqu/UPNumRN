@@ -35,7 +35,7 @@ const NEW_RECOMMENDATIONS = [
     { title: "Automate Overdue Invoices", desc: "Send WhatsApp payment reminders for overdue invoices to improve cash flow.", icon: "time-outline", color: "#F59E0B", bg: "#FFFBEB", btnText: "Automate" },
 ];
 
-const DATE_RANGES = ["This Month", "Last Month", "Last 3 Months", "Last 6 Months", "This Year"];
+const DATE_RANGES = ["This Month", "Last Month", "Last 3 Months", "Last 6 Months", "This Year", "Custom Range"];
 const CATEGORIES = ["All", "Sales", "Invoices", "Inventory", "UPI Transfers", "Vendors"];
 
 export default function AiInsightsBusiness() {
@@ -46,6 +46,9 @@ export default function AiInsightsBusiness() {
     // Filter / date state
     const [dateRange, setDateRange] = useState("This Month");
     const [datePickerVisible, setDatePickerVisible] = useState(false);
+    const [customRangeModalVisible, setCustomRangeModalVisible] = useState(false);
+    const [startDateInput, setStartDateInput] = useState("2024-05-01");
+    const [endDateInput, setEndDateInput] = useState("2024-05-31");
     const [filterVisible, setFilterVisible] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState("All");
 
@@ -94,9 +97,24 @@ export default function AiInsightsBusiness() {
     };
 
     const handleDateRangeSelect = (range: string) => {
-        setDateRange(range);
         setDatePickerVisible(false);
-        loadDashboard(user?.id, range);
+        if (range === "Custom Range") {
+            setCustomRangeModalVisible(true);
+        } else {
+            setDateRange(range);
+            loadDashboard(user?.id, range);
+        }
+    };
+
+    const handleApplyCustomRange = () => {
+        if (!startDateInput || !endDateInput) {
+            Alert.alert("Invalid Dates", "Please enter both start and end dates.");
+            return;
+        }
+        setCustomRangeModalVisible(false);
+        const displayLabel = `${startDateInput} to ${endDateInput}`;
+        setDateRange(displayLabel);
+        loadDashboard(user?.id, "Custom Range", startDateInput, endDateInput);
     };
 
     const handleDownloadReport = () => {
@@ -152,9 +170,72 @@ export default function AiInsightsBusiness() {
 
     useEffect(() => {
         if (!data) {
-            loadDashboard(user?.id, "This Month");
+            loadDashboard(user?.id, "Last Month");
         }
     }, [user?.id, data]);
+
+    const dayOfWeekData = React.useMemo(() => {
+        if (data?.salesByDayOfWeek && data.salesByDayOfWeek.length > 0) {
+            return data.salesByDayOfWeek;
+        }
+
+        const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+        const dayMap: { [key: string]: number } = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+
+        const txs = data?.recentTransactions || [];
+        txs.forEach((tx: any) => {
+            if (tx.amount > 0 || tx.type === "income") {
+                const dateObj = new Date(tx.date);
+                if (!isNaN(dateObj.getTime())) {
+                    const dayIndex = dateObj.getDay(); // 0 is Sun
+                    const dayName = days[(dayIndex + 6) % 7];
+                    dayMap[dayName] = (dayMap[dayName] || 0) + Math.abs(tx.amount);
+                }
+            }
+        });
+
+        const maxVal = Math.max(...Object.values(dayMap), 1);
+        const hasAnySales = Object.values(dayMap).some(v => v > 0);
+
+        return days.map(day => {
+            const val = dayMap[day] || 0;
+            const height = hasAnySales ? `${Math.max(Math.round((val / maxVal) * 90), 12)}%` : "10%";
+            let formatted = "₹0";
+            if (val >= 100000) {
+                formatted = `₹${(val / 100000).toFixed(1)}L`;
+            } else if (val >= 1000) {
+                formatted = `₹${(val / 1000).toFixed(1)}K`;
+            } else if (val > 0) {
+                formatted = `₹${Math.round(val)}`;
+            }
+            return { day, value: val, formattedValue: formatted, height };
+        });
+    }, [data]);
+
+    const lineChartData = React.useMemo(() => {
+        const items = data?.chartDataIncome || data?.salesChart || [];
+        if (!items || items.length === 0) {
+            return [
+                { label: "W1", value: 0, x: 25, y: 135 },
+                { label: "W2", value: 0, x: 115, y: 135 },
+                { label: "W3", value: 0, x: 205, y: 135 },
+                { label: "W4", value: 0, x: 295, y: 135 },
+                { label: "W5", value: 0, x: 385, y: 135 },
+            ];
+        }
+        const maxLineVal = Math.max(...items.map((i: any) => i.value), 1);
+        return items.map((item: any, idx: number) => {
+            const x = items.length > 1 ? (idx / (items.length - 1)) * 380 + 35 : 225;
+            const rawY = 135 - ((item.value / maxLineVal) * 105);
+            const y = Math.max(25, Math.min(135, rawY));
+            return { label: item.month || item.label || `P${idx + 1}`, value: item.value, x, y };
+        });
+    }, [data]);
+
+    const incomeLinePath = React.useMemo(() => {
+        if (!lineChartData || lineChartData.length === 0) return "M 0,135 L 450,135";
+        return "M " + lineChartData.map(p => `${p.x},${p.y}`).join(" L ");
+    }, [lineChartData]);
 
     if (loading || !data) {
         return (
@@ -169,41 +250,50 @@ export default function AiInsightsBusiness() {
     const salesChange = data.incomeChange || 0;
     const txCount = data.transactionsCount || 0;
     const aov = txCount > 0 ? (sales / txCount) : 0;
+    const creditedCustomerUpiSet = new Set(
+        (data.recentTransactions || [])
+            .filter((tx: any) => tx.type === "income" || tx.amount > 0)
+            .map((tx: any) => tx.upi || tx.payer_upi || tx.title)
+            .filter(Boolean)
+    );
+    const fallbackCustomerCount = creditedCustomerUpiSet.size;
+    const newCustomersCount = data.newCustomersCount !== undefined ? data.newCustomersCount : fallbackCustomerCount;
+    const newCustomersChange = data.newCustomersChange ?? 0;
 
     const STATS = [
-        { 
-            title: "Total Sales", 
-            value: `₹ ${sales.toLocaleString('en-IN')}`, 
-            change: `${salesChange >= 0 ? '+' : ''}${salesChange}% vs previous period`, 
-            color: "#8B5CF6", 
-            bg: "#F5F3FF", 
+        {
+            title: "Total Sales",
+            value: `₹ ${sales.toLocaleString('en-IN')}`,
+            change: `${salesChange >= 0 ? '+' : ''}${salesChange}% vs previous period`,
+            color: "#8B5CF6",
+            bg: "#F5F3FF",
             icon: "wallet" as const,
             isUp: salesChange >= 0
         },
-        { 
-            title: "Total Transactions", 
-            value: `${txCount}`, 
-            change: "+12.4% vs previous period", 
-            color: "#F59E0B", 
-            bg: "#FFFBEB", 
+        {
+            title: "Total Transactions",
+            value: `${txCount}`,
+            change: "+12.4% vs previous period",
+            color: "#F59E0B",
+            bg: "#FFFBEB",
             icon: "swap-horizontal" as const,
             isUp: true
         },
-        { 
-            title: "New Customers", 
-            value: "312", 
-            change: "+15.7% vs previous period", 
-            color: "#3B82F6", 
-            bg: "#EFF6FF", 
+        {
+            title: "New Customers",
+            value: `${newCustomersCount}`,
+            change: `${newCustomersChange >= 0 ? '+' : ''}${newCustomersChange}% vs previous period`,
+            color: "#3B82F6",
+            bg: "#EFF6FF",
             icon: "people" as const,
-            isUp: true
+            isUp: newCustomersChange >= 0
         },
-        { 
-            title: "Average Order Value", 
-            value: `₹ ${aov.toFixed(2)}`, 
-            change: "+8.2% vs previous period", 
-            color: "#10B981", 
-            bg: "#ECFDF5", 
+        {
+            title: "Average Order Value",
+            value: `₹ ${aov.toFixed(2)}`,
+            change: "+8.2% vs previous period",
+            color: "#10B981",
+            bg: "#ECFDF5",
             icon: "cart" as const,
             isUp: true
         },
@@ -218,33 +308,33 @@ export default function AiInsightsBusiness() {
     };
 
     const businessInsights = [
-        { 
-            id: "1", 
-            title: "Peak Hour Sales Surge", 
-            description: "7 PM - 9 PM generates 32% of daily revenue. Ensure top inventory items are fully stocked.", 
+        {
+            id: "1",
+            title: "Period Sales Summary",
+            description: `Generated ₹${sales.toLocaleString('en-IN')} across ${txCount} transactions for ${dateRange}.`,
             type: "success",
-            details: "Your customer footfall and checkout velocity peak between 7 PM and 9 PM. Having quick payment options ready reduces checkout queues during this window."
+            details: `Your store recorded ₹${sales.toLocaleString('en-IN')} total revenue across ${txCount} transactions for period: ${dateRange}. Keeping top inventory stocked during peak hours accelerates sales growth.`
         },
-        { 
-            id: "2", 
-            title: "Mid-Week Sales Slowdown", 
-            description: "Tuesday & Wednesday sales are 18% lower than average. Consider flash discount offers.", 
+        {
+            id: "2",
+            title: "Customer Acquisition",
+            description: `Captured ${newCustomersCount} unique credited customer payments in ${dateRange}.`,
             type: "warning",
-            details: "Mid-week revenue dips can be offset by introducing combo offers, loyalty rewards, or targeted WhatsApp broadcast deals."
+            details: `A total of ${newCustomersCount} distinct customer UPI accounts completed payments to your business in period: ${dateRange}.`
         },
-        { 
-            id: "3", 
-            title: "Higher Ticket Size", 
-            description: "Average order value increased by 8.2% to ₹" + aov.toFixed(0) + " per transaction.", 
+        {
+            id: "3",
+            title: "Higher Ticket Size",
+            description: `Average order value reached ₹${aov.toFixed(0)} per transaction in ${dateRange}.`,
             type: "info",
-            details: "Customers are purchasing multi-item orders more frequently. Upselling complementary items at checkout can further increase your AOV."
+            details: `Customers spent an average of ₹${aov.toFixed(2)} per transaction. Upselling complementary items at checkout can further increase your AOV.`
         },
     ];
 
     // Heatmap data - 7 days of week, 6 time slots
     const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     const TIMES = ["12 AM", "4 AM", "8 AM", "12 PM", "4 PM", "8 PM"];
-    
+
     const HEATMAP_OPACITY = [
         [0.1, 0.1, 0.2, 0.4, 0.6, 0.8], // Mon
         [0.1, 0.1, 0.3, 0.5, 0.7, 0.6], // Tue
@@ -257,17 +347,17 @@ export default function AiInsightsBusiness() {
 
     return (
         <View style={{ flex: 1, backgroundColor: colors.background }}>
-            <DashboardHeader 
-                title="Business AI ✨" 
-                subtitle="Smart insights and recommendations to grow your business." 
+            <DashboardHeader
+                title="Business AI ✨"
+                subtitle="Smart insights and recommendations to grow your business."
             />
             <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.scrollContent}>
-                
+
                 {/* Header section with Filter controls */}
                 <View style={[styles.headerRow, { borderBottomColor: colors.border, justifyContent: isDesktop ? "flex-end" : "flex-start" }]}>
                     <View style={styles.filterWidgetRow}>
-                        <TouchableOpacity 
-                            style={[styles.rangeSelectorBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} 
+                        <TouchableOpacity
+                            style={[styles.rangeSelectorBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
                             activeOpacity={0.8}
                             onPress={() => setDatePickerVisible(true)}
                         >
@@ -276,24 +366,8 @@ export default function AiInsightsBusiness() {
                             <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
                         </TouchableOpacity>
 
-                        <TouchableOpacity 
-                            style={[styles.compareBtn, { backgroundColor: selectedCategory !== "All" ? "#8B5CF6" : colors.surface, borderColor: selectedCategory !== "All" ? "#8B5CF6" : colors.border }]} 
-                            activeOpacity={0.8}
-                            onPress={() => setFilterVisible(true)}
-                        >
-                            <Ionicons name="filter-outline" size={14} color={selectedCategory !== "All" ? "#FFF" : colors.text} />
-                            <Text style={[styles.compareBtnText, { color: selectedCategory !== "All" ? "#FFF" : colors.text }]}>
-                                {selectedCategory !== "All" ? selectedCategory : "Filters"}
-                            </Text>
-                            {selectedCategory !== "All" && (
-                                <TouchableOpacity onPress={() => setSelectedCategory("All")}>
-                                    <Ionicons name="close-circle" size={14} color="#FFF" />
-                                </TouchableOpacity>
-                            )}
-                        </TouchableOpacity>
-
-                        <TouchableOpacity 
-                            style={[styles.compareBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} 
+                        <TouchableOpacity
+                            style={[styles.compareBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
                             activeOpacity={0.8}
                             onPress={handleDownloadReport}
                         >
@@ -306,7 +380,7 @@ export default function AiInsightsBusiness() {
                 {/* ── Date Range Picker Modal ── */}
                 <Modal visible={datePickerVisible} transparent animationType="fade" onRequestClose={() => setDatePickerVisible(false)}>
                     <Pressable style={styles.dropOverlay} onPress={() => setDatePickerVisible(false)}>
-                        <Pressable style={[styles.dropSheet, { backgroundColor: isDark ? colors.surface : "#FFF" }]} onPress={() => {}}>
+                        <Pressable style={[styles.dropSheet, { backgroundColor: isDark ? colors.surface : "#FFF" }]} onPress={() => { }}>
                             <Text style={[styles.dropTitle, { color: colors.text }]}>Select Date Range</Text>
                             {DATE_RANGES.map(r => (
                                 <TouchableOpacity
@@ -322,10 +396,112 @@ export default function AiInsightsBusiness() {
                     </Pressable>
                 </Modal>
 
+                {/* ── Custom Date Range Picker Modal Card ── */}
+                <Modal visible={customRangeModalVisible} transparent animationType="slide" onRequestClose={() => setCustomRangeModalVisible(false)}>
+                    <Pressable style={styles.modalOverlay} onPress={() => setCustomRangeModalVisible(false)}>
+                        <Pressable style={[styles.modalSheet, { backgroundColor: isDark ? colors.surface : "#FFF", maxWidth: 480, width: "92%", alignSelf: "center", borderRadius: 16, padding: 22 }]} onPress={() => { }}>
+                            <View style={styles.modalHeader}>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                                    <View style={[styles.modalIconCircle, { backgroundColor: "#8B5CF6" }]}>
+                                        <Ionicons name="calendar" size={20} color="#FFF" />
+                                    </View>
+                                    <View>
+                                        <Text style={[styles.modalTitle, { color: colors.text }]}>Custom Date Range</Text>
+                                        <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>Filter transaction data for a specific timeframe</Text>
+                                    </View>
+                                </View>
+                                <TouchableOpacity onPress={() => setCustomRangeModalVisible(false)} style={styles.modalCloseBtn}>
+                                    <Ionicons name="close" size={20} color={colors.textSecondary} />
+                                </TouchableOpacity>
+                            </View>
+
+                            {/* Quick Presets */}
+                            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.textSecondary, marginTop: 14, marginBottom: 8 }}>QUICK PRESETS</Text>
+                            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                                {[
+                                    { label: "Last 7 Days", days: 7 },
+                                    { label: "Last 30 Days", days: 30 },
+                                    { label: "Last 90 Days", days: 90 },
+                                ].map((preset) => (
+                                    <TouchableOpacity
+                                        key={preset.label}
+                                        style={{
+                                            paddingHorizontal: 12,
+                                            paddingVertical: 7,
+                                            borderRadius: 8,
+                                            backgroundColor: isDark ? colors.border : "#F1F5F9",
+                                            borderWidth: 1,
+                                            borderColor: colors.border
+                                        }}
+                                        onPress={() => {
+                                            const end = new Date();
+                                            const start = new Date();
+                                            start.setDate(end.getDate() - preset.days);
+                                            const sStr = start.toISOString().split("T")[0];
+                                            const eStr = end.toISOString().split("T")[0];
+                                            setStartDateInput(sStr);
+                                            setEndDateInput(eStr);
+                                        }}
+                                    >
+                                        <Text style={{ fontSize: 12, fontWeight: "600", color: colors.text }}>{preset.label}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            {/* Date Inputs */}
+                            <View style={{ gap: 14, marginBottom: 14 }}>
+                                <View>
+                                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.text, marginBottom: 6 }}>Start Date (YYYY-MM-DD)</Text>
+                                    <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, backgroundColor: colors.inputBackground }}>
+                                        <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} style={{ marginRight: 8 }} />
+                                        <TextInput
+                                            value={startDateInput}
+                                            onChangeText={setStartDateInput}
+                                            placeholder="YYYY-MM-DD"
+                                            placeholderTextColor={colors.placeholder}
+                                            style={{ flex: 1, height: 42, color: colors.text, fontSize: 14 }}
+                                        />
+                                    </View>
+                                </View>
+
+                                <View>
+                                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.text, marginBottom: 6 }}>End Date (YYYY-MM-DD)</Text>
+                                    <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, backgroundColor: colors.inputBackground }}>
+                                        <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} style={{ marginRight: 8 }} />
+                                        <TextInput
+                                            value={endDateInput}
+                                            onChangeText={setEndDateInput}
+                                            placeholder="YYYY-MM-DD"
+                                            placeholderTextColor={colors.placeholder}
+                                            style={{ flex: 1, height: 42, color: colors.text, fontSize: 14 }}
+                                        />
+                                    </View>
+                                </View>
+                            </View>
+
+                            {/* Action Buttons */}
+                            <View style={{ flexDirection: "row", gap: 12, marginTop: 10 }}>
+                                <TouchableOpacity
+                                    style={{ flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}
+                                    onPress={() => setCustomRangeModalVisible(false)}
+                                >
+                                    <Text style={{ fontWeight: "600", color: colors.text }}>Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: "#8B5CF6", alignItems: "center" }}
+                                    onPress={handleApplyCustomRange}
+                                >
+                                    <Text style={{ fontWeight: "600", color: "#FFF" }}>Apply Range</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </Pressable>
+                    </Pressable>
+                </Modal>
+
                 {/* ── Category Filter Modal ── */}
                 <Modal visible={filterVisible} transparent animationType="slide" onRequestClose={() => setFilterVisible(false)}>
                     <Pressable style={styles.modalOverlay} onPress={() => setFilterVisible(false)}>
-                        <Pressable style={[styles.modalSheet, { backgroundColor: isDark ? colors.surface : "#FFF" }]} onPress={() => {}}>
+                        <Pressable style={[styles.modalSheet, { backgroundColor: isDark ? colors.surface : "#FFF" }]} onPress={() => { }}>
                             <View style={styles.modalHandleBar} />
                             <View style={styles.modalHeader}>
                                 <Text style={[styles.modalTitle, { color: colors.text }]}>Filter by Industry / Type</Text>
@@ -378,7 +554,7 @@ export default function AiInsightsBusiness() {
                     onRequestClose={() => setHowAiWorksVisible(false)}
                 >
                     <Pressable style={styles.modalOverlay} onPress={() => setHowAiWorksVisible(false)}>
-                        <Pressable style={[styles.modalSheet, { backgroundColor: isDark ? colors.surface : "#FFFFFF" }]} onPress={() => {}}>
+                        <Pressable style={[styles.modalSheet, { backgroundColor: isDark ? colors.surface : "#FFFFFF" }]} onPress={() => { }}>
                             <View style={styles.modalHandleBar} />
 
                             <View style={styles.modalHeader}>
@@ -512,31 +688,20 @@ export default function AiInsightsBusiness() {
                                 <Line x1="0" y1="110" x2="450" y2="110" stroke={colors.border} strokeWidth="1" />
                                 <Line x1="0" y1="150" x2="450" y2="150" stroke={colors.border} strokeWidth="1.5" />
 
-                                <SvgText x="10" y="170" fill={colors.textSecondary} fontSize="10">01 May</SvgText>
-                                <SvgText x="85" y="170" fill={colors.textSecondary} fontSize="10">06 May</SvgText>
-                                <SvgText x="160" y="170" fill={colors.textSecondary} fontSize="10">11 May</SvgText>
-                                <SvgText x="235" y="170" fill={colors.textSecondary} fontSize="10">16 May</SvgText>
-                                <SvgText x="310" y="170" fill={colors.textSecondary} fontSize="10">21 May</SvgText>
-                                <SvgText x="385" y="170" fill={colors.textSecondary} fontSize="10">26 May</SvgText>
-                                <SvgText x="430" y="170" fill={colors.textSecondary} fontSize="10">31 May</SvgText>
+                                {lineChartData.map((pt, idx) => (
+                                    <SvgText key={idx} x={pt.x - 12} y="158" fill={colors.textSecondary} fontSize="10">{pt.label}</SvgText>
+                                ))}
 
                                 <Path
-                                    d="M 0,110 C 40,90 60,110 100,75 C 140,50 170,120 210,80 C 250,50 280,30 320,55 C 360,80 400,20 450,15"
+                                    d={incomeLinePath}
                                     fill="none"
                                     stroke={colors.primary}
                                     strokeWidth="3"
                                 />
-                                <Path
-                                    d="M 0,140 C 40,115 60,125 100,100 C 140,85 170,135 210,110 C 250,80 280,60 320,85 C 360,105 400,60 450,45"
-                                    fill="none"
-                                    stroke={colors.secondary}
-                                    strokeWidth="2.5"
-                                    strokeDasharray="4 4"
-                                />
 
-                                <Circle cx="210" cy="80" r="5" fill={colors.primary} stroke={colors.surface} strokeWidth="1.5" />
-                                <Circle cx="320" cy="55" r="5" fill={colors.primary} stroke={colors.surface} strokeWidth="1.5" />
-                                <Circle cx="320" cy="85" r="4.5" fill={colors.secondary} stroke={colors.surface} strokeWidth="1.5" />
+                                {lineChartData.map((pt, idx) => (
+                                    <Circle key={idx} cx={pt.x} cy={pt.y} r="5" fill={colors.primary} stroke={colors.surface} strokeWidth="1.5" />
+                                ))}
                             </Svg>
                         </View>
                     </View>
@@ -549,17 +714,9 @@ export default function AiInsightsBusiness() {
 
                         <View style={styles.barChartWrapper}>
                             <View style={styles.barsContainer}>
-                                {[
-                                    { day: "Mon", height: "55%", value: "28.7K" },
-                                    { day: "Tue", height: "65%", value: "31.2K" },
-                                    { day: "Wed", height: "52%", value: "27.9K" },
-                                    { day: "Thu", height: "70%", value: "33.6K" },
-                                    { day: "Fri", height: "82%", value: "38.9K" },
-                                    { day: "Sat", height: "98%", value: "45.6K" },
-                                    { day: "Sun", height: "85%", value: "39.0K" },
-                                ].map((bar, idx) => (
+                                {dayOfWeekData.map((bar, idx) => (
                                     <View key={idx} style={styles.barItemColumn}>
-                                        <Text style={[styles.barHoverValue, { color: colors.text }]}>{bar.value}</Text>
+                                        <Text style={[styles.barHoverValue, { color: colors.text }]}>{bar.formattedValue || bar.value}</Text>
                                         <View style={[styles.barBackground, { backgroundColor: isDark ? colors.border : "#F1F5F9" }]}>
                                             <View style={[styles.barFill, { height: bar.height as any, backgroundColor: colors.primary }]} />
                                         </View>
@@ -573,19 +730,19 @@ export default function AiInsightsBusiness() {
 
                 {/* Middle 3 Columns: Smart Insights, AI Recommendations, Confidence & Heatmap */}
                 <View style={[styles.middleGrid, isDesktop ? styles.rowLayout : styles.columnLayout]}>
-                    
+
                     {/* 1. Smart Insights for Business */}
                     <View style={[styles.infoCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border }]}>
                         <Text style={[styles.insightCardTitle, { color: colors.text, marginBottom: 20 }]}>Smart Insights for Business</Text>
-                        
+
                         <View style={styles.insightsList}>
                             {businessInsights.map((item, idx) => {
                                 const config = getInsightConfig(item.type);
                                 return (
-                                    <TouchableOpacity 
-                                        key={item.id || idx} 
-                                        style={[styles.insightListItem, { borderBottomColor: colors.border, borderBottomWidth: idx === businessInsights.length - 1 ? 0 : 1 }]} 
-                                        onPress={() => handleInsightDetail(item)} 
+                                    <TouchableOpacity
+                                        key={item.id || idx}
+                                        style={[styles.insightListItem, { borderBottomColor: colors.border, borderBottomWidth: idx === businessInsights.length - 1 ? 0 : 1 }]}
+                                        onPress={() => handleInsightDetail(item)}
                                         activeOpacity={0.85}
                                     >
                                         <View style={[styles.itemIconCircle, { backgroundColor: isDark ? colors.border : config.bg }]}>
@@ -607,7 +764,7 @@ export default function AiInsightsBusiness() {
                         <View style={styles.insightCardHeader}>
                             <Ionicons name="sparkles" size={18} color={colors.primary} />
                             <Text style={[styles.insightCardTitle, { color: colors.text }]}>Growth Recommendations</Text>
-                            <TouchableOpacity 
+                            <TouchableOpacity
                                 style={[styles.regenerateBtn, { backgroundColor: isDark ? colors.border : "#F5F3FF", borderColor: isDark ? colors.border : "#E9E3FF", opacity: isRegenerating ? 0.7 : 1 }]}
                                 onPress={handleRegenerate}
                                 disabled={isRegenerating}
@@ -644,7 +801,7 @@ export default function AiInsightsBusiness() {
                     {/* 3. Peak Hours & Confidence */}
                     <View style={[styles.infoCard, { flex: 0.9, backgroundColor: colors.surface, borderColor: colors.border }]}>
                         <Text style={[styles.insightCardTitle, { color: colors.text }]}>Confidence & Peak Hours</Text>
-                        
+
                         {/* Gauge */}
                         <View style={styles.gaugeWrapper}>
                             <Svg height="90" width="100%" viewBox="0 0 36 36">
@@ -657,13 +814,13 @@ export default function AiInsightsBusiness() {
                                     stroke={colors.primary}
                                     strokeWidth="3"
                                     strokeDasharray="100"
-                                    strokeDashoffset="14"
+                                    strokeDashoffset={(100 - Math.min(98, Math.max(65, 72 + (txCount > 0 ? 14 : 0) + (sales > 0 ? 10 : 0)))).toString()}
                                     strokeLinecap="round"
                                     transform="rotate(-90 18 18)"
                                 />
                             </Svg>
                             <View style={styles.gaugeLabels}>
-                                <Text style={[styles.gaugePercent, { color: colors.text }]}>86%</Text>
+                                <Text style={[styles.gaugePercent, { color: colors.text }]}>{Math.min(98, Math.max(65, 72 + (txCount > 0 ? 14 : 0) + (sales > 0 ? 10 : 0)))}%</Text>
                                 <Text style={[styles.gaugeStatus, { color: colors.success }]}>High Confidence</Text>
                             </View>
                         </View>
@@ -676,14 +833,15 @@ export default function AiInsightsBusiness() {
                                     <Text key={idx} style={[styles.heatmapTimeLabel, { color: colors.textSecondary }]}>{time}</Text>
                                 ))}
                             </View>
-                            
+
                             <View style={styles.heatmapRows}>
                                 {DAYS.slice(0, 5).map((day, dIdx) => (
                                     <View key={dIdx} style={styles.heatmapRowItem}>
                                         <Text style={[styles.heatmapDayLabel, { color: colors.textSecondary }]}>{day}</Text>
                                         <View style={styles.heatmapCells}>
                                             {TIMES.map((_, tIdx) => {
-                                                const opacity = HEATMAP_OPACITY[dIdx][tIdx];
+                                                const opacityScale = txCount > 0 ? 1 : 0.3;
+                                                const opacity = Math.min(0.95, HEATMAP_OPACITY[dIdx][tIdx] * opacityScale);
                                                 return (
                                                     <View
                                                         key={tIdx}
@@ -704,18 +862,18 @@ export default function AiInsightsBusiness() {
 
                 {/* Bottom Section: Projections & Ask AI Assistant */}
                 <View style={[styles.bottomGrid, isDesktop ? styles.rowLayout : styles.columnLayout]}>
-                    
+
                     {/* Future Business Projection */}
                     <View style={[styles.infoCard, { flex: 1.5, backgroundColor: colors.surface, borderColor: colors.border }]}>
                         <Text style={[styles.insightCardTitle, { color: colors.text }]}>Future Business Projection</Text>
                         <Text style={[styles.insightCardSub, { color: colors.textSecondary, marginBottom: 20 }]}>Forecast based on transaction trends</Text>
-                        
+
                         <View style={[styles.projectionRow, isDesktop ? styles.rowLayout : styles.columnLayout]}>
                             {/* Current Trend */}
                             <View style={[styles.projCard, { backgroundColor: isDark ? colors.border : "#FAFAFA", borderColor: colors.border }]}>
                                 <Text style={[styles.projTitle, { color: colors.textSecondary }]}>If You Continue Current Trend</Text>
                                 <Text style={[styles.projSub, { color: colors.textSecondary }]}>Projected next month sales</Text>
-                                <Text style={[styles.projValue, { color: "#3B82F6" }]}>₹{(sales * 1.08).toLocaleString('en-IN', {maximumFractionDigits: 0})}</Text>
+                                <Text style={[styles.projValue, { color: "#3B82F6" }]}>₹{(sales * 1.08).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</Text>
                                 <Text style={[styles.projDate, { color: colors.textSecondary }]}>+8% projected growth</Text>
                                 <View style={styles.miniChart}>
                                     <Svg height="40" width="100%" viewBox="0 0 100 40">
@@ -724,12 +882,12 @@ export default function AiInsightsBusiness() {
                                     </Svg>
                                 </View>
                             </View>
-                            
+
                             {/* With AI Strategies */}
                             <View style={[styles.projCard, { backgroundColor: isDark ? colors.border : "#FAFAFA", borderColor: colors.border }]}>
                                 <Text style={[styles.projTitle, { color: "#10B981" }]}>If You Apply AI Growth Strategies</Text>
                                 <Text style={[styles.projSub, { color: colors.textSecondary }]}>Potential next month sales</Text>
-                                <Text style={[styles.projValue, { color: "#10B981" }]}>₹{(sales * 1.22).toLocaleString('en-IN', {maximumFractionDigits: 0})}</Text>
+                                <Text style={[styles.projValue, { color: "#10B981" }]}>₹{(sales * 1.22).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</Text>
                                 <Text style={[styles.projDate, { color: colors.textSecondary }]}>+22% potential growth</Text>
                                 <View style={styles.miniChart}>
                                     <Svg height="40" width="100%" viewBox="0 0 100 40">
@@ -738,7 +896,7 @@ export default function AiInsightsBusiness() {
                                     </Svg>
                                 </View>
                             </View>
-                            
+
                             {/* Potential Impact */}
                             <View style={[styles.projCard, { backgroundColor: isDark ? "#2d1b69" : "#F5F3FF", borderColor: "transparent" }]}>
                                 <Text style={[styles.projTitle, { color: "#6C2CF4" }]}>Potential Business Impact (Next 6 Months)</Text>
@@ -748,7 +906,7 @@ export default function AiInsightsBusiness() {
                                             <Ionicons name="sparkles" size={14} color="#8B5CF6" />
                                         </View>
                                         <Text style={[styles.impactLabel, { color: colors.textSecondary }]}>Extra Revenue</Text>
-                                        <Text style={[styles.impactValue, { color: colors.text }]}>₹{(sales * 0.18 * 6).toLocaleString('en-IN', {maximumFractionDigits: 0})}</Text>
+                                        <Text style={[styles.impactValue, { color: colors.text }]}>₹{(sales * 0.18 * 6).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</Text>
                                     </View>
                                     <View style={styles.impactItem}>
                                         <View style={[styles.impactIcon, { backgroundColor: "#FFF" }]}>
@@ -773,7 +931,7 @@ export default function AiInsightsBusiness() {
                     <View style={[styles.infoCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border }]}>
                         <Text style={[styles.insightCardTitle, { color: colors.text }]}>Ask Business AI Assistant</Text>
                         <Text style={[styles.insightCardSub, { color: colors.textSecondary, marginBottom: 20 }]}>Get instant growth advice & operational insights</Text>
-                        
+
                         {/* Chat history */}
                         {chatMessages.length > 0 && (
                             <ScrollView style={[styles.chatHistory, { borderColor: colors.border }]} nestedScrollEnabled>
@@ -838,7 +996,7 @@ export default function AiInsightsBusiness() {
             {/* ── Stat Detail Modal ── */}
             <Modal visible={statDetailVisible} transparent animationType="slide" onRequestClose={() => setStatDetailVisible(false)}>
                 <Pressable style={styles.modalOverlay} onPress={() => setStatDetailVisible(false)}>
-                    <Pressable style={[styles.modalSheet, { backgroundColor: isDark ? colors.surface : "#FFF" }]} onPress={() => {}}>
+                    <Pressable style={[styles.modalSheet, { backgroundColor: isDark ? colors.surface : "#FFF" }]} onPress={() => { }}>
                         <View style={styles.modalHandleBar} />
                         <View style={styles.modalHeader}>
                             <View style={styles.modalHeaderLeft}>
@@ -875,7 +1033,7 @@ export default function AiInsightsBusiness() {
             {/* ── Insight Detail Modal ── */}
             <Modal visible={insightDetailVisible} transparent animationType="slide" onRequestClose={() => setInsightDetailVisible(false)}>
                 <Pressable style={styles.modalOverlay} onPress={() => setInsightDetailVisible(false)}>
-                    <Pressable style={[styles.modalSheet, { backgroundColor: isDark ? colors.surface : "#FFF" }]} onPress={() => {}}>
+                    <Pressable style={[styles.modalSheet, { backgroundColor: isDark ? colors.surface : "#FFF" }]} onPress={() => { }}>
                         <View style={styles.modalHandleBar} />
                         <View style={styles.modalHeader}>
                             <View style={styles.modalHeaderLeft}>
@@ -907,7 +1065,7 @@ export default function AiInsightsBusiness() {
             {/* ── Recommendation Action Modal ── */}
             <Modal visible={recModalVisible} transparent animationType="slide" onRequestClose={() => setRecModalVisible(false)}>
                 <Pressable style={styles.modalOverlay} onPress={() => setRecModalVisible(false)}>
-                    <Pressable style={[styles.modalSheet, { backgroundColor: isDark ? colors.surface : "#FFF" }]} onPress={() => {}}>
+                    <Pressable style={[styles.modalSheet, { backgroundColor: isDark ? colors.surface : "#FFF" }]} onPress={() => { }}>
                         <View style={styles.modalHandleBar} />
                         <View style={styles.modalHeader}>
                             <View style={styles.modalHeaderLeft}>
@@ -947,13 +1105,13 @@ export default function AiInsightsBusiness() {
                                 {selectedRec?.title === "Boost Off-Peak Sales"
                                     ? "Setting a 10-15% happy hour discount during slow hours (2 PM - 5 PM) encourages customer visits."
                                     : selectedRec?.title === "Weekend Promotion Deal"
-                                    ? "Weekend promos create urgency and maximize revenue during peak footfall days."
-                                    : "Applying AI strategies optimizes checkout speed and merchant profitability."}
+                                        ? "Weekend promos create urgency and maximize revenue during peak footfall days."
+                                        : "Applying AI strategies optimizes checkout speed and merchant profitability."}
                             </Text>
                         </View>
 
-                        <TouchableOpacity 
-                            style={[styles.modalCta, { backgroundColor: selectedRec?.color || "#8B5CF6" }]} 
+                        <TouchableOpacity
+                            style={[styles.modalCta, { backgroundColor: selectedRec?.color || "#8B5CF6" }]}
                             onPress={() => {
                                 setRecModalVisible(false);
                                 Alert.alert("Success", `Action updated for "${selectedRec?.title}".`);

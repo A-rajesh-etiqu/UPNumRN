@@ -100,6 +100,10 @@ export interface DashboardData {
 
     transactionsCount?: number;
 
+    newCustomersCount?: number;
+
+    newCustomersChange?: number;
+
     chartDataIncome?: SalesChartItem[];
 
     chartDataExpense?: SalesChartItem[];
@@ -108,4 +112,9 @@ export interface DashboardData {
 
     topCategories?: { label: string; percent: number; amount: number; color: string }[];
 
+    salesByDayOfWeek?: { day: string; value: number; formattedValue: string; height: string }[];
+
+    topIncomeSources?: { id?: number | string; title: string; amount: number; date?: string; category?: string; payer_upi?: string }[];
+
+    peakSalesHours?: { start: string; end: string; count: number; text: string };
 }

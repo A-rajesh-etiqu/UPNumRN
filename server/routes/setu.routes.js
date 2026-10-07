@@ -75,6 +75,12 @@ router.post(
 
                 });
             
+            // Ensure user exists in database to prevent foreign key constraint failures
+            await db.query(
+                `INSERT IGNORE INTO users (id, name, email, mobile, role, status, password) VALUES (?, ?, ?, ?, 'USER', 'ACTIVE', 'password123')`,
+                [userId, `User ${userId}`, `${userId}@example.com`, '9999999999']
+            );
+
             await db.query(
                 `INSERT INTO consents (id, user_id, vua, status) VALUES (?, ?, ?, 'PENDING')`,
                 [consent.id || consent.ConsentHandle || 'mock-id-' + Date.now(), userId, vua]

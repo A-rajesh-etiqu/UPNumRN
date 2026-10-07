@@ -29,7 +29,7 @@ import { ReportCard } from "../../../components/dashboard/ReportCard";
 import { router } from "../../../navigation/RootNavigation";
 
 // Types
-type TabType = "All" | "Successful" | "Failed" | "Pending";
+type TabType = "All";
 
 // SVG Components
 const UpiLogo = () => (
@@ -76,12 +76,12 @@ const MOCK_DATA = [
         merchant: "Paytm",
         vpa: "paytm-555666@paytm",
         iconInitials: "P",
-        iconColor: "#F59E0B",
-        iconBg: "#FEF3C7",
+        iconColor: "#22C55E",
+        iconBg: "#DCFCE7",
         amount: 980.0,
         date: "30 May, 2024",
         time: "08:45 PM",
-        status: "Failed",
+        status: "Successful",
         isUpi: true,
     },
     {
@@ -102,12 +102,12 @@ const MOCK_DATA = [
         merchant: "Amazon Pay",
         vpa: "amazonpay@apl",
         iconInitials: "a",
-        iconColor: "#F59E0B",
-        iconBg: "#FEF3C7",
+        iconColor: "#22C55E",
+        iconBg: "#DCFCE7",
         amount: 1120.0,
         date: "30 May, 2024",
         time: "06:10 PM",
-        status: "Pending",
+        status: "Successful",
         isUpi: true,
     },
     {
@@ -146,20 +146,20 @@ export default function TransactionsScreen() {
     const [search, setSearch] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
     const [isProfileMenuVisible, setIsProfileMenuVisible] = useState(false);
-    
+
     const { width } = useWindowDimensions();
     const isDesktop = width >= 768;
     const insets = useSafeAreaInsets();
-    
+
     // Import Transaction State
     const [isImportMenuVisible, setIsImportMenuVisible] = useState(false);
     const [isImportModalVisible, setIsImportModalVisible] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     const [importForm, setImportForm] = useState({ title: '', category: '', amount: '', type: 'expense' as 'expense' | 'income' });
     const { uploadBulkTransactions } = useTransactionStore();
-    
+
     const ITEMS_PER_PAGE = 10;
-    
+
     const handleImportSubmit = async () => {
         if (!importForm.title || !importForm.amount || !importForm.category) return;
         setIsImporting(true);
@@ -189,7 +189,7 @@ export default function TransactionsScreen() {
             if (result.canceled || !result.assets || result.assets.length === 0) return;
 
             const file = result.assets[0];
-            
+
             setIsImporting(true);
             const formData = new FormData();
             formData.append("userId", user?.id || "user-1");
@@ -222,7 +222,7 @@ export default function TransactionsScreen() {
     }, [activeTab, search]);
 
     // Background should match screenshot perfectly
-    const bgColor = isDark ? colors.background : "#FCFDFE"; 
+    const bgColor = isDark ? colors.background : "#FCFDFE";
 
     // Helper to get initials
     const getInitials = (name: string) => {
@@ -239,8 +239,8 @@ export default function TransactionsScreen() {
     const filteredTransactions = transactions.filter(tx => {
         const normalizedTab = activeTab.toLowerCase() === "successful" ? "success" : activeTab.toLowerCase();
         const matchTab = activeTab === "All" || (tx.status && tx.status.toLowerCase() === normalizedTab);
-        const matchSearch = (tx.title || "").toLowerCase().includes(search.toLowerCase()) || 
-                            (tx.category || "").toLowerCase().includes(search.toLowerCase());
+        const matchSearch = (tx.title || "").toLowerCase().includes(search.toLowerCase()) ||
+            (tx.category || "").toLowerCase().includes(search.toLowerCase());
         return matchTab && matchSearch;
     });
 
@@ -251,19 +251,23 @@ export default function TransactionsScreen() {
     const paginatedTransactions = filteredTransactions.slice(startIndex, endIndex);
 
     const generatePDF = async () => {
+        if (filteredTransactions.length === 0) {
+            Alert.alert("No Data", "There is no transaction data to download.");
+            return;
+        }
         try {
             if (Platform.OS === 'web') {
                 const { jsPDF } = require("jspdf");
                 const autoTable = require("jspdf-autotable").default || require("jspdf-autotable");
-                
+
                 const doc = new jsPDF();
-                
+
                 // Add header
                 doc.setFontSize(18);
                 doc.text("Transactions Report", 14, 22);
                 doc.setFontSize(11);
                 doc.text(`Total Transactions: ${filteredTransactions.length}`, 14, 30);
-                
+
                 // Prepare table data
                 const tableData = filteredTransactions.map(tx => [
                     tx.title || tx.category || 'N/A',
@@ -272,7 +276,7 @@ export default function TransactionsScreen() {
                     tx.date || new Date().toLocaleDateString(),
                     tx.status || 'Successful'
                 ]);
-                
+
                 // Generate table
                 autoTable(doc, {
                     startY: 36,
@@ -281,7 +285,7 @@ export default function TransactionsScreen() {
                     theme: 'striped',
                     headStyles: { fillColor: [109, 40, 217] }
                 });
-                
+
                 doc.save('transactions.pdf');
             } else {
                 let logoDataUri = "";
@@ -349,7 +353,7 @@ export default function TransactionsScreen() {
                     </html>
                 `;
                 const { base64 } = await Print.printToFileAsync({ html: htmlContent, base64: true });
-                
+
                 const pdfName = `${FileSystem.documentDirectory}TransactionsReport.pdf`;
                 if (base64) {
                     await FileSystem.writeAsStringAsync(pdfName, base64, {
@@ -376,325 +380,342 @@ export default function TransactionsScreen() {
 
     return (
         <View style={{ flex: 1, backgroundColor: bgColor }}>
-            <DashboardHeader 
-                title="Transactions" 
-                subtitle="Track and manage all your transactions" 
+            <DashboardHeader
+                title="Transactions"
+                subtitle="Track and manage all your transactions"
             />
             <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
 
-            {/* Top Filters Row */}
-            <View style={[styles.topFiltersRow, { justifyContent: 'flex-end' }]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <TouchableOpacity 
-                        style={[styles.downloadBtn, { backgroundColor: colors.primary, borderColor: colors.primary, paddingHorizontal: 12, width: 'auto', flexDirection: 'row', gap: 6 }]} 
-                        activeOpacity={0.8}
-                        onPress={() => setIsImportMenuVisible(true)}
-                    >
-                        <Ionicons name="add-outline" size={18} color="#FFFFFF" />
-                        <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>Import</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity 
-                        style={[styles.downloadBtn, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]} 
-                        activeOpacity={0.8}
-                        onPress={generatePDF}
-                    >
-                        <Ionicons name="download-outline" size={18} color="#64748B" />
-                    </TouchableOpacity>
-                </View>
-            </View>
-
-            {/* KPIs Row */}
-            <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginBottom: 4 }}>
-                <ReportCard title="Total Transactions" value={totalTxCount.toString()} icon="swap-horizontal" color="#8B5CF6" change="12.4%" isUp={true} isDesktop={isDesktop} colors={colors} changeText="vs Apr 01 - Apr 30" />
-                <ReportCard title="Successful" value={successCount.toString()} icon="checkmark-circle-outline" color="#22C55E" change="94.6%" isUp={true} isDesktop={isDesktop} colors={colors} />
-                <ReportCard title="Failed" value={failedCount.toString()} icon="close-circle-outline" color="#EF4444" change="3.8%" isUp={false} isDesktop={isDesktop} colors={colors} />
-                <ReportCard title="Pending" value={pendingCount.toString()} icon="time-outline" color="#3B82F6" change="1.6%" isUp={true} isDesktop={isDesktop} colors={colors} />
-            </View>
-
-            {/* Tabs Row */}
-            <View style={styles.tabsWrapper}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContainer}>
-                    {(["All", "Successful", "Failed", "Pending"] as TabType[]).map((tab) => (
+                {/* Top Filters Row */}
+                {/* <View style={[styles.topFiltersRow, { justifyContent: 'flex-end' }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                         <TouchableOpacity
-                            key={tab}
-                            style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
-                            onPress={() => setActiveTab(tab)}
+                            style={[styles.downloadBtn, { backgroundColor: colors.primary, borderColor: colors.primary, paddingHorizontal: 12, width: 'auto', flexDirection: 'row', gap: 6 }]}
                             activeOpacity={0.8}
+                            onPress={() => setIsImportMenuVisible(true)}
                         >
-                            <Text style={[
-                                styles.tabText,
-                                { color: activeTab === tab ? "#6D28D9" : "#64748B" },
-                                activeTab === tab && styles.tabTextActive
-                            ]}>
-                                {tab}
-                            </Text>
+                            <Ionicons name="add-outline" size={18} color="#FFFFFF" />
+                            <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>Import</Text>
                         </TouchableOpacity>
-                    ))}
-                </ScrollView>
-            </View>
 
-            {/* Search Row */}
-            <View style={styles.searchRow}>
-                <View style={[styles.searchBox, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
-                    <Ionicons name="search-outline" size={18} color="#94A3B8" />
-                    <TextInput
-                        style={[styles.searchInput, { color: colors.text }]}
-                        placeholder="Search transactions..."
-                        placeholderTextColor="#94A3B8"
-                        value={search}
-                        onChangeText={setSearch}
-                    />
-                </View>
-                <TouchableOpacity style={[styles.slidersBtn, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]} activeOpacity={0.8}>
-                    <Ionicons name="options-outline" size={20} color="#6D28D9" />
-                </TouchableOpacity>
-            </View>
+                        <TouchableOpacity
+                            style={[styles.downloadBtn, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}
+                            activeOpacity={0.8}
+                            onPress={generatePDF}
+                        >
+                            <Ionicons name="download-outline" size={18} color="#64748B" />
+                        </TouchableOpacity>
+                    </View>
+                </View> */}
 
-            {/* Main Table Content */}
-            {isDesktop ? (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: "100%" }} contentContainerStyle={{ flexGrow: 1 }}>
-                    <View style={[styles.tableContainer, { flex: 1, backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
-                        
-                        {/* Table Header */}
-                        <View style={[styles.tableHeader, { backgroundColor: isDark ? colors.background : "#F8FAFC", borderBottomColor: isDark ? colors.border : "#F1F5F9" }]}>
-                            <Text style={[styles.thText, { flex: 2, minWidth: 200 }]}>Transaction</Text>
-                            <Text style={[styles.thText, { flex: 1.2, minWidth: 100 }]}>Type</Text>
-                            <Text style={[styles.thText, { flex: 1.5, minWidth: 140 }]}>Amount</Text>
-                            <Text style={[styles.thText, { width: 100 }]}>Status</Text>
+                {/* KPIs Row */}
+                {/* <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginBottom: 4 }}>
+                    <ReportCard title="Total Transactions" value={totalTxCount.toString()} icon="swap-horizontal" color="#8B5CF6" change="12.4%" isUp={true} isDesktop={isDesktop} colors={colors} changeText="vs Apr 01 - Apr 30" />
+                    <ReportCard title="Successful" value={successCount.toString()} icon="checkmark-circle-outline" color="#22C55E" change="94.6%" isUp={true} isDesktop={isDesktop} colors={colors} />
+                    <ReportCard title="Failed" value={failedCount.toString()} icon="close-circle-outline" color="#EF4444" change="3.8%" isUp={false} isDesktop={isDesktop} colors={colors} />
+                    <ReportCard title="Pending" value={pendingCount.toString()} icon="time-outline" color="#3B82F6" change="1.6%" isUp={true} isDesktop={isDesktop} colors={colors} />
+                </View> */}
+
+                {/* Tabs Row */}
+                {/* <View style={styles.tabsWrapper}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContainer}>
+                        {(["All", "Successful", "Failed", "Pending"] as TabType[]).map((tab) => (
+                            <TouchableOpacity
+                                key={tab}
+                                style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
+                                onPress={() => setActiveTab(tab)}
+                                activeOpacity={0.8}
+                            >
+                                <Text style={[
+                                    styles.tabText,
+                                    { color: activeTab === tab ? "#6D28D9" : "#64748B" },
+                                    activeTab === tab && styles.tabTextActive
+                                ]}>
+                                    {tab}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                </View> */}
+
+                {/* Search Row */}
+                <View style={styles.searchRow}>
+                    <View style={[styles.searchBox, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                        <Ionicons name="search-outline" size={18} color="#94A3B8" />
+                        <TextInput
+                            style={[styles.searchInput, { color: colors.text }]}
+                            placeholder="Search transactions..."
+                            placeholderTextColor="#94A3B8"
+                            value={search}
+                            onChangeText={setSearch}
+                        />
+                    </View>
+                    <View style={[styles.topFiltersRow, { justifyContent: 'flex-end' }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                            <TouchableOpacity
+                                style={[styles.downloadBtn, { backgroundColor: colors.primary, borderColor: colors.primary, paddingHorizontal: 12, width: 'auto', flexDirection: 'row', gap: 6 }]}
+                                activeOpacity={0.8}
+                                onPress={() => setIsImportMenuVisible(true)}
+                            >
+                                <Ionicons name="add-outline" size={18} color="#FFFFFF" />
+                                <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>Import</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={[styles.downloadBtn, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}
+                                activeOpacity={0.8}
+                                onPress={generatePDF}
+                            >
+                                <Ionicons name="download-outline" size={18} color="#64748B" />
+                            </TouchableOpacity>
                         </View>
+                    </View>
+                </View>
 
-                        {/* Table Rows */}
+                {/* Main Table Content */}
+                {isDesktop ? (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: "100%" }} contentContainerStyle={{ flexGrow: 1 }}>
+                        <View style={[styles.tableContainer, { flex: 1, backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+
+                            {/* Table Header */}
+                            <View style={[styles.tableHeader, { backgroundColor: isDark ? colors.background : "#F8FAFC", borderBottomColor: isDark ? colors.border : "#F1F5F9" }]}>
+                                <Text style={[styles.thText, { flex: 2, minWidth: 200 }]}>Transaction</Text>
+                                <Text style={[styles.thText, { flex: 1.2, minWidth: 100 }]}>Type</Text>
+                                <Text style={[styles.thText, { flex: 1.5, minWidth: 140 }]}>Amount</Text>
+                                <Text style={[styles.thText, { width: 100 }]}>Status</Text>
+                            </View>
+
+                            {/* Table Rows */}
+                            {paginatedTransactions.map((tx, index) => (
+                                <View key={tx.id || index} style={[styles.tableRow, index !== paginatedTransactions.length - 1 && { borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : "#F1F5F9" }]}>
+
+                                    {/* Transaction Column */}
+                                    <View style={[styles.tdCol, { flex: 2, minWidth: 200, flexDirection: "row", alignItems: "center" }]}>
+                                        <View style={[styles.merchantIcon, { backgroundColor: isDark ? colors.border : "#E0E7FF" }]}>
+                                            <Text style={{ color: "#6366F1", fontWeight: "800", fontSize: 16 }}>{getInitials(tx.title || tx.category)}</Text>
+                                        </View>
+                                        <View style={{ marginLeft: 10, flex: 1 }}>
+                                            <Text style={[styles.tdMainText, { color: colors.text }]} numberOfLines={1}>{tx.title || tx.category}</Text>
+                                            <Text style={styles.tdSubText} numberOfLines={1}>{tx.upi || tx.category}</Text>
+                                        </View>
+                                    </View>
+
+                                    {/* Type Column */}
+                                    <View style={[styles.tdCol, { flex: 1.2, minWidth: 100, justifyContent: "center" }]}>
+                                        <Text style={[styles.tdMainText, { color: colors.text, fontSize: 11 }]}>UPI Payment</Text>
+                                        <View style={{ marginTop: 2 }}>
+                                            <UpiLogo />
+                                        </View>
+                                    </View>
+
+                                    {/* Amount Column */}
+                                    <View style={[styles.tdCol, { flex: 1.5, minWidth: 140, justifyContent: "center" }]}>
+                                        <Text style={[styles.tdMainText, { color: colors.text }]}>₹ {Math.abs(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</Text>
+                                        <Text style={styles.tdSubText}>{tx.date} • {tx.time || "12:00 PM"}</Text>
+                                    </View>
+
+                                    {/* Status Column */}
+                                    <View style={[styles.tdCol, { width: 100, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
+                                        <View style={[
+                                            styles.statusPill,
+                                            (!tx.status || tx.status.toLowerCase() === "success" || tx.status.toLowerCase() === "successful") && { backgroundColor: isDark ? "#064e3b" : "#DCFCE7" },
+                                            tx.status?.toLowerCase() === "pending" && { backgroundColor: isDark ? "#1e3a8a" : "#E0F2FE" },
+                                            tx.status?.toLowerCase() === "failed" && { backgroundColor: isDark ? "#7f1d1d" : "#FEE2E2" },
+                                        ]}>
+                                            <Text style={[
+                                                styles.statusText,
+                                                (!tx.status || tx.status.toLowerCase() === "success" || tx.status.toLowerCase() === "successful") && { color: "#16A34A" },
+                                                tx.status?.toLowerCase() === "pending" && { color: "#0284C7" },
+                                                tx.status?.toLowerCase() === "failed" && { color: "#DC2626" },
+                                            ]}>{tx.status || "Successful"}</Text>
+                                        </View>
+                                        <Ionicons name="chevron-forward" size={16} color="#94A3B8" />
+                                    </View>
+                                </View>
+                            ))}
+                        </View>
+                    </ScrollView>
+                ) : (
+                    <View style={{ gap: 12, marginTop: 8 }}>
                         {paginatedTransactions.map((tx, index) => (
-                            <View key={tx.id || index} style={[styles.tableRow, index !== paginatedTransactions.length - 1 && { borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : "#F1F5F9" }]}>
-                                
-                                {/* Transaction Column */}
-                                <View style={[styles.tdCol, { flex: 2, minWidth: 200, flexDirection: "row", alignItems: "center" }]}>
+                            <View key={tx.id || index} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: isDark ? colors.surface : '#FFF', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: isDark ? colors.border : '#F1F5F9' }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 10 }}>
                                     <View style={[styles.merchantIcon, { backgroundColor: isDark ? colors.border : "#E0E7FF" }]}>
                                         <Text style={{ color: "#6366F1", fontWeight: "800", fontSize: 16 }}>{getInitials(tx.title || tx.category)}</Text>
                                     </View>
                                     <View style={{ marginLeft: 10, flex: 1 }}>
                                         <Text style={[styles.tdMainText, { color: colors.text }]} numberOfLines={1}>{tx.title || tx.category}</Text>
-                                        <Text style={styles.tdSubText} numberOfLines={1}>{tx.upi || tx.category}</Text>
+                                        <Text style={styles.tdSubText} numberOfLines={1}>{tx.date} • {tx.time || "12:00 PM"}</Text>
                                     </View>
                                 </View>
-
-                                {/* Type Column */}
-                                <View style={[styles.tdCol, { flex: 1.2, minWidth: 100, justifyContent: "center" }]}>
-                                    <Text style={[styles.tdMainText, { color: colors.text, fontSize: 11 }]}>UPI Payment</Text>
-                                    <View style={{ marginTop: 2 }}>
-                                        <UpiLogo />
-                                    </View>
-                                </View>
-
-                                {/* Amount Column */}
-                                <View style={[styles.tdCol, { flex: 1.5, minWidth: 140, justifyContent: "center" }]}>
+                                <View style={{ alignItems: 'flex-end' }}>
                                     <Text style={[styles.tdMainText, { color: colors.text }]}>₹ {Math.abs(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</Text>
-                                    <Text style={styles.tdSubText}>{tx.date} • {tx.time || "12:00 PM"}</Text>
-                                </View>
-
-                                {/* Status Column */}
-                                <View style={[styles.tdCol, { width: 100, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
-                                    <View style={[
-                                        styles.statusPill,
-                                        (!tx.status || tx.status.toLowerCase() === "success" || tx.status.toLowerCase() === "successful") && { backgroundColor: isDark ? "#064e3b" : "#DCFCE7" },
-                                        tx.status?.toLowerCase() === "pending" && { backgroundColor: isDark ? "#1e3a8a" : "#E0F2FE" },
-                                        tx.status?.toLowerCase() === "failed" && { backgroundColor: isDark ? "#7f1d1d" : "#FEE2E2" },
-                                    ]}>
-                                        <Text style={[
-                                            styles.statusText,
-                                            (!tx.status || tx.status.toLowerCase() === "success" || tx.status.toLowerCase() === "successful") && { color: "#16A34A" },
-                                            tx.status?.toLowerCase() === "pending" && { color: "#0284C7" },
-                                            tx.status?.toLowerCase() === "failed" && { color: "#DC2626" },
-                                        ]}>{tx.status || "Successful"}</Text>
-                                    </View>
-                                    <Ionicons name="chevron-forward" size={16} color="#94A3B8" />
+                                    <Text style={[
+                                        styles.statusText,
+                                        (!tx.status || tx.status.toLowerCase() === "success" || tx.status.toLowerCase() === "successful") && { color: "#16A34A" },
+                                        tx.status?.toLowerCase() === "pending" && { color: "#0284C7" },
+                                        tx.status?.toLowerCase() === "failed" && { color: "#DC2626" },
+                                        { marginTop: 4 }
+                                    ]}>{tx.status || "Successful"}</Text>
                                 </View>
                             </View>
                         ))}
                     </View>
-                </ScrollView>
-            ) : (
-                <View style={{ gap: 12, marginTop: 8 }}>
-                    {paginatedTransactions.map((tx, index) => (
-                        <View key={tx.id || index} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: isDark ? colors.surface : '#FFF', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: isDark ? colors.border : '#F1F5F9' }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 10 }}>
-                                <View style={[styles.merchantIcon, { backgroundColor: isDark ? colors.border : "#E0E7FF" }]}>
-                                    <Text style={{ color: "#6366F1", fontWeight: "800", fontSize: 16 }}>{getInitials(tx.title || tx.category)}</Text>
-                                </View>
-                                <View style={{ marginLeft: 10, flex: 1 }}>
-                                    <Text style={[styles.tdMainText, { color: colors.text }]} numberOfLines={1}>{tx.title || tx.category}</Text>
-                                    <Text style={styles.tdSubText} numberOfLines={1}>{tx.date} • {tx.time || "12:00 PM"}</Text>
-                                </View>
-                            </View>
-                            <View style={{ alignItems: 'flex-end' }}>
-                                <Text style={[styles.tdMainText, { color: colors.text }]}>₹ {Math.abs(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</Text>
-                                <Text style={[
-                                    styles.statusText,
-                                    (!tx.status || tx.status.toLowerCase() === "success" || tx.status.toLowerCase() === "successful") && { color: "#16A34A" },
-                                    tx.status?.toLowerCase() === "pending" && { color: "#0284C7" },
-                                    tx.status?.toLowerCase() === "failed" && { color: "#DC2626" },
-                                    { marginTop: 4 }
-                                ]}>{tx.status || "Successful"}</Text>
-                            </View>
-                        </View>
-                    ))}
-                </View>
-            )}
+                )}
 
-            {/* Pagination Footer */}
-            <View style={styles.paginationRow}>
-                <Text style={styles.paginationText}>Showing {totalItems > 0 ? startIndex + 1 : 0} to {endIndex} of {totalItems} transactions</Text>
-                
-                <View style={styles.pageControls}>
-                    <TouchableOpacity 
-                        style={[styles.pageBtn, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9", opacity: currentPage === 1 ? 0.5 : 1 }]}
-                        disabled={currentPage === 1}
-                        onPress={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                    >
-                        <Ionicons name="chevron-back" size={14} color="#94A3B8" />
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity style={[styles.pageBtn, styles.pageBtnActive]}>
-                        <Text style={styles.pageTextActive}>{currentPage}</Text>
-                    </TouchableOpacity>
-                    
-                    <View style={styles.pageDots}>
-                        <Text style={[styles.pageText, { color: isDark ? colors.text : "#0F172A" }]}>of</Text>
-                    </View>
-                    
-                    <TouchableOpacity style={[styles.pageBtn, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
-                        <Text style={[styles.pageText, { color: isDark ? colors.text : "#0F172A" }]}>{totalPages}</Text>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity 
-                        style={[styles.pageBtn, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9", opacity: currentPage === totalPages ? 0.5 : 1 }]}
-                        disabled={currentPage === totalPages}
-                        onPress={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                    >
-                        <Ionicons name="chevron-forward" size={14} color="#64748B" />
-                    </TouchableOpacity>
-                </View>
-            </View>
+                {/* Pagination Footer */}
+                <View style={styles.paginationRow}>
+                    <Text style={styles.paginationText}>Showing {totalItems > 0 ? startIndex + 1 : 0} to {endIndex} of {totalItems} transactions</Text>
 
-            {/* Import Menu Modal */}
-            <Modal
-                visible={isImportMenuVisible}
-                transparent={true}
-                animationType="fade"
-            >
-                <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }} activeOpacity={1} onPress={() => setIsImportMenuVisible(false)}>
-                    <View style={{ width: 280, backgroundColor: isDark ? colors.surface : "#FFF", borderRadius: 16, overflow: 'hidden', ...Platform.select({ ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12 }, android: { elevation: 8 }, web: { boxShadow: "0 4px 12px rgba(0,0,0,0.1)" } as any }) }}>
-                        <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border, alignItems: 'center' }}>
-                            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>Import Transactions</Text>
-                            <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>Choose an import method</Text>
-                        </View>
-                        
-                        <TouchableOpacity 
-                            style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}
-                            onPress={() => { setIsImportMenuVisible(false); setIsImportModalVisible(true); }}
+                    <View style={styles.pageControls}>
+                        <TouchableOpacity
+                            style={[styles.pageBtn, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9", opacity: currentPage === 1 ? 0.5 : 1 }]}
+                            disabled={currentPage === 1}
+                            onPress={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                         >
-                            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: isDark ? '#1e3a8a' : '#E0F2FE', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-                                <Ionicons name="create-outline" size={18} color="#0284C7" />
-                            </View>
-                            <View>
-                                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>Add Manually</Text>
-                                <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>Enter one transaction at a time</Text>
-                            </View>
+                            <Ionicons name="chevron-back" size={14} color="#94A3B8" />
                         </TouchableOpacity>
 
-                        <TouchableOpacity 
-                            style={{ flexDirection: 'row', alignItems: 'center', padding: 16 }}
-                            onPress={handleFileUpload}
+                        <TouchableOpacity style={[styles.pageBtn, styles.pageBtnActive]}>
+                            <Text style={styles.pageTextActive}>{currentPage}</Text>
+                        </TouchableOpacity>
+
+                        <View style={styles.pageDots}>
+                            <Text style={[styles.pageText, { color: isDark ? colors.text : "#0F172A" }]}>of</Text>
+                        </View>
+
+                        <TouchableOpacity style={[styles.pageBtn, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9" }]}>
+                            <Text style={[styles.pageText, { color: isDark ? colors.text : "#0F172A" }]}>{totalPages}</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.pageBtn, { backgroundColor: isDark ? colors.surface : "#FFFFFF", borderColor: isDark ? colors.border : "#F1F5F9", opacity: currentPage === totalPages ? 0.5 : 1 }]}
+                            disabled={currentPage === totalPages}
+                            onPress={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                         >
-                            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: isDark ? '#064e3b' : '#DCFCE7', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-                                <Ionicons name="document-text-outline" size={18} color="#16A34A" />
-                            </View>
-                            <View>
-                                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>Upload File</Text>
-                                <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>CSV or Excel (.xls, .xlsx)</Text>
-                            </View>
+                            <Ionicons name="chevron-forward" size={14} color="#64748B" />
                         </TouchableOpacity>
                     </View>
-                </TouchableOpacity>
-            </Modal>
+                </View>
 
-            {/* Import Transaction Modal */}
-            <Modal
-                visible={isImportModalVisible}
-                transparent={true}
-                animationType="fade"
-            >
-                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
-                    <View style={{ width: 340, backgroundColor: isDark ? colors.surface : "#FFF", borderRadius: 12, padding: 20, borderWidth: 1, borderColor: colors.border }}>
-                        <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 16 }}>Import Transaction</Text>
-                        
-                        <View style={{ marginBottom: 12 }}>
-                            <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Title</Text>
-                            <TextInput 
-                                style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 10, color: colors.text }}
-                                placeholder="e.g. Amazon Purchase"
-                                placeholderTextColor={colors.textSecondary}
-                                value={importForm.title}
-                                onChangeText={t => setImportForm({...importForm, title: t})}
-                            />
-                        </View>
-                        
-                        <View style={{ marginBottom: 12 }}>
-                            <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Amount (₹)</Text>
-                            <TextInput 
-                                style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 10, color: colors.text }}
-                                placeholder="0.00"
-                                placeholderTextColor={colors.textSecondary}
-                                keyboardType="numeric"
-                                value={importForm.amount}
-                                onChangeText={t => setImportForm({...importForm, amount: t})}
-                            />
-                        </View>
-                        
-                        <View style={{ marginBottom: 12 }}>
-                            <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Category</Text>
-                            <TextInput 
-                                style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 10, color: colors.text }}
-                                placeholder="e.g. Shopping"
-                                placeholderTextColor={colors.textSecondary}
-                                value={importForm.category}
-                                onChangeText={t => setImportForm({...importForm, category: t})}
-                            />
-                        </View>
-                        
-                        <View style={{ marginBottom: 20, flexDirection: 'row', gap: 10 }}>
-                            <TouchableOpacity 
-                                style={{ flex: 1, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: importForm.type === 'expense' ? '#EF4444' : colors.border, backgroundColor: importForm.type === 'expense' ? (isDark ? '#451a1a' : '#FEE2E2') : 'transparent', alignItems: 'center' }}
-                                onPress={() => setImportForm({...importForm, type: 'expense'})}
-                            >
-                                <Text style={{ color: importForm.type === 'expense' ? '#EF4444' : colors.text }}>Expense</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity 
-                                style={{ flex: 1, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: importForm.type === 'income' ? '#22C55E' : colors.border, backgroundColor: importForm.type === 'income' ? (isDark ? '#1a3320' : '#DCFCE7') : 'transparent', alignItems: 'center' }}
-                                onPress={() => setImportForm({...importForm, type: 'income'})}
-                            >
-                                <Text style={{ color: importForm.type === 'income' ? '#22C55E' : colors.text }}>Income</Text>
-                            </TouchableOpacity>
-                        </View>
+                {/* Import Menu Modal */}
+                <Modal
+                    visible={isImportMenuVisible}
+                    transparent={true}
+                    animationType="fade"
+                >
+                    <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }} activeOpacity={1} onPress={() => setIsImportMenuVisible(false)}>
+                        <View style={{ width: 280, backgroundColor: isDark ? colors.surface : "#FFF", borderRadius: 16, overflow: 'hidden', ...Platform.select({ ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12 }, android: { elevation: 8 }, web: { boxShadow: "0 4px 12px rgba(0,0,0,0.1)" } as any }) }}>
+                            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border, alignItems: 'center' }}>
+                                <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>Import Transactions</Text>
+                                <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>Choose an import method</Text>
+                            </View>
 
-                        <View style={{ flexDirection: 'row', gap: 12 }}>
-                            <TouchableOpacity 
-                                style={{ flex: 1, padding: 12, borderRadius: 8, alignItems: 'center', backgroundColor: colors.border }}
-                                onPress={() => setIsImportModalVisible(false)}
+                            <TouchableOpacity
+                                style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}
+                                onPress={() => { setIsImportMenuVisible(false); setIsImportModalVisible(true); }}
                             >
-                                <Text style={{ color: colors.text }}>Cancel</Text>
+                                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: isDark ? '#1e3a8a' : '#E0F2FE', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                                    <Ionicons name="create-outline" size={18} color="#0284C7" />
+                                </View>
+                                <View>
+                                    <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>Add Manually</Text>
+                                    <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>Enter one transaction at a time</Text>
+                                </View>
                             </TouchableOpacity>
-                            <TouchableOpacity 
-                                style={{ flex: 1, padding: 12, borderRadius: 8, alignItems: 'center', backgroundColor: colors.primary }}
-                                onPress={handleImportSubmit}
-                                disabled={isImporting || !importForm.title || !importForm.amount || !importForm.category}
+
+                            <TouchableOpacity
+                                style={{ flexDirection: 'row', alignItems: 'center', padding: 16 }}
+                                onPress={handleFileUpload}
                             >
-                                {isImporting ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={{ color: "#FFF", fontWeight: '600' }}>Add</Text>}
+                                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: isDark ? '#064e3b' : '#DCFCE7', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                                    <Ionicons name="document-text-outline" size={18} color="#16A34A" />
+                                </View>
+                                <View>
+                                    <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>Upload File</Text>
+                                    <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>CSV or Excel (.xls, .xlsx)</Text>
+                                </View>
                             </TouchableOpacity>
+                        </View>
+                    </TouchableOpacity>
+                </Modal>
+
+                {/* Import Transaction Modal */}
+                <Modal
+                    visible={isImportModalVisible}
+                    transparent={true}
+                    animationType="fade"
+                >
+                    <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
+                        <View style={{ width: 340, backgroundColor: isDark ? colors.surface : "#FFF", borderRadius: 12, padding: 20, borderWidth: 1, borderColor: colors.border }}>
+                            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 16 }}>Import Transaction</Text>
+
+                            <View style={{ marginBottom: 12 }}>
+                                <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Title</Text>
+                                <TextInput
+                                    style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 10, color: colors.text }}
+                                    placeholder="e.g. Amazon Purchase"
+                                    placeholderTextColor={colors.textSecondary}
+                                    value={importForm.title}
+                                    onChangeText={t => setImportForm({ ...importForm, title: t })}
+                                />
+                            </View>
+
+                            <View style={{ marginBottom: 12 }}>
+                                <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Amount (₹)</Text>
+                                <TextInput
+                                    style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 10, color: colors.text }}
+                                    placeholder="0.00"
+                                    placeholderTextColor={colors.textSecondary}
+                                    keyboardType="numeric"
+                                    value={importForm.amount}
+                                    onChangeText={t => setImportForm({ ...importForm, amount: t })}
+                                />
+                            </View>
+
+                            <View style={{ marginBottom: 12 }}>
+                                <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Category</Text>
+                                <TextInput
+                                    style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 10, color: colors.text }}
+                                    placeholder="e.g. Shopping"
+                                    placeholderTextColor={colors.textSecondary}
+                                    value={importForm.category}
+                                    onChangeText={t => setImportForm({ ...importForm, category: t })}
+                                />
+                            </View>
+
+                            <View style={{ marginBottom: 20, flexDirection: 'row', gap: 10 }}>
+                                <TouchableOpacity
+                                    style={{ flex: 1, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: importForm.type === 'expense' ? '#EF4444' : colors.border, backgroundColor: importForm.type === 'expense' ? (isDark ? '#451a1a' : '#FEE2E2') : 'transparent', alignItems: 'center' }}
+                                    onPress={() => setImportForm({ ...importForm, type: 'expense' })}
+                                >
+                                    <Text style={{ color: importForm.type === 'expense' ? '#EF4444' : colors.text }}>Expense</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={{ flex: 1, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: importForm.type === 'income' ? '#22C55E' : colors.border, backgroundColor: importForm.type === 'income' ? (isDark ? '#1a3320' : '#DCFCE7') : 'transparent', alignItems: 'center' }}
+                                    onPress={() => setImportForm({ ...importForm, type: 'income' })}
+                                >
+                                    <Text style={{ color: importForm.type === 'income' ? '#22C55E' : colors.text }}>Income</Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            <View style={{ flexDirection: 'row', gap: 12 }}>
+                                <TouchableOpacity
+                                    style={{ flex: 1, padding: 12, borderRadius: 8, alignItems: 'center', backgroundColor: colors.border }}
+                                    onPress={() => setIsImportModalVisible(false)}
+                                >
+                                    <Text style={{ color: colors.text }}>Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={{ flex: 1, padding: 12, borderRadius: 8, alignItems: 'center', backgroundColor: colors.primary }}
+                                    onPress={handleImportSubmit}
+                                    disabled={isImporting || !importForm.title || !importForm.amount || !importForm.category}
+                                >
+                                    {isImporting ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={{ color: "#FFF", fontWeight: '600' }}>Add</Text>}
+                                </TouchableOpacity>
+                            </View>
                         </View>
                     </View>
-                </View>
                 </Modal>
             </ScrollView>
         </View>
@@ -949,7 +970,7 @@ const styles = StyleSheet.create({
         borderRadius: 16,
         borderWidth: 1,
         overflow: "hidden",
-        minWidth: 700, 
+        minWidth: 700,
     },
     tableHeader: {
         flexDirection: "row",

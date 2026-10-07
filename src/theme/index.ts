@@ -3,6 +3,7 @@ import Radius from "./radius";
 import Shadows from "./shadows";
 import Spacing from "./spacing";
 import Typography from "./typography";
+import Fonts from "./fonts";
 
 import Breakpoints from "./breakpoints";
 import Elevation from "./elevation";
@@ -23,6 +24,8 @@ export {
 
     Typography,
 
+    Fonts,
+
     Breakpoints,
 
     Elevation,
@@ -31,4 +34,4 @@ export {
 
     ZIndex,
 
-};
+};

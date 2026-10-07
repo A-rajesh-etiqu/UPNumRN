@@ -4,6 +4,26 @@ const { sendInvoice } = require("../services/mailer");
 
 const router = express.Router();
 
+function resolvePlanDetails(planId) {
+    const raw = String(planId || '').toLowerCase().trim();
+    if (raw === 'free-trial' || raw === 'trial') {
+        return { id: 'free-trial', name: 'Free Trial (1 Month)', price: 0, billingCycle: 'MONTHLY', isLifetimeOffer: false, status: 'TRIAL' };
+    }
+    if (raw.startsWith('1') || raw === 'free') {
+        return { id: '1', name: 'Free Tier', price: 0, billingCycle: 'MONTHLY', isLifetimeOffer: false };
+    }
+    if (raw.startsWith('2') || raw.includes('standard') || raw.includes('monthly')) {
+        return { id: '2', name: 'Standard Plan', price: 50, billingCycle: 'MONTHLY', isLifetimeOffer: false };
+    }
+    if (raw.startsWith('3') || raw.includes('premium')) {
+        return { id: '3', name: 'Premium Plan', price: 150, billingCycle: 'MONTHLY', isLifetimeOffer: false };
+    }
+    if (raw.startsWith('4') || raw.includes('lifetime')) {
+        return { id: '4', name: 'Lifetime Plan', price: 10, billingCycle: 'LIFETIME', isLifetimeOffer: true };
+    }
+    return { id: raw || '2', name: 'Standard Plan', price: 50, billingCycle: 'MONTHLY', isLifetimeOffer: false };
+}
+
 // GET /billing/history
 // Returns billing history (payments/invoices) and subscription status
 router.get("/history", async (req, res) => {
@@ -13,47 +33,7 @@ router.get("/history", async (req, res) => {
     }
 
     try {
-        // 1. Fetch Subscription Status
-        const [subRows] = await db.query(`
-            SELECT s.*, p.name as plan_name, p.price as plan_price, p.billing as plan_billing 
-            FROM subscriptions s
-            LEFT JOIN plans p ON CAST(p.id AS CHAR) = CAST(s.plan_id AS CHAR)
-            WHERE s.user_id = ? 
-            LIMIT 1;
-        `, [userId]);
-
-        let subscription = null;
-        if (subRows.length > 0) {
-            const s = subRows[0];
-            const isTrial = s.plan_id === 'free-trial' || s.status === 'TRIAL';
-            const isExpired = isTrial && s.trial_end && new Date() > new Date(s.trial_end);
-
-            if (isTrial) {
-                subscription = {
-                    planId: 'free-trial',
-                    planName: isExpired ? "Free Trial (Expired)" : "Free Trial (1 Month)",
-                    price: 0,
-                    status: isExpired ? "EXPIRED" : "TRIAL",
-                    currentPeriodStart: s.trial_start,
-                    nextBillingDate: s.trial_end,
-                    autoRenew: false
-                };
-            } else {
-                const fallbackPrice = s.plan_id === '3' || s.plan_id === 'premium' ? 150 : (s.plan_id === '2' || s.plan_id === 'standard' ? 50 : 0);
-                const fallbackName = s.plan_id === '3' || s.plan_id === 'premium' ? "Premium Plan" : (s.plan_id === '2' || s.plan_id === 'standard' ? "Standard Plan" : "Free Tier");
-                subscription = {
-                    planId: s.plan_id,
-                    planName: s.plan_name || fallbackName,
-                    price: s.plan_price !== null && s.plan_price !== undefined ? parseFloat(s.plan_price) : fallbackPrice,
-                    status: s.status,
-                    currentPeriodStart: s.trial_start || s.next_billing_date,
-                    nextBillingDate: s.next_billing_date,
-                    autoRenew: s.status === 'ACTIVE'
-                };
-            }
-        }
-
-        // 2. Fetch Payments & Invoices
+        // 1. Fetch Payments & Invoices first
         const [paymentRows] = await db.query(`
             SELECT p.*, i.invoice_no, i.id as invoice_id
             FROM payments p
@@ -62,20 +42,81 @@ router.get("/history", async (req, res) => {
             ORDER BY p.created_at DESC;
         `, [userId]);
 
+        // 2. Fetch User & Subscription rows from DB
+        const [userSubRows] = await db.query(`
+            SELECT u.plan_id as user_plan_id, s.plan_id as sub_plan_id, s.status as sub_status, s.trial_start, s.trial_end, s.next_billing_date
+            FROM users u
+            LEFT JOIN subscriptions s ON s.user_id = u.id
+            WHERE u.id = ? 
+            LIMIT 1;
+        `, [userId]);
+
+        const successfulPayments = paymentRows.filter(p => p.status === 'SUCCESS');
+        let activePlanId = '1';
+        let latestPaymentDate = null;
+
+        if (successfulPayments.length > 0) {
+            const latest = successfulPayments[0];
+            latestPaymentDate = latest.created_at;
+            activePlanId = String(latest.plan_id || (parseFloat(latest.amount) === 150 ? '3' : parseFloat(latest.amount) === 10 ? '4' : '2'));
+        } else if (userSubRows.length > 0) {
+            const row = userSubRows[0];
+            activePlanId = (row.user_plan_id && row.user_plan_id !== 'free-trial')
+                ? row.user_plan_id
+                : ((row.sub_plan_id && row.sub_plan_id !== 'free-trial') ? row.sub_plan_id : (row.user_plan_id || row.sub_plan_id || '1'));
+        }
+
+        const planDetails = resolvePlanDetails(activePlanId);
+
+        let nextBilling = null;
+        if (userSubRows.length > 0 && userSubRows[0]?.next_billing_date && new Date(userSubRows[0].next_billing_date) > new Date()) {
+            nextBilling = userSubRows[0].next_billing_date;
+        } else {
+            nextBilling = new Date(latestPaymentDate || new Date());
+            if (planDetails.isLifetimeOffer || planDetails.billingCycle === 'LIFETIME') {
+                nextBilling.setFullYear(nextBilling.getFullYear() + 100);
+            } else {
+                nextBilling.setMonth(nextBilling.getMonth() + 1);
+            }
+        }
+
+        const subscription = {
+            planId: activePlanId,
+            planName: planDetails.name,
+            price: planDetails.price,
+            billingCycle: planDetails.billingCycle,
+            status: activePlanId === 'free-trial' ? 'TRIAL' : 'ACTIVE',
+            currentPeriodStart: latestPaymentDate || new Date(),
+            nextBillingDate: nextBilling,
+            autoRenew: true
+        };
+
+        // Sync database tables so future queries stay in sync
+        if (activePlanId !== '1') {
+            await db.query(`UPDATE users SET plan_id = ? WHERE id = ?;`, [activePlanId, userId]).catch(() => {});
+            await db.query(`
+                INSERT INTO subscriptions (user_id, plan_id, status, trial_start, trial_end, next_billing_date, billing_day)
+                VALUES (?, ?, 'ACTIVE', NULL, NULL, ?, ?)
+                ON DUPLICATE KEY UPDATE plan_id = VALUES(plan_id), status = 'ACTIVE', next_billing_date = VALUES(next_billing_date);
+            `, [userId, activePlanId, nextBilling, new Date(nextBilling).getDate()]).catch(() => {});
+        }
+
         const history = paymentRows.map(p => {
             const dateObj = new Date(p.created_at);
-            // Generate invoice dynamically if missing in DB
             const dynInvoice = `INV-${dateObj.getFullYear()}-${p.id.replace('pay-', '').substring(0, 5).toUpperCase()}`;
+            const amt = parseFloat(p.amount);
+            const itemPlanId = amt === 150 ? '3' : amt === 50 ? '2' : amt === 10 ? '4' : (p.plan_id || '1');
+            const itemPlanDetails = resolvePlanDetails(itemPlanId);
             
             return {
                 id: p.id,
                 date: dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
                 time: dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-                plan: subscription ? subscription.planName : "Standard Plan",
-                rate: `₹${subscription ? subscription.price : 50} / month`,
-                amount: `₹${p.amount}`,
+                plan: itemPlanDetails.name,
+                rate: `₹${itemPlanDetails.price} / ${itemPlanDetails.billingCycle.toLowerCase() === 'lifetime' ? 'one-time' : 'month'}`,
+                amount: `₹${amt.toFixed(2)}`,
                 status: p.status === 'SUCCESS' ? 'Success' : 'Failed',
-                upi: "UPI (Auto)",
+                upi: p.upi_id || "UPI (Auto)",
                 invoiceNo: p.invoice_no || dynInvoice,
                 invoiceId: p.invoice_id || p.id
             };

@@ -58,6 +58,7 @@ async function createTables() {
                 user_type VARCHAR(20) NOT NULL DEFAULT 'PERSONAL',
                 status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
                 password VARCHAR(255) NOT NULL,
+                plan_id VARCHAR(50) DEFAULT 'free-trial',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             );
@@ -108,7 +109,7 @@ async function createTables() {
                 plan_id VARCHAR(50) NOT NULL,
                 trial_start TIMESTAMP NULL,
                 trial_end TIMESTAMP NULL,
-                billing_day INT NOT NULL,
+                billing_day INT DEFAULT 1,
                 next_billing_date TIMESTAMP NULL,
                 status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -136,6 +137,12 @@ async function createTables() {
 
         try {
             await connection.query(`ALTER TABLE payments ADD COLUMN plan_id VARCHAR(50);`);
+        } catch (e) {
+            // Column may already exist
+        }
+
+        try {
+            await connection.query(`ALTER TABLE users ADD COLUMN plan_id VARCHAR(50) DEFAULT 'free-trial';`);
         } catch (e) {
             // Column may already exist
         }
@@ -229,8 +236,8 @@ async function seedDatabase() {
 
         // 1. Seed Amit Sharma (Standard User)
         await connection.query(`
-            INSERT IGNORE INTO users (id, name, email, mobile, role, status, password)
-            VALUES ('user-1', 'Amit Sharma', 'amit@example.com', '8888888888', 'USER', 'ACTIVE', 'password123');
+            INSERT IGNORE INTO users (id, name, email, mobile, role, status, password, plan_id)
+            VALUES ('user-1', 'Amit Sharma', 'amit@example.com', '8888888888', 'USER', 'ACTIVE', 'password123', 'lifetime');
         `);
         await connection.query(`
             INSERT IGNORE INTO profiles (user_id, business_name, category, city, language, currency)
@@ -243,8 +250,8 @@ async function seedDatabase() {
 
         // 2. Seed Super Admin Account
         await connection.query(`
-            INSERT IGNORE INTO users (id, name, email, mobile, role, status, password)
-            VALUES ('admin-1', 'Super Admin', 'admin@upnum.com', '9999999999', 'ADMIN', 'ACTIVE', 'admin');
+            INSERT IGNORE INTO users (id, name, email, mobile, role, status, password, plan_id)
+            VALUES ('admin-1', 'Super Admin', 'admin@upnum.com', '9999999999', 'ADMIN', 'ACTIVE', 'admin', 'lifetime');
         `);
         await connection.query(`
             INSERT IGNORE INTO upi_accounts (user_id, upi_id, verified, primary_flag)
@@ -253,8 +260,8 @@ async function seedDatabase() {
 
         // 3. Seed Neha Patel
         await connection.query(`
-            INSERT IGNORE INTO users (id, name, email, mobile, role, status, password)
-            VALUES ('user-2', 'Neha Patel', 'neha.patel@example.com', '7777777777', 'USER', 'ACTIVE', 'password123');
+            INSERT IGNORE INTO users (id, name, email, mobile, role, status, password, plan_id)
+            VALUES ('user-2', 'Neha Patel', 'neha.patel@example.com', '7777777777', 'USER', 'ACTIVE', 'password123', 'lifetime');
         `);
         await connection.query(`
             INSERT IGNORE INTO profiles (user_id, business_name, category, city, language, currency)
@@ -267,8 +274,8 @@ async function seedDatabase() {
 
         // 4. Seed Bright Retailers
         await connection.query(`
-            INSERT IGNORE INTO users (id, name, email, mobile, role, status, password)
-            VALUES ('user-3', 'Bright Retailers', 'contact@brightretailers.in', '6666666666', 'USER', 'ACTIVE', 'password123');
+            INSERT IGNORE INTO users (id, name, email, mobile, role, status, password, plan_id)
+            VALUES ('user-3', 'Bright Retailers', 'contact@brightretailers.in', '6666666666', 'USER', 'ACTIVE', 'password123', 'lifetime');
         `);
         await connection.query(`
             INSERT IGNORE INTO profiles (user_id, business_name, category, city, language, currency)
@@ -281,8 +288,8 @@ async function seedDatabase() {
 
         // 5. Seed Tech Consultants
         await connection.query(`
-            INSERT IGNORE INTO users (id, name, email, mobile, role, status, password)
-            VALUES ('user-4', 'Tech Consultants', 'info@techconsultants.in', '5555555555', 'USER', 'ACTIVE', 'password123');
+            INSERT IGNORE INTO users (id, name, email, mobile, role, status, password, plan_id)
+            VALUES ('user-4', 'Tech Consultants', 'info@techconsultants.in', '5555555555', 'USER', 'ACTIVE', 'password123', 'lifetime');
         `);
         await connection.query(`
             INSERT IGNORE INTO profiles (user_id, business_name, category, city, language, currency)
@@ -295,8 +302,8 @@ async function seedDatabase() {
 
         // 6. Seed Rahul Verma (Trial Account)
         await connection.query(`
-            INSERT IGNORE INTO users (id, name, email, mobile, role, status, password)
-            VALUES ('user-5', 'Rahul Verma', 'rahul.verma@example.com', '4444444444', 'USER', 'ACTIVE', 'password123');
+            INSERT IGNORE INTO users (id, name, email, mobile, role, status, password, plan_id)
+            VALUES ('user-5', 'Rahul Verma', 'rahul.verma@example.com', '4444444444', 'USER', 'ACTIVE', 'password123', 'free-trial');
         `);
         await connection.query(`
             INSERT IGNORE INTO profiles (user_id, business_name, category, city, language, currency)
@@ -414,6 +421,23 @@ async function seedDatabase() {
                 INSERT IGNORE INTO offers (id, name, type, discount, usage_count, valid_from, valid_to, status)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?);
             `, [o.id, o.name, o.type, o.discount, o.usage_count, o.valid_from, o.valid_to, o.status]);
+        }
+
+        // Seed Consents
+        const consents = [
+            { id: "c-101", user_id: "user-1", vua: "amit@finvu", status: "ACTIVE" },
+            { id: "c-102", user_id: "user-1", vua: "amit@setu", status: "ACTIVE" },
+            { id: "c-103", user_id: "user-1", vua: "8888888888@finvu", status: "PENDING" },
+            { id: "c-104", user_id: "user-2", vua: "neha@finvu", status: "ACTIVE" },
+            { id: "c-105", user_id: "user-2", vua: "7777777777@setu", status: "ACTIVE" },
+            { id: "c-106", user_id: "user-3", vua: "bright@finvu", status: "ACTIVE" },
+            { id: "c-107", user_id: "user-4", vua: "tech@finvu", status: "PENDING" },
+        ];
+        for (const c of consents) {
+            await connection.query(`
+                INSERT IGNORE INTO consents (id, user_id, vua, status)
+                VALUES (?, ?, ?, ?);
+            `, [c.id, c.user_id, c.vua, c.status]);
         }
 
         console.log("Mock data validated/inserted successfully.");

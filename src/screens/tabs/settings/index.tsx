@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
     View,
     Text,
@@ -13,6 +13,7 @@ import {
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAppTheme, Colors, Radius, Spacing, Shadows, Typography } from "../../../theme";
 import { useAuthStore } from "../../../store/auth.store";
+import { useSubscriptionStore } from "../../../store/subscription.store";
 import apiClient from "../../../api/apiClient";
 import DashboardHeader from "../../../components/layout/DashboardHeader";
 import { router, useLocalSearchParams } from "../../../navigation/RootNavigation";
@@ -77,15 +78,94 @@ export default function SettingsScreen() {
     const [subInfo, setSubInfo] = useState<any>(null);
     const [billingHistory, setBillingHistory] = useState<any[]>([]);
 
+    const storeSub = useSubscriptionStore((state) => state.subscription);
+
+    const getPlanFallback = (planIdOrName?: string) => {
+        const key = String(planIdOrName || '').toLowerCase();
+        if (key === '4' || key === 'lifetime' || key.includes('lifetime')) {
+            return { name: 'Lifetime Plan', price: 10, billingCycle: 'LIFETIME' };
+        }
+        if (key === '3' || key === 'premium' || key.includes('premium')) {
+            return { name: 'Premium Plan', price: 150, billingCycle: 'MONTHLY' };
+        }
+        if (key === '2' || key === 'standard' || key.includes('standard')) {
+            return { name: 'Standard Plan', price: 50, billingCycle: 'MONTHLY' };
+        }
+        if (key === 'free-trial' || key === 'trial') {
+            return { name: 'Free Trial (1 Month)', price: 0, billingCycle: 'MONTHLY' };
+        }
+        return { name: 'Free Tier', price: 0, billingCycle: 'MONTHLY' };
+    };
+
+    const planData = useMemo(() => {
+        if (subInfo && subInfo.planName) {
+            return {
+                name: subInfo.planName,
+                price: subInfo.price ?? 0,
+                billingCycle: subInfo.billingCycle || "MONTHLY",
+                status: subInfo.status || "Active",
+            };
+        }
+        if (user?.subscription?.name) {
+            return {
+                name: user.subscription.name,
+                price: user.subscription.price ?? 0,
+                billingCycle: user.subscription.billingCycle || "MONTHLY",
+                status: user.subscription.status || "Active",
+            };
+        }
+        if (storeSub?.planName) {
+            const fallback = getPlanFallback(storeSub.planId);
+            return {
+                name: storeSub.planName,
+                price: fallback.price,
+                billingCycle: fallback.billingCycle,
+                status: storeSub.active ? "Active" : "Inactive",
+            };
+        }
+        if (user?.planId) {
+            const fallback = getPlanFallback(user.planId);
+            return {
+                name: fallback.name,
+                price: fallback.price,
+                billingCycle: fallback.billingCycle,
+                status: "Active",
+            };
+        }
+        return {
+            name: "Free Tier",
+            price: 0,
+            billingCycle: "MONTHLY",
+            status: "Active",
+        };
+    }, [subInfo, user?.subscription, storeSub, user?.planId]);
+
     useEffect(() => {
-        if ((activeTab === "UPI & Bank Accounts" || activeTab === "Data & Sync") && user) {
+        if ((activeTab === "UPI & Bank Accounts" || activeTab === "Data & Sync" || activeTab === "Billing & Subscription") && user) {
             fetchBankAccounts();
         }
-        if (activeTab === "Billing & Subscription" && user?.id) {
+        if (user?.id) {
             apiClient.get("/billing/history", { params: { userId: user.id } })
                 .then(res => {
                     if (res.data?.subscription) {
                         setSubInfo(res.data.subscription);
+                        const sub = res.data.subscription;
+                        if (user && sub.planId) {
+                            useAuthStore.getState().updateUser({
+                                ...user,
+                                planId: sub.planId,
+                                subscription: {
+                                    id: sub.planId,
+                                    name: sub.planName,
+                                    price: sub.price,
+                                    currency: "INR",
+                                    billingCycle: sub.billingCycle || "MONTHLY",
+                                    isLifetimeOffer: sub.billingCycle === "LIFETIME" || sub.planId === "4",
+                                    status: sub.status,
+                                    expiresAt: sub.nextBillingDate ? new Date(sub.nextBillingDate).toISOString() : undefined,
+                                }
+                            });
+                        }
                     }
                     if (res.data?.history) {
                         setBillingHistory(res.data.history);
@@ -93,7 +173,7 @@ export default function SettingsScreen() {
                 })
                 .catch(err => console.warn("Failed to fetch subscription info in settings:", err));
         }
-    }, [activeTab, user]);
+    }, [activeTab, user?.id]);
 
     const fetchBankAccounts = async () => {
         setIsLoadingAccounts(true);
@@ -118,6 +198,9 @@ export default function SettingsScreen() {
     };
 
     const calculateNextBillingDate = () => {
+        if (planData.billingCycle?.toUpperCase() === "LIFETIME" || planData.name?.toLowerCase().includes("lifetime")) {
+            return "Lifetime Access";
+        }
         if (subInfo?.nextBillingDate) {
             return new Date(subInfo.nextBillingDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
         }
@@ -130,6 +213,7 @@ export default function SettingsScreen() {
         const startDate = rawStartDate ? new Date(rawStartDate) : new Date();
 
         const cycle = (
+            planData.billingCycle ||
             subInfo?.billingCycle ||
             subInfo?.billing ||
             sub?.billingCycle ||
@@ -810,16 +894,16 @@ export default function SettingsScreen() {
                                                 </View>
                                                 <View>
                                                     <Text style={{ fontSize: 16, fontWeight: "700", color: colors.text }}>
-                                                        {subInfo?.planName || user?.subscription?.name || "Free Tier"}
+                                                        {planData.name}
                                                     </Text>
                                                     <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>
-                                                        ₹{subInfo?.price ?? user?.subscription?.price ?? 0} / {((subInfo?.billingCycle || user?.subscription?.billingCycle || "MONTHLY")).toLowerCase() === "yearly" ? "year" : "month"}
+                                                        ₹{planData.price} / {planData.billingCycle.toLowerCase() === "lifetime" ? "one-time" : planData.billingCycle.toLowerCase() === "yearly" ? "year" : "month"}
                                                     </Text>
                                                 </View>
                                             </View>
                                             <View style={[styles.statusBadge, { backgroundColor: "#ECFDF5", paddingHorizontal: 8, paddingVertical: 4 }]}>
                                                 <Text style={[styles.statusBadgeText, { color: "#10B981" }]}>
-                                                    {subInfo?.status || user?.subscription?.status || "Active"}
+                                                    {planData.status}
                                                 </Text>
                                             </View>
                                         </View>
@@ -850,7 +934,9 @@ export default function SettingsScreen() {
                                                     <Ionicons name="logo-google" size={14} color="#EA4335" />
                                                     <Text style={{ fontSize: 12, fontWeight: "700", color: "#333" }}>UPI</Text>
                                                 </View>
-                                                <Text style={{ fontSize: 13, fontWeight: "500", color: colors.text, flexShrink: 1 }} numberOfLines={1}>rajesh@okaxis</Text>
+                                                <Text style={{ fontSize: 13, fontWeight: "500", color: colors.text, flexShrink: 1 }} numberOfLines={1}>
+                                                    {upiAccounts.find(a => a.isPrimary || a.isVerified)?.upiId || upiAccounts[0]?.upiId || (user?.email ? `${user.email.split('@')[0]}@upi` : null) || (user?.mobile ? `${user.mobile}@upi` : "you@upi")}
+                                                </Text>
                                             </View>
                                             <View style={[styles.statusBadge, { backgroundColor: "#ECFDF5", paddingHorizontal: 8, paddingVertical: 4, marginLeft: 8 }]}>
                                                 <Text style={[styles.statusBadgeText, { color: "#10B981" }]}>Active</Text>
@@ -885,36 +971,35 @@ export default function SettingsScreen() {
                                             </View>
 
                                             {/* Table Rows */}
-                                            {(billingHistory.length > 0
-                                                ? billingHistory.slice(0, 5)
-                                                : [
-                                                    { date: "15 Aug 2026", amount: "₹10", status: "Success", invoiceNo: "INV-2026-001" },
-                                                    { date: "15 Jul 2026", amount: "₹10", status: "Success", invoiceNo: "INV-2026-002" },
-                                                    { date: "15 Jun 2026", amount: "₹10", status: "Success", invoiceNo: "INV-2026-003" },
-                                                    { date: "15 May 2026", amount: "₹10", status: "Success", invoiceNo: "INV-2026-004" },
-                                                ]
-                                            ).map((item, idx, arr) => {
-                                                const isSuccess = item.status === "Success" || item.status === "SUCCESS";
-                                                return (
-                                                    <View key={item.id || idx} style={{ flexDirection: "row", padding: 12, borderBottomWidth: idx === arr.length - 1 ? 0 : 1, borderBottomColor: colors.border, alignItems: "center" }}>
-                                                        <Text style={{ width: 120, fontSize: 13, fontWeight: "500", color: colors.text }}>{item.date}</Text>
-                                                        <Text style={{ width: 100, fontSize: 13, color: colors.text }}>{item.amount}</Text>
-                                                        <View style={{ width: 100, alignItems: "flex-start" }}>
-                                                            <View style={[styles.statusBadge, { backgroundColor: isSuccess ? "#ECFDF5" : "#FEE2E2", paddingHorizontal: 8, paddingVertical: 4 }]}>
-                                                                <Text style={[styles.statusBadgeText, { color: isSuccess ? "#10B981" : "#EF4444" }]}>{item.status}</Text>
+                                            {billingHistory.length === 0 ? (
+                                                <View style={{ padding: 24, alignItems: "center", justifyContent: "center" }}>
+                                                    <Ionicons name="receipt-outline" size={28} color={colors.textSecondary} style={{ marginBottom: 6, opacity: 0.6 }} />
+                                                    <Text style={{ fontSize: 13, color: colors.textSecondary }}>No billing history found</Text>
+                                                </View>
+                                            ) : (
+                                                billingHistory.slice(0, 5).map((item, idx, arr) => {
+                                                    const isSuccess = item.status === "Success" || item.status === "SUCCESS";
+                                                    return (
+                                                        <View key={item.id || idx} style={{ flexDirection: "row", padding: 12, borderBottomWidth: idx === arr.length - 1 ? 0 : 1, borderBottomColor: colors.border, alignItems: "center" }}>
+                                                            <Text style={{ width: 120, fontSize: 13, fontWeight: "500", color: colors.text }}>{item.date}</Text>
+                                                            <Text style={{ width: 100, fontSize: 13, color: colors.text }}>{item.amount}</Text>
+                                                            <View style={{ width: 100, alignItems: "flex-start" }}>
+                                                                <View style={[styles.statusBadge, { backgroundColor: isSuccess ? "#ECFDF5" : "#FEE2E2", paddingHorizontal: 8, paddingVertical: 4 }]}>
+                                                                    <Text style={[styles.statusBadgeText, { color: isSuccess ? "#10B981" : "#EF4444" }]}>{item.status}</Text>
+                                                                </View>
                                                             </View>
+                                                            <TouchableOpacity
+                                                                style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }}
+                                                                activeOpacity={0.7}
+                                                                onPress={() => Alert.alert("Invoice Download", `Downloading invoice ${item.invoiceNo || item.id || ''}`)}
+                                                            >
+                                                                <Ionicons name="document-text-outline" size={14} color={colors.primary} />
+                                                                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Download</Text>
+                                                            </TouchableOpacity>
                                                         </View>
-                                                        <TouchableOpacity
-                                                            style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }}
-                                                            activeOpacity={0.7}
-                                                            onPress={() => Alert.alert("Invoice Download", `Downloading invoice ${item.invoiceNo || item.id || ''}`)}
-                                                        >
-                                                            <Ionicons name="document-text-outline" size={14} color={colors.primary} />
-                                                            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Download</Text>
-                                                        </TouchableOpacity>
-                                                    </View>
-                                                );
-                                            })}
+                                                    );
+                                                })
+                                            )}
                                         </View>
                                     </ScrollView>
                                 </View>

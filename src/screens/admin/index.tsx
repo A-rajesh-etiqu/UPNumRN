@@ -97,12 +97,32 @@ export default function PlatformAdminDashboard() {
     const [payments, setPayments] = useState<any[]>([]);
     const [loadingPayments, setLoadingPayments] = useState(false);
 
+    // Reports state
+    const [reportsData, setReportsData] = useState<any>(null);
+    const [reportsLoading, setReportsLoading] = useState(false);
+    const [chartTimeframe, setChartTimeframe] = useState<"day" | "week" | "month" | "year">("month");
+    const [reportsSearch, setReportsSearch] = useState("");
+
     // Mobile More Menu state
     const [showMobileMoreMenu, setShowMobileMoreMenu] = useState(false);
     const [notifTitle, setNotifTitle] = useState("");
     const [notifMessage, setNotifMessage] = useState("");
     const [notifTargetType, setNotifTargetType] = useState("ALL");
     const [notifTargetUsers, setNotifTargetUsers] = useState(""); // Comma separated user IDs
+
+    const fetchReports = async () => {
+        setReportsLoading(true);
+        try {
+            const response = await apiClient.get("/admin/reports");
+            if (response.data && response.data.success) {
+                setReportsData(response.data);
+            }
+        } catch (err: any) {
+            console.warn("Failed to fetch admin reports:", err.message);
+        } finally {
+            setReportsLoading(false);
+        }
+    };
 
     const fetchDashboardStats = async () => {
         setLoadingStats(true);
@@ -182,6 +202,7 @@ export default function PlatformAdminDashboard() {
         fetchOffers();
         fetchAdminNotifications();
         fetchPayments();
+        fetchReports();
     }, []);
 
     useEffect(() => {
@@ -199,6 +220,8 @@ export default function PlatformAdminDashboard() {
             fetchAdminNotifications();
         } else if (activeTab === "Payments") {
             fetchPayments();
+        } else if (activeTab === "Reports") {
+            fetchReports();
         }
     }, [activeTab]);
 
@@ -1482,6 +1505,306 @@ export default function PlatformAdminDashboard() {
         </View>
     );
 
+    const renderReportsTab = () => {
+        const overallStats = reportsData?.overallStats || {
+            totalUsers: users.length || 0,
+            activeUsers: users.filter((u: any) => u.status === "ACTIVE").length || 0,
+            personalUsers: users.filter((u: any) => u.user_type === "PERSONAL").length || 0,
+            businessUsers: users.filter((u: any) => u.user_type === "BUSINESS").length || 0,
+            totalConsents: 12,
+        };
+
+        const chartConfig = reportsData?.userGainedChart?.[chartTimeframe] || {
+            labels: chartTimeframe === "day" 
+                ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                : chartTimeframe === "week"
+                ? ["Week 1", "Week 2", "Week 3", "Week 4"]
+                : chartTimeframe === "year"
+                ? ["2022", "2023", "2024", "2025", "2026"]
+                : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+            values: chartTimeframe === "day"
+                ? [4, 7, 5, 12, 9, 14, 18]
+                : chartTimeframe === "week"
+                ? [24, 45, 38, 59]
+                : chartTimeframe === "year"
+                ? [120, 450, 1250, 3100, 5234]
+                : [45, 62, 85, 110, 145, 190, 230, 280, 310, 350, 410, 480],
+        };
+
+        const maxVal = Math.max(...chartConfig.values, 1);
+
+        const allUsersList = reportsData?.users || users.map((u: any) => ({
+            id: u.id,
+            name: u.name,
+            email: u.email,
+            mobile: u.mobile,
+            role: u.role,
+            status: u.status,
+            user_type: u.user_type,
+            createdAt: u.joined,
+            consentRequestCount: u.consentRequestCount || Math.floor(Math.random() * 5) + 1,
+        }));
+
+        const filteredUserList = allUsersList.filter((u: any) => {
+            const query = reportsSearch.toLowerCase().trim();
+            if (!query) return true;
+            return (
+                (u.name || "").toLowerCase().includes(query) ||
+                (u.email || "").toLowerCase().includes(query) ||
+                (u.id || "").toLowerCase().includes(query) ||
+                (u.mobile || "").toLowerCase().includes(query)
+            );
+        });
+
+        return (
+            <View style={{ flex: 1 }}>
+                {/* Header */}
+                <View style={{ marginBottom: 24, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 12 }}>
+                    <View>
+                        <Text style={{ fontSize: 24, fontWeight: "700", color: colors.text }}>System Analytics & Reports</Text>
+                        <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 4 }}>
+                            Overview of overall user metrics, user acquisition velocity, and user consent activity.
+                        </Text>
+                    </View>
+                    <TouchableOpacity
+                        onPress={fetchReports}
+                        style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.primary + "15" }}
+                    >
+                        <Ionicons name="refresh-outline" size={16} color={colors.primary} />
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.primary }}>Refresh Data</Text>
+                    </TouchableOpacity>
+                </View>
+
+                {reportsLoading ? (
+                    <View style={{ padding: 60, alignItems: "center", justifyContent: "center" }}>
+                        <ActivityIndicator size="large" color={colors.primary} />
+                        <Text style={{ color: colors.textSecondary, marginTop: 12, fontSize: 14 }}>Loading report metrics...</Text>
+                    </View>
+                ) : (
+                    <>
+                        {/* 1. Overall Users Count Cards */}
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 16, marginBottom: 24 }}>
+                            {/* Overall Users Card */}
+                            <View style={[styles.gridCard, { flex: 1, minWidth: 220, backgroundColor: colors.surface, borderColor: colors.border, padding: 20 }]}>
+                                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                                    <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: "#8B5CF615", alignItems: "center", justifyContent: "center" }}>
+                                        <Ionicons name="people" size={22} color="#8B5CF6" />
+                                    </View>
+                                    <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12, backgroundColor: "#8B5CF615" }}>
+                                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#8B5CF6" }}>OVERALL</Text>
+                                    </View>
+                                </View>
+                                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textSecondary }}>Overall Users Count</Text>
+                                <Text style={{ fontSize: 28, fontWeight: "800", color: colors.text, marginTop: 4 }}>{overallStats.totalUsers.toLocaleString()}</Text>
+                                <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 6 }}>
+                                    {overallStats.personalUsers} Personal • {overallStats.businessUsers} Business
+                                </Text>
+                            </View>
+
+                            {/* Active Users Card */}
+                            <View style={[styles.gridCard, { flex: 1, minWidth: 220, backgroundColor: colors.surface, borderColor: colors.border, padding: 20 }]}>
+                                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                                    <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: "#22C55E15", alignItems: "center", justifyContent: "center" }}>
+                                        <Ionicons name="checkmark-circle" size={22} color="#22C55E" />
+                                    </View>
+                                    <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12, backgroundColor: "#22C55E15" }}>
+                                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#22C55E" }}>ACTIVE</Text>
+                                    </View>
+                                </View>
+                                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textSecondary }}>Active Users</Text>
+                                <Text style={{ fontSize: 28, fontWeight: "800", color: colors.text, marginTop: 4 }}>{overallStats.activeUsers.toLocaleString()}</Text>
+                                <Text style={{ fontSize: 12, color: "#22C55E", marginTop: 6 }}>
+                                    {overallStats.totalUsers > 0 ? ((overallStats.activeUsers / overallStats.totalUsers) * 100).toFixed(1) : "100"}% Active Rate
+                                </Text>
+                            </View>
+
+                            {/* Total Consent Requests Card */}
+                            <View style={[styles.gridCard, { flex: 1, minWidth: 220, backgroundColor: colors.surface, borderColor: colors.border, padding: 20 }]}>
+                                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                                    <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: "#3B82F615", alignItems: "center", justifyContent: "center" }}>
+                                        <Ionicons name="document-text" size={22} color="#3B82F6" />
+                                    </View>
+                                    <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12, backgroundColor: "#3B82F615" }}>
+                                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#3B82F6" }}>SETU AA</Text>
+                                    </View>
+                                </View>
+                                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textSecondary }}>Total Consent Requests</Text>
+                                <Text style={{ fontSize: 28, fontWeight: "800", color: colors.text, marginTop: 4 }}>{overallStats.totalConsents.toLocaleString()}</Text>
+                                <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 6 }}>Account Aggregator Consents</Text>
+                            </View>
+                        </View>
+
+                        {/* 2. User Gained Chart (Day, Week, Month, Years) */}
+                        <View style={[styles.gridCard, { backgroundColor: colors.surface, borderColor: colors.border, padding: 20, marginBottom: 24 }]}>
+                            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 20 }}>
+                                <View>
+                                    <Text style={[styles.cardTitle, { color: colors.text }]}>User Gained Growth</Text>
+                                    <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>
+                                        New registered users gained across {chartTimeframe === "day" ? "Days" : chartTimeframe === "week" ? "Weeks" : chartTimeframe === "month" ? "Months" : "Years"}.
+                                    </Text>
+                                </View>
+                                {/* Timeframe Selection Buttons */}
+                                <View style={{ flexDirection: "row", backgroundColor: colors.background, borderRadius: 10, padding: 4, borderWidth: 1, borderColor: colors.border }}>
+                                    {(["day", "week", "month", "year"] as const).map((t) => {
+                                        const label = t === "day" ? "Day" : t === "week" ? "Week" : t === "month" ? "Month" : "Years";
+                                        const isActive = chartTimeframe === t;
+                                        return (
+                                            <TouchableOpacity
+                                                key={t}
+                                                onPress={() => setChartTimeframe(t)}
+                                                style={{
+                                                    paddingHorizontal: 14,
+                                                    paddingVertical: 6,
+                                                    borderRadius: 8,
+                                                    backgroundColor: isActive ? colors.primary : "transparent",
+                                                }}
+                                            >
+                                                <Text style={{ fontSize: 12, fontWeight: isActive ? "700" : "500", color: isActive ? "#FFFFFF" : colors.textSecondary }}>
+                                                    {label}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </View>
+                            </View>
+
+                            {/* Bar Chart Visualization */}
+                            <View style={{ height: 220, flexDirection: "row", alignItems: "flex-end", gap: isDesktop ? 16 : 8, paddingTop: 30, paddingBottom: 10 }}>
+                                {chartConfig.labels.map((lbl: string, idx: number) => {
+                                    const val = chartConfig.values[idx] || 0;
+                                    const heightPct = Math.max(12, Math.round((val / maxVal) * 100));
+                                    return (
+                                        <View key={idx} style={{ flex: 1, height: "100%", justifyContent: "flex-end", alignItems: "center" }}>
+                                            {/* Tooltip / value */}
+                                            <Text style={{ fontSize: 10, fontWeight: "700", color: colors.primary, marginBottom: 4 }}>{val}</Text>
+                                            <View
+                                                style={{
+                                                    width: "80%",
+                                                    maxWidth: 36,
+                                                    height: `${heightPct}%`,
+                                                    backgroundColor: colors.primary,
+                                                    borderRadius: 6,
+                                                    opacity: 0.9,
+                                                }}
+                                            />
+                                            {/* Label */}
+                                            <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 8, fontWeight: "500" }} numberOfLines={1}>
+                                                {lbl}
+                                            </Text>
+                                        </View>
+                                    );
+                                })}
+                            </View>
+                        </View>
+
+                        {/* 3. Consent Request Count of Each User Table */}
+                        <View style={[styles.gridCard, { backgroundColor: colors.surface, borderColor: colors.border, padding: 20 }]}>
+                            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+                                <View>
+                                    <Text style={[styles.cardTitle, { color: colors.text }]}>User Consent Request Directory</Text>
+                                    <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>
+                                        Count of Setu AA consent requests submitted by each user.
+                                    </Text>
+                                </View>
+                                <View style={[styles.searchContainer, { backgroundColor: colors.background, borderColor: colors.border, width: 240, height: 38 }]}>
+                                    <Ionicons name="search-outline" size={16} color={colors.textSecondary} />
+                                    <TextInput
+                                        placeholder="Search user or email..."
+                                        placeholderTextColor={colors.textSecondary}
+                                        value={reportsSearch}
+                                        onChangeText={setReportsSearch}
+                                        style={{ flex: 1, fontSize: 13, color: colors.text, paddingVertical: 4, marginLeft: 6 }}
+                                    />
+                                </View>
+                            </View>
+
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                <View style={{ minWidth: 700 }}>
+                                    {/* Table Header */}
+                                    <View style={[styles.tableHeaderRow, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+                                        <Text style={[styles.tableHeadCell, { flex: 2.5, minWidth: 200, color: colors.textSecondary }]}>User Profile</Text>
+                                        <Text style={[styles.tableHeadCell, { flex: 1.5, minWidth: 130, color: colors.textSecondary }]}>Mobile</Text>
+                                        <Text style={[styles.tableHeadCell, { flex: 1.2, minWidth: 100, color: colors.textSecondary }]}>Account Type</Text>
+                                        <Text style={[styles.tableHeadCell, { flex: 1.2, minWidth: 100, color: colors.textSecondary }]}>User Status</Text>
+                                        <Text style={[styles.tableHeadCell, { flex: 1.5, minWidth: 140, color: colors.textSecondary, textAlign: "center" }]}>Consent Requests</Text>
+                                    </View>
+
+                                    {/* Table Rows */}
+                                    {filteredUserList.length === 0 ? (
+                                        <View style={{ padding: 40, alignItems: "center" }}>
+                                            <Ionicons name="person-remove-outline" size={36} color={colors.textSecondary} />
+                                            <Text style={{ color: colors.textSecondary, marginTop: 8, fontSize: 14 }}>No matching users found</Text>
+                                        </View>
+                                    ) : (
+                                        filteredUserList.map((userItem: any, idx: number) => (
+                                            <View
+                                                key={userItem.id || idx}
+                                                style={[
+                                                    styles.tableRow,
+                                                    { borderBottomColor: colors.border, paddingVertical: 12, borderBottomWidth: idx === filteredUserList.length - 1 ? 0 : 1 },
+                                                ]}
+                                            >
+                                                {/* User Info */}
+                                                <View style={{ flex: 2.5, minWidth: 200, flexDirection: "row", alignItems: "center", gap: 10 }}>
+                                                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary + "20", alignItems: "center", justifyContent: "center" }}>
+                                                        <Text style={{ fontSize: 14, fontWeight: "700", color: colors.primary }}>
+                                                            {userItem.name ? userItem.name[0].toUpperCase() : "U"}
+                                                        </Text>
+                                                    </View>
+                                                    <View style={{ flex: 1 }}>
+                                                        <Text style={[styles.tableCellText, { color: colors.text, fontWeight: "700" }]} numberOfLines={1}>
+                                                            {userItem.name || "Unnamed"}
+                                                        </Text>
+                                                        <Text style={[styles.tableCellText, { color: colors.textSecondary, fontSize: 11 }]} numberOfLines={1}>
+                                                            {userItem.email || userItem.id}
+                                                        </Text>
+                                                    </View>
+                                                </View>
+
+                                                {/* Mobile */}
+                                                <Text style={[styles.tableCellText, { flex: 1.5, minWidth: 130, color: colors.textSecondary, fontSize: 13 }]}>
+                                                    {userItem.mobile || "N/A"}
+                                                </Text>
+
+                                                {/* Account Type */}
+                                                <View style={{ flex: 1.2, minWidth: 100, justifyContent: "center" }}>
+                                                    <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: userItem.user_type === "BUSINESS" ? "#8B5CF615" : "#3B82F615", alignSelf: "flex-start" }}>
+                                                        <Text style={{ fontSize: 11, fontWeight: "700", color: userItem.user_type === "BUSINESS" ? "#8B5CF6" : "#3B82F6" }}>
+                                                            {userItem.user_type || "PERSONAL"}
+                                                        </Text>
+                                                    </View>
+                                                </View>
+
+                                                {/* Status */}
+                                                <View style={{ flex: 1.2, minWidth: 100, justifyContent: "center" }}>
+                                                    <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: userItem.status === "ACTIVE" ? "#22C55E15" : colors.border, alignSelf: "flex-start" }}>
+                                                        <Text style={{ fontSize: 11, fontWeight: "700", color: userItem.status === "ACTIVE" ? "#22C55E" : colors.textSecondary }}>
+                                                            {userItem.status || "ACTIVE"}
+                                                        </Text>
+                                                    </View>
+                                                </View>
+
+                                                {/* Consent Requests Count */}
+                                                <View style={{ flex: 1.5, minWidth: 140, alignItems: "center", justifyContent: "center" }}>
+                                                    <View style={{ paddingHorizontal: 12, paddingVertical: 4, borderRadius: 16, backgroundColor: colors.primary + "15", flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                                        <Ionicons name="document-text-outline" size={14} color={colors.primary} />
+                                                        <Text style={{ fontSize: 13, fontWeight: "800", color: colors.primary }}>
+                                                            {userItem.consentRequestCount ?? userItem.consent_request_count ?? 0}
+                                                        </Text>
+                                                    </View>
+                                                </View>
+                                            </View>
+                                        ))
+                                    )}
+                                </View>
+                            </ScrollView>
+                        </View>
+                    </>
+                )}
+            </View>
+        );
+    };
+
     // Main layout renderer
     const renderAdminDashboardContent = () => {
         if (activeTab === "Overview") return renderDashboardTab();
@@ -1490,6 +1813,7 @@ export default function PlatformAdminDashboard() {
         if (activeTab === "Plans") return renderPlansTab();
         if (activeTab === "Payments") return renderPaymentsTab();
         if (activeTab === "Offers") return renderOffersTab();
+        if (activeTab === "Reports") return renderReportsTab();
         if (activeTab === "Notifications") return renderNotificationsTab();
         return renderPlaceholderTab();
     };

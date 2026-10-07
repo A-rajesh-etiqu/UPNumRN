@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
     SafeAreaView,
     StyleSheet,
@@ -17,6 +17,9 @@ import {
     Typography,
 } from "../theme";
 
+import { useAuthStore } from "../store/auth.store";
+import { useSubscriptionStore } from "../store/subscription.store";
+import apiClient from "../api/apiClient";
 import { SUBSCRIPTION_PLANS } from "../constants/subscription";
 
 function resolvePlanDetails(planId?: string) {
@@ -49,6 +52,47 @@ export default function PaymentSuccessScreen() {
     const fallbackPlan = resolvePlanDetails(planId);
     const finalPlanName = paramPlanName || fallbackPlan.name;
     const finalPrice = paramAmount !== undefined ? parseFloat(paramAmount) : fallbackPlan.price;
+
+    useEffect(() => {
+        const activeSub = {
+            id: String(planId || fallbackPlan.id),
+            name: finalPlanName,
+            price: finalPrice,
+            currency: "INR" as const,
+            billingCycle: fallbackPlan.billingCycle,
+            isLifetimeOffer: fallbackPlan.isLifetimeOffer,
+            status: "ACTIVE",
+        };
+
+        // 1. Automatically Update Auth Store User Subscription
+        const currentUser = useAuthStore.getState().user;
+        if (currentUser) {
+            useAuthStore.getState().updateUser({
+                ...currentUser,
+                subscription: activeSub,
+            });
+        }
+
+        // 2. Automatically Update Subscription Store
+        useSubscriptionStore.getState().setSubscription({
+            planId: String(planId || fallbackPlan.id),
+            planName: finalPlanName,
+            active: true,
+            purchasedAt: new Date().toISOString(),
+            expiresAt: fallbackPlan.isLifetimeOffer
+                ? null
+                : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        });
+
+        // 3. Persist Active Subscription to Backend Server Database
+        if (currentUser?.id) {
+            apiClient.post("/subscriptions/update", {
+                userId: currentUser.id,
+                planId: String(planId || fallbackPlan.id),
+                status: "ACTIVE",
+            }).catch(err => console.warn("Backend subscription update failed:", err));
+        }
+    }, [planId, finalPlanName, finalPrice]);
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -100,21 +144,6 @@ export default function PaymentSuccessScreen() {
                 <TouchableOpacity
                     style={[styles.button, { backgroundColor: colors.primary }]}
                     onPress={() => {
-                        const { user, updateUser } = require("../store/auth.store").useAuthStore.getState();
-                        if (user) {
-                            updateUser({
-                                ...user,
-                                subscription: {
-                                    id: String(planId || fallbackPlan.id),
-                                    name: finalPlanName,
-                                    price: finalPrice,
-                                    currency: "INR",
-                                    billingCycle: fallbackPlan.billingCycle,
-                                    isLifetimeOffer: fallbackPlan.isLifetimeOffer,
-                                    status: "ACTIVE"
-                                }
-                            });
-                        }
                         router.replace("/tabs/dashboard");
                     }}
                 >
@@ -126,6 +155,7 @@ export default function PaymentSuccessScreen() {
         </SafeAreaView>
     );
 }
+
 
 const styles = StyleSheet.create({
     container: {

@@ -9,7 +9,7 @@ import {
     Platform,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { Colors, Radius, Spacing } from "../../theme";
+import { Colors, Radius, Spacing, Typography } from "../../theme";
 
 interface Props extends Omit<TextInputProps, "onChangeText"> {
     label?: string;
@@ -84,6 +84,7 @@ const styles = StyleSheet.create({
     },
 
     label: {
+        ...Typography.bodySmall,
         marginBottom: 8,
         fontWeight: "600",
         color: Colors.text,
@@ -101,6 +102,7 @@ const styles = StyleSheet.create({
     },
 
     input: {
+        ...Typography.input,
         flex: 1,
         marginLeft: 12,
         fontSize: 16,
@@ -111,4 +113,4 @@ const styles = StyleSheet.create({
             } as any,
         }),
     },
-});
+});

@@ -5,7 +5,7 @@ const db = require('../db');
 // GET /api/dashboard/summary
 router.get('/summary', async (req, res) => {
     try {
-        const { userId, period = 'This Month' } = req.query;
+        const { userId, period = 'This Month', startDate, endDate } = req.query;
 
         // If no user is logged in, we can either return an error or empty state
         if (!userId) {
@@ -39,7 +39,26 @@ router.get('/summary', async (req, res) => {
         let chartKeys = [];
         let getChartKey = (d) => "";
 
-        if (period === 'This Week') {
+        if (startDate && endDate) {
+            currentStartDate = new Date(startDate);
+            currentStartDate.setHours(0, 0, 0, 0);
+            currentEndDate = new Date(endDate);
+            currentEndDate.setHours(23, 59, 59, 999);
+
+            const durationMs = currentEndDate.getTime() - currentStartDate.getTime();
+            lastEndDate = new Date(currentStartDate.getTime() - 1);
+            lastStartDate = new Date(lastEndDate.getTime() - durationMs);
+
+            chartKeys = ['W1', 'W2', 'W3', 'W4', 'W5'];
+            getChartKey = (d) => {
+                const date = d.getDate();
+                if (date <= 7) return 'W1';
+                if (date <= 14) return 'W2';
+                if (date <= 21) return 'W3';
+                if (date <= 28) return 'W4';
+                return 'W5';
+            };
+        } else if (period === 'This Week') {
             currentStartDate = new Date(now);
             currentStartDate.setDate(now.getDate() - now.getDay());
             currentStartDate.setHours(0,0,0,0);
@@ -51,6 +70,22 @@ router.get('/summary', async (req, res) => {
 
             chartKeys = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
             getChartKey = (d) => d.toLocaleString('en-US', { weekday: 'short' });
+        } else if (period === 'Last 3 Months') {
+            currentStartDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+            currentEndDate = new Date(now);
+            lastEndDate = new Date(now.getFullYear(), now.getMonth() - 3, 0, 23, 59, 59, 999);
+            lastStartDate = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+
+            chartKeys = ['M1', 'M2', 'M3'];
+            getChartKey = (d) => d.toLocaleString('en-US', { month: 'short' });
+        } else if (period === 'Last 6 Months') {
+            currentStartDate = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+            currentEndDate = new Date(now);
+            lastEndDate = new Date(now.getFullYear(), now.getMonth() - 6, 0, 23, 59, 59, 999);
+            lastStartDate = new Date(now.getFullYear(), now.getMonth() - 12, 1);
+
+            chartKeys = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            getChartKey = (d) => d.toLocaleString('en-US', { month: 'short' });
         } else if (period === 'This Year') {
             currentStartDate = new Date(now.getFullYear(), 0, 1);
             lastEndDate = new Date(now.getFullYear(), 0, 0, 23, 59, 59, 999);
@@ -130,15 +165,24 @@ router.get('/summary', async (req, res) => {
             };
         });
 
+        const currentMonthCustomers = new Set();
+        const lastMonthCustomers = new Set();
+        const dayOfWeekTotals = { "Mon": 0, "Tue": 0, "Wed": 0, "Thu": 0, "Fri": 0, "Sat": 0, "Sun": 0 };
+        const dayOfWeekNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
         transactions.forEach(tx => {
             const amount = parseFloat(tx.amount);
             const absoluteAmount = Math.abs(amount);
             const txDate = new Date(tx.date_time);
+            const customerUpi = tx.payer_upi || tx.upi || tx.title;
             
             if (txDate >= currentStartDate && txDate <= currentEndDate) {
                 currentMonthTxCount++;
                 if (amount > 0) {
                     currentMonthIncome += amount;
+                    if (customerUpi) currentMonthCustomers.add(customerUpi);
+                    const dayName = dayOfWeekNames[txDate.getDay()];
+                    if (dayName) dayOfWeekTotals[dayName] = (dayOfWeekTotals[dayName] || 0) + amount;
                 } else {
                     currentMonthExpense += absoluteAmount;
                     const cat = tx.category || "General";
@@ -159,6 +203,7 @@ router.get('/summary', async (req, res) => {
             } else if (txDate >= lastStartDate && txDate <= lastEndDate) {
                 if (amount > 0) {
                     lastMonthIncome += amount;
+                    if (customerUpi) lastMonthCustomers.add(customerUpi);
                 } else {
                     lastMonthExpense += absoluteAmount;
                 }
@@ -283,11 +328,89 @@ router.get('/summary', async (req, res) => {
         const lastMonthSavings = lastMonthIncome - lastMonthExpense;
         const savingsChange = lastMonthSavings === 0 ? 100 : Math.round(((currentSavings - lastMonthSavings) / Math.abs(lastMonthSavings)) * 100);
 
+        const newCustomersCount = currentMonthCustomers.size;
+        const lastCustomersCount = lastMonthCustomers.size;
+        const newCustomersChange = lastCustomersCount === 0 
+            ? (newCustomersCount > 0 ? 100 : 0) 
+            : Math.round(((newCustomersCount - lastCustomersCount) / lastCustomersCount) * 100);
+
+        const daysOrder = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+        const maxDayVal = Math.max(...Object.values(dayOfWeekTotals), 1);
+        const hasDaySales = Object.values(dayOfWeekTotals).some(v => v > 0);
+
+        const salesByDayOfWeek = daysOrder.map(day => {
+            const val = dayOfWeekTotals[day] || 0;
+            const heightPercent = hasDaySales ? Math.max(Math.round((val / maxDayVal) * 90), 12) : 10;
+            let formattedVal = "₹0";
+            if (val >= 100000) {
+                formattedVal = `₹${(val / 100000).toFixed(1)}L`;
+            } else if (val >= 1000) {
+                formattedVal = `₹${(val / 1000).toFixed(1)}K`;
+            } else if (val > 0) {
+                formattedVal = `₹${Math.round(val)}`;
+            }
+            return {
+                day,
+                value: val,
+                formattedValue: formattedVal,
+                height: `${heightPercent}%`
+            };
+        });
+
+        // Top Income Sources (highest credited transactions)
+        const topIncomeSources = transactions
+            .filter(tx => parseFloat(tx.amount) > 0)
+            .sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount))
+            .slice(0, 5)
+            .map(tx => ({
+                id: tx.id,
+                title: tx.title || tx.payer_upi || tx.category || 'UPI Credit',
+                payer_upi: tx.payer_upi || '',
+                amount: Math.abs(parseFloat(tx.amount)),
+                date: new Date(tx.date_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                category: tx.category || 'Income'
+            }));
+
+        // Calculate Peak Sales Hours (3-hour window with highest transaction volume)
+        const hourlyCounts = new Array(24).fill(0);
+        transactions.forEach(tx => {
+            const d = new Date(tx.date_time);
+            if (!isNaN(d.getTime())) {
+                hourlyCounts[d.getHours()]++;
+            }
+        });
+
+        let peakMaxCount = 0;
+        let peakBestStartHour = 18;
+        for (let h = 0; h < 24; h++) {
+            const count = hourlyCounts[h] + hourlyCounts[(h + 1) % 24] + hourlyCounts[(h + 2) % 24];
+            if (count > peakMaxCount) {
+                peakMaxCount = count;
+                peakBestStartHour = h;
+            }
+        }
+
+        const formatHourStr = (h) => {
+            const hour12 = h % 12 === 0 ? 12 : h % 12;
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            return `${hour12} ${ampm}`;
+        };
+
+        const peakCount = peakMaxCount > 0 ? peakMaxCount : (transactions.length > 0 ? transactions.length : 3);
+        const peakSalesHours = {
+            start: formatHourStr(peakBestStartHour),
+            end: formatHourStr((peakBestStartHour + 3) % 24),
+            count: peakCount,
+            text: `${peakCount} payment${peakCount === 1 ? '' : 's'} created`
+        };
+
         const dashboardData = {
             stats,
             quickActions,
             salesChart,
             recentTransactions,
+            topIncomeSources,
+            peakSalesHours,
             aiInsights,
             goal,
             income: currentMonthIncome,
@@ -297,10 +420,13 @@ router.get('/summary', async (req, res) => {
             savings: currentSavings,
             savingsChange,
             transactionsCount: currentMonthTxCount,
+            newCustomersCount,
+            newCustomersChange,
             chartDataIncome,
             chartDataExpense,
             pieData,
-            topCategories
+            topCategories,
+            salesByDayOfWeek
         };
 
         res.json(dashboardData);

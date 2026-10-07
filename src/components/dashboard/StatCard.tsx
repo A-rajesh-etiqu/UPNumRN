@@ -82,7 +82,7 @@ export default function StatCard({
                 </View>
             </View>
 
-            <Text style={[styles.value, { color: colors.text, ...Typography.h2, fontSize: 28 }]}>
+            <Text style={[styles.value, { color: colors.text, ...Typography.kpi }]}>
                 {stat.value}
             </Text>
 
@@ -122,12 +122,13 @@ const styles = StyleSheet.create({
         borderRadius: Radius.full ?? 999,
     },
     change: {
+        ...Typography.caption,
         marginLeft: 4,
         fontWeight: "700",
         fontSize: 12,
     },
     value: {
-        ...Typography.h2,
+        ...Typography.kpi,
         marginTop: 20,
     },
     title: {

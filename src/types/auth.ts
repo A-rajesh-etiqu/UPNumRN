@@ -12,9 +12,9 @@ export interface SubscriptionPlan {
     id: string;
     name: string;
     price: number;
-    currency: "INR";
-    billingCycle: BillingCycle;
-    isLifetimeOffer: boolean;
+    currency?: "INR";
+    billingCycle?: string;
+    isLifetimeOffer?: boolean;
     expiresAt?: string | null;
     status?: string;
 }
@@ -41,6 +41,7 @@ export interface User {
     isVerified: boolean;
     isUpiVerified: boolean;
 
+    planId?: string;
     subscription: SubscriptionPlan;
 
     createdAt: string;

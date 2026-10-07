@@ -248,20 +248,27 @@ export default function DashboardScreen() {
 
                         {/* Filter Dropdown */}
                         {isFilterMenuVisible && (
-                            <View style={{ position: "absolute", top: 40, left: 0, width: 160, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 12, padding: 8, zIndex: 1000, ...Platform.select({ web: { boxShadow: '0 4px 12px rgba(0,0,0,0.1)' } as any, default: { elevation: 5, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } } }) }}>
-                                {["This Week", "This Month", "Last Month", "This Year", "All Time"].map((period) => (
-                                    <TouchableOpacity
-                                        key={period}
-                                        style={styles.dropdownItem}
-                                        onPress={() => {
-                                            setFilterPeriod(period);
-                                            setIsFilterMenuVisible(false);
-                                        }}
-                                    >
-                                        <Text style={[styles.dropdownText, { color: filterPeriod === period ? colors.primary : colors.text, ...(filterPeriod === period ? Typography.bodyBold : Typography.bodyMedium) }]}>{period}</Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
+                            <>
+                                <TouchableOpacity
+                                    style={styles.dropdownOverlay}
+                                    activeOpacity={1}
+                                    onPress={() => setIsFilterMenuVisible(false)}
+                                />
+                                <View style={{ position: "absolute", top: 40, left: 0, width: 160, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 12, padding: 8, zIndex: 1000, ...Platform.select({ web: { boxShadow: '0 4px 12px rgba(0,0,0,0.1)' } as any, default: { elevation: 5, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } } }) }}>
+                                    {["This Week", "This Month", "Last Month", "This Year", "All Time"].map((period) => (
+                                        <TouchableOpacity
+                                            key={period}
+                                            style={styles.dropdownItem}
+                                            onPress={() => {
+                                                setFilterPeriod(period);
+                                                setIsFilterMenuVisible(false);
+                                            }}
+                                        >
+                                            <Text style={[styles.dropdownText, { color: filterPeriod === period ? colors.primary : colors.text, ...(filterPeriod === period ? Typography.bodyBold : Typography.bodyMedium) }]}>{period}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            </>
                         )}
                     </View>
 
@@ -539,6 +546,7 @@ function BusinessDashboard({ data, recentTransactions }: { data: any, recentTran
     const { colors, isDark } = useAppTheme();
     const { width } = useWindowDimensions();
     const isDesktop = width >= 1024;
+    const [salesChartWidth, setSalesChartWidth] = useState(0);
 
     const localStyles = {
         iconCircle: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center' as const, alignItems: 'center' as const },
@@ -562,6 +570,57 @@ function BusinessDashboard({ data, recentTransactions }: { data: any, recentTran
     const expenseChange = data?.expenseChange ?? 0;
     const savingsChange = data?.savingsChange ?? 0;
 
+    const topIncomeSources = useMemo(() => {
+        if (data?.topIncomeSources && data.topIncomeSources.length > 0) {
+            return data.topIncomeSources;
+        }
+        const credited = (recentTransactions || [])
+            .filter((tx: any) => tx.type === 'income' || tx.amount > 0)
+            .sort((a: any, b: any) => Math.abs(b.amount) - Math.abs(a.amount));
+        return credited.slice(0, 4);
+    }, [data?.topIncomeSources, recentTransactions]);
+
+    const peakSales = useMemo(() => {
+        if (data?.peakSalesHours) {
+            return data.peakSalesHours;
+        }
+
+        const hourlyCounts = new Array(24).fill(0);
+        (recentTransactions || []).forEach((tx: any) => {
+            const rawDate = tx.date_time || tx.date;
+            if (rawDate) {
+                const d = new Date(rawDate);
+                if (!isNaN(d.getTime())) {
+                    hourlyCounts[d.getHours()]++;
+                }
+            }
+        });
+
+        let maxCount = 0;
+        let bestStartHour = 18;
+        for (let h = 0; h < 24; h++) {
+            const count = hourlyCounts[h] + hourlyCounts[(h + 1) % 24] + hourlyCounts[(h + 2) % 24];
+            if (count > maxCount) {
+                maxCount = count;
+                bestStartHour = h;
+            }
+        }
+
+        const formatH = (h: number) => {
+            const hour12 = h % 12 === 0 ? 12 : h % 12;
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            return `${hour12} ${ampm}`;
+        };
+
+        const count = maxCount > 0 ? maxCount : (recentTransactions?.length || 3);
+        return {
+            start: formatH(bestStartHour),
+            end: formatH((bestStartHour + 3) % 24),
+            count: count,
+            text: `${count} payment${count === 1 ? '' : 's'} created`
+        };
+    }, [data?.peakSalesHours, recentTransactions]);
+
     return (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
             {/* KPI Grid */}
@@ -572,39 +631,45 @@ function BusinessDashboard({ data, recentTransactions }: { data: any, recentTran
                 <ReportCard title="Transactions" value={txCount.toString()} icon="calendar-outline" color="#F59E0B" change="10%" isUp={true} isDesktop={isDesktop} colors={colors} />
             </View>
 
-            {/* Sales Performance */}
-            <SectionCard>
-                <SectionHeader title="Sales Performance" />
-                <View style={{ marginTop: 16, overflow: 'hidden' }}>
-                    <LineChart
-                        data={chartDataSales}
-                        height={180}
-                        width={width - 80}
-                        showVerticalLines={false}
-                        color1="#6C2CF4"
-                        dataPointsColor1="#6C2CF4"
-                        thickness1={3}
-                        maxValue={chartAxisProps.maxValue}
-                        stepValue={chartAxisProps.stepValue}
-                        noOfSections={chartAxisProps.noOfSections}
-                        formatYLabel={formatYAxisLabel}
-                        yAxisColor="transparent"
-                        xAxisColor="transparent"
-                        hideRules={false}
-                        rulesColor={isDark ? "#334155" : "#F1F5F9"}
-                        yAxisTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
-                        xAxisLabelTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
-                        areaChart
-                        startFillColor1="#6C2CF4"
-                        endFillColor1="#6C2CF4"
-                        startOpacity1={0.3}
-                        endOpacity1={0.0}
-                    />
-                </View>
-            </SectionCard>
+            {/* Row 1: Sales Performance & Sales by Day */}
+            <View style={{ flexDirection: width >= 768 ? "row" : "column", gap: 16, marginBottom: 16 }}>
+                <SectionCard style={{ flex: 1 }}>
+                    <SectionHeader title="Sales Performance" />
+                    <View
+                        style={{ marginTop: 16, overflow: 'hidden' }}
+                        onLayout={(e) => setSalesChartWidth(e.nativeEvent.layout.width)}
+                    >
+                        <LineChart
+                            data={chartDataSales}
+                            height={180}
+                            width={salesChartWidth || (width >= 768 ? Math.max(240, (width - 160) / 2) : Math.max(240, width - 80))}
+                            spacing={salesChartWidth > 0 && chartDataSales.length > 1 ? (salesChartWidth - 60) / (chartDataSales.length - 1) : 60}
+                            initialSpacing={15}
+                            endSpacing={15}
+                            adjustToWidth={true}
+                            showVerticalLines={false}
+                            color1="#6C2CF4"
+                            dataPointsColor1="#6C2CF4"
+                            thickness1={3}
+                            maxValue={chartAxisProps.maxValue}
+                            stepValue={chartAxisProps.stepValue}
+                            noOfSections={chartAxisProps.noOfSections}
+                            formatYLabel={formatYAxisLabel}
+                            yAxisColor="transparent"
+                            xAxisColor="transparent"
+                            hideRules={false}
+                            rulesColor={isDark ? "#334155" : "#F1F5F9"}
+                            yAxisTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
+                            xAxisLabelTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
+                            areaChart
+                            startFillColor1="#6C2CF4"
+                            endFillColor1="#6C2CF4"
+                            startOpacity1={0.3}
+                            endOpacity1={0.0}
+                        />
+                    </View>
+                </SectionCard>
 
-            <View style={{ flexDirection: width >= 768 ? "row" : "column", gap: 16 }}>
-                {/* Sales by Day (Histogram Text Mock) */}
                 <SectionCard style={{ flex: 1 }}>
                     <SectionHeader title="Sales by Day" />
                     <View style={styles.histogramList}>
@@ -617,41 +682,59 @@ function BusinessDashboard({ data, recentTransactions }: { data: any, recentTran
                         <View style={styles.histogramRow}><Text style={[styles.histLabel, { color: colors.textSecondary }]}>Sun</Text><View style={[styles.histBar, { width: '50%', backgroundColor: '#C4B5FD' }]}></View></View>
                     </View>
                 </SectionCard>
+            </View>
 
-                {/* Peak Sales Hours */}
+            {/* Row 2: Peak Sales Hours & Top Income Sources */}
+            <View style={{ flexDirection: width >= 768 ? "row" : "column", gap: 16, marginBottom: 16 }}>
                 <SectionCard style={{ flex: 1, justifyContent: "center" }}>
                     <SectionHeader title="Peak Sales Hours" />
-                    <View style={{ alignItems: "center", paddingVertical: 32 }}>
+                    <View style={{ alignItems: "center", paddingVertical: 24 }}>
                         <View style={{ flexDirection: "row", alignItems: "center" }}>
-                            <Text style={[styles.peakTimeText, { color: colors.text }]}>6 PM</Text>
-                            <View style={{ height: 2, backgroundColor: "#6C2CF4", width: 60, marginHorizontal: 12 }} />
-                            <Text style={[styles.peakTimeText, { color: colors.text }]}>9 PM</Text>
+                            <Text style={[styles.peakTimeText, { color: colors.text, fontSize: 20, fontWeight: "700" }]}>{peakSales.start}</Text>
+                            <View style={{ height: 2, backgroundColor: "#6C2CF4", width: 50, marginHorizontal: 12 }} />
+                            <Text style={[styles.peakTimeText, { color: colors.text, fontSize: 20, fontWeight: "700" }]}>{peakSales.end}</Text>
                         </View>
-                        <Text style={{ fontSize: 24, marginTop: 12 }}>🔥</Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 14, backgroundColor: isDark ? "#1E1B4B" : "#F5F3FF", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: colors.border }}>
+                            <Text style={{ fontSize: 14 }}>🔥</Text>
+                            <Text style={{ fontSize: 12, fontWeight: "600", color: "#8B5CF6" }}>
+                                {peakSales.count} payment{peakSales.count === 1 ? '' : 's'} created
+                            </Text>
+                        </View>
+                    </View>
+                </SectionCard>
+
+                <SectionCard style={{ flex: 1 }}>
+                    <SectionHeader title="Top Income Sources" />
+                    <View style={styles.listContainer}>
+                        {topIncomeSources.length > 0 ? (
+                            topIncomeSources.map((source: any, idx: number) => (
+                                <View key={source.id || idx} style={styles.listItemRow}>
+                                    <View style={{ flex: 1, marginRight: 8 }}>
+                                        <Text style={[styles.listLabelText, { color: colors.text }]} numberOfLines={1}>
+                                            {source.title || source.payer_upi || "UPI Credit"}
+                                        </Text>
+                                        {source.date && (
+                                            <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>
+                                                {source.date} {source.category ? `• ${source.category}` : ''}
+                                            </Text>
+                                        )}
+                                    </View>
+                                    <Text style={[styles.listAmount, { color: colors.success, fontWeight: "700" }]}>
+                                        +₹{Math.abs(source.amount).toLocaleString('en-IN')}
+                                    </Text>
+                                </View>
+                            ))
+                        ) : (
+                            <Text style={{ color: colors.textSecondary, textAlign: 'center', marginVertical: 12 }}>
+                                No credited transactions found
+                            </Text>
+                        )}
                     </View>
                 </SectionCard>
             </View>
 
-            {/* Income and Expenses Breakdown */}
-            <View style={{ flexDirection: width >= 768 ? "row" : "column", gap: 16 }}>
-                <SectionCard style={{ flex: 1 }}>
-                    <SectionHeader title="Top Income Sources" />
-                    <View style={styles.listContainer}>
-                        <View style={styles.listItemRow}>
-                            <Text style={[styles.listLabelText, { color: colors.text }]}>ABC Store</Text>
-                            <Text style={[styles.listAmount, { color: colors.text }]}>₹45,000</Text>
-                        </View>
-                        <View style={styles.listItemRow}>
-                            <Text style={[styles.listLabelText, { color: colors.text }]}>XYZ Customer</Text>
-                            <Text style={[styles.listAmount, { color: colors.text }]}>₹31,500</Text>
-                        </View>
-                        <View style={styles.listItemRow}>
-                            <Text style={[styles.listLabelText, { color: colors.text }]}>Online Sales</Text>
-                            <Text style={[styles.listAmount, { color: colors.text }]}>₹28,200</Text>
-                        </View>
-                    </View>
-                </SectionCard>
-
+            {/* Row 3: Expense Breakdown & AI Business Insights */}
+            <View style={{ flexDirection: width >= 768 ? "row" : "column", gap: 16, marginBottom: 16 }}>
                 <SectionCard style={{ flex: 1 }}>
                     <SectionHeader title="Expense Breakdown" />
                     <View style={styles.listContainer}>
@@ -673,22 +756,21 @@ function BusinessDashboard({ data, recentTransactions }: { data: any, recentTran
                         </View>
                     </View>
                 </SectionCard>
-            </View>
 
-            {/* AI Insight */}
-            <View style={[styles.aiInsightCard, { backgroundColor: isDark ? "#172554" : "#DBEAFE" }]}>
-                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-                    <Text style={[styles.aiInsightTitle, { color: "#2563EB" }]}>AI Business Insights ✨</Text>
+                <View style={[{ flex: 1 }, styles.aiInsightCard, { backgroundColor: isDark ? "#172554" : "#DBEAFE", marginBottom: 0 }]}>
+                    <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+                        <Text style={[styles.aiInsightTitle, { color: "#2563EB" }]}>AI Business Insights ✨</Text>
+                    </View>
+                    <Text style={[styles.aiInsightText, { color: isDark ? "#BFDBFE" : "#1E3A8A", marginBottom: 12 }]}>
+                        "Saturday generates 31% of your weekly sales."
+                    </Text>
+                    <Text style={[styles.aiInsightText, { color: isDark ? "#BFDBFE" : "#1E3A8A" }]}>
+                        "Your peak sales period is 6 PM–9 PM."
+                    </Text>
+                    <TouchableOpacity style={styles.aiInsightBtn} onPress={() => router.push("/tabs/dashboard/ai-insights" as any)}>
+                        <Text style={{ color: "#2563EB", fontWeight: "700", fontSize: 13 }}>View Full Analysis</Text>
+                    </TouchableOpacity>
                 </View>
-                <Text style={[styles.aiInsightText, { color: isDark ? "#BFDBFE" : "#1E3A8A", marginBottom: 12 }]}>
-                    "Saturday generates 31% of your weekly sales."
-                </Text>
-                <Text style={[styles.aiInsightText, { color: isDark ? "#BFDBFE" : "#1E3A8A" }]}>
-                    "Your peak sales period is 6 PM–9 PM."
-                </Text>
-                <TouchableOpacity style={styles.aiInsightBtn}>
-                    <Text style={{ color: "#2563EB", fontWeight: "700", fontSize: 13 }}>View Full Analysis</Text>
-                </TouchableOpacity>
             </View>
 
             {/* Recent Transactions */}
@@ -799,10 +881,13 @@ const styles = StyleSheet.create({
         alignItems: "center",
     },
     dropdownOverlay: {
-        flex: 1,
-        backgroundColor: "rgba(0,0,0,0.1)",
-        justifyContent: "flex-start",
-        alignItems: "flex-end",
+        position: "absolute",
+        top: -1000,
+        bottom: -1000,
+        left: -1000,
+        right: -1000,
+        backgroundColor: "transparent",
+        zIndex: 999,
     },
     profileDropdown: {
         marginTop: 80,
