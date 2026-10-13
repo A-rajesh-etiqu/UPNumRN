@@ -39,6 +39,7 @@ export default function AuthLayout({
                         <ScrollView
                             keyboardShouldPersistTaps="handled"
                             contentContainerStyle={styles.formContainer}
+                            showsVerticalScrollIndicator={false}
                         >
                             {children}
                         </ScrollView>
@@ -88,12 +89,13 @@ const styles = StyleSheet.create({
     rightPanel: {
         flex: 0.9,
         backgroundColor: "#FFFFFF",
+        justifyContent: "center",
     },
     formContainer: {
         flexGrow: 1,
         justifyContent: "center",
-        paddingHorizontal: 70,
-        paddingVertical: 20,
+        paddingHorizontal: 60,
+        paddingVertical: 16,
     },
     mobileContainer: {
         flex: 1,

@@ -18,6 +18,9 @@ module.exports = function (api) {
     ]);
   }
 
+  // react-native-reanimated/plugin must be the last one
+  plugins.push('react-native-reanimated/plugin');
+
   return {
     presets: ['babel-preset-expo', 'nativewind/babel'],
     plugins,

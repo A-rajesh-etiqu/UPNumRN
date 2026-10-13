@@ -16,7 +16,7 @@ export default function FeatureItem({
     return (
         <View style={styles.container}>
             <View style={styles.iconContainer}>
-                <Ionicons name={icon} size={22} color="#FFFFFF" />
+                <Ionicons name={icon} size={18} color="#FFFFFF" />
             </View>
 
             <View style={styles.content}>
@@ -31,17 +31,17 @@ const styles = StyleSheet.create({
     container: {
         flexDirection: "row",
         alignItems: "center",
-        marginTop: 28,
+        marginTop: 10,
     },
 
     iconContainer: {
-        width: 56,
-        height: 56,
-        borderRadius: 16,
+        width: 36,
+        height: 36,
+        borderRadius: 10,
         backgroundColor: "rgba(255,255,255,0.15)",
         justifyContent: "center",
         alignItems: "center",
-        marginRight: 18,
+        marginRight: 12,
     },
 
     content: {
@@ -51,13 +51,13 @@ const styles = StyleSheet.create({
     title: {
         color: "#FFFFFF",
         fontWeight: "700",
-        fontSize: 18,
+        fontSize: 14,
     },
 
     description: {
         color: "rgba(255,255,255,0.82)",
-        marginTop: 4,
-        lineHeight: 22,
-        fontSize: 15,
+        marginTop: 2,
+        lineHeight: 16,
+        fontSize: 12,
     },
 });

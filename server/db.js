@@ -241,7 +241,7 @@ async function seedDatabase() {
         `);
         await connection.query(`
             INSERT IGNORE INTO profiles (user_id, business_name, category, city, language, currency)
-            VALUES ('user-1', 'Amit Retailers', 'Shopping', 'Mumbai', 'English (India)', 'INR - Indian Rupee (₹)');
+            VALUES ('user-1', 'Amit Retailers', 'Shopping', 'Mumbai', 'English (India)', 'INR - Indian Rupee');
         `);
         await connection.query(`
             INSERT IGNORE INTO upi_accounts (user_id, upi_id, verified, primary_flag)

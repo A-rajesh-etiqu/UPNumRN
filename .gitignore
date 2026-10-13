@@ -79,3 +79,6 @@ yarn-error.log
 .env
 .env.*
 !.env.example
+
+# Ignore zip files to prevent large file uploads
+*.zip

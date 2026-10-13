@@ -115,6 +115,36 @@ const AdminRoute = () => (
   </AdminLayout>
 );
 
+const ROUTE_TITLES: Record<string, string> = {
+  '/': 'Home',
+  '/auth': 'Sign In',
+  '/auth/login': 'Login',
+  '/auth/signup': 'Sign Up',
+  '/auth/otp': 'Verify OTP',
+  '/auth/verify-upi': 'Verify UPI',
+  '/auth/forgot-password': 'Forgot Password',
+  '/tabs': 'Dashboard',
+  '/tabs/dashboard': 'Dashboard',
+  '/tabs/transactions': 'Transactions',
+  '/tabs/customers': 'Customers',
+  '/tabs/reports': 'Reports',
+  '/tabs/settings': 'Settings',
+  '/tabs/subscription': 'Subscriptions',
+  '/tabs/subscription/history': 'Billing History',
+  '/tabs/dashboard/ai-insights': 'AI Insights',
+  '/admin': 'Admin Portal',
+  '/payment': 'Payment',
+  '/payment-success': 'Payment Successful',
+};
+
+const formatRouteName = (name: string): string => {
+  const segment = name.split('/').filter(Boolean).pop() || '';
+  return segment
+    .split('-')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
 export default function App() {
   const [fontsLoaded] = useFonts({
     Poppins_400Regular,
@@ -136,7 +166,22 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <SafeAreaProvider>
           <AuthProvider>
-            <NavigationContainer ref={navigationRef}>
+            <NavigationContainer
+              ref={navigationRef}
+              documentTitle={{
+                formatter: (options, route) => {
+                  const title =
+                    options?.title ||
+                    ROUTE_TITLES[route?.name ?? ''] ||
+                    (route?.name ? formatRouteName(route.name) : '');
+
+                  if (!title || title === 'Home' || title === '/') {
+                    return 'UpNum';
+                  }
+                  return `${title} | UpNum`;
+                },
+              }}
+            >
               <Stack.Navigator screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="/" component={IndexScreen} />
                 <Stack.Screen name="/auth" component={AuthNavigator} />
