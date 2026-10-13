@@ -19,6 +19,10 @@ import DashboardHeader from "../../../components/layout/DashboardHeader";
 import { useAppTheme, Spacing, Shadows } from "../../../theme";
 import { useAuthStore } from "../../../store/auth.store";
 import { ENV } from "../../../config/env";
+import {
+    loadRazorpayCheckoutScript,
+    launchDirectRazorpayCheckout,
+} from "../../../services/razorpay.service";
 
 const DEFAULT_PLANS = [
     { id: 1, name: "Free Tier", type: "Basic Features", price: 0, billing: "Monthly", status: "Active", subscribers: 12543, description: "Basic Dashboard Features,100 Transactions/mo,Community Support,Standard Data Backups" },
@@ -57,6 +61,8 @@ export default function SubscriptionIndexScreen() {
     const [plans, setPlans] = useState<any[]>([]);
     const [loadingPlans, setLoadingPlans] = useState(true);
     const [copied, setCopied] = useState(false);
+    const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+    const [processingPlanId, setProcessingPlanId] = useState<string | null>(null);
 
     // Carousel state & ref
     const [carouselIndex, setCarouselIndex] = useState(0);
@@ -64,11 +70,15 @@ export default function SubscriptionIndexScreen() {
 
     const { width } = useWindowDimensions();
     const isDesktop = width >= 960;
-    const { user } = useAuthStore();
+    const { user, updateUser } = useAuthStore();
     const { colors, isDark } = useAppTheme();
 
     const isBusinessUser = user?.userType === "BUSINESS";
     const userEmailOrHandle = user?.email || user?.mobile || "you@upi";
+
+    useEffect(() => {
+        loadRazorpayCheckoutScript();
+    }, []);
 
     useEffect(() => {
         let isMounted = true;
@@ -163,22 +173,131 @@ export default function SubscriptionIndexScreen() {
         return `${day} ${month}, ${year}`;
     };
 
-    const handleSubscribe = (planIdToSub?: string) => {
+    const handleSubscribe = async (planIdToSub?: string) => {
         const targetId = planIdToSub || selectedPlanId;
         if (!targetId) {
             Alert.alert("Select a Plan", "Please choose a plan before continuing.");
             return;
         }
+
+        if (!user?.id) {
+            Alert.alert(
+                "Sign In Required",
+                "Please sign in or create an account to activate a subscription.",
+                [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Sign In", onPress: () => router.push("/auth/login") }
+                ]
+            );
+            return;
+        }
+
         const targetPlan = plans.find(p => p.id.toString() === targetId) || selectedPlan;
         const checkoutAmt = targetPlan ? (parseFloat(targetPlan.price) || 0) : 50;
-        const cycle = targetPlan && (targetPlan.billing || "").toLowerCase() === "yearly" ? "yearly" : "monthly";
 
-        router.push("/payment", {
-            planId: targetId,
-            amount: String(checkoutAmt),
-            planName: targetPlan?.name || "Selected Plan",
-            billingCycle: cycle,
-        });
+        setIsProcessingPayment(true);
+        setProcessingPlanId(targetId);
+
+        try {
+            // 1. If Free Plan (₹0), activate directly
+            if (checkoutAmt === 0) {
+                const newSubscription = {
+                    id: String(targetId),
+                    name: targetPlan?.name || "Free Tier",
+                    price: 0,
+                    currency: "INR" as const,
+                    billingCycle: "MONTHLY",
+                    isLifetimeOffer: false,
+                    status: "ACTIVE",
+                };
+                updateUser({
+                    ...user,
+                    subscription: newSubscription,
+                    planId: targetId,
+                });
+                Alert.alert("Success", "Free Tier activated successfully!");
+                setSelectedPlanId(targetId);
+                setIsProcessingPayment(false);
+                setProcessingPlanId(null);
+                return;
+            }
+
+            const userName = user.fullName || `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email || "";
+
+            // 2. Launch Razorpay Checkout directly with encoded keys
+            await launchDirectRazorpayCheckout({
+                amount: checkoutAmt,
+                planName: targetPlan?.name || "Selected Plan",
+                user: {
+                    id: user.id,
+                    name: userName,
+                    email: user.email || "",
+                    mobile: user.mobile || "",
+                },
+                onSuccess: async (paymentId: string) => {
+                    console.log("Razorpay payment completed successfully. Payment ID:", paymentId);
+
+                    const newSubscription = {
+                        id: String(targetId),
+                        name: targetPlan?.name || "Standard Plan",
+                        price: checkoutAmt,
+                        currency: "INR" as const,
+                        billingCycle: (targetPlan?.billing || "monthly").toUpperCase(),
+                        isLifetimeOffer: isOfferPlan(targetPlan),
+                        status: "ACTIVE",
+                    };
+
+                    updateUser({
+                        ...user,
+                        subscription: newSubscription,
+                        planId: String(targetId),
+                    });
+
+                    // Background sync with backend to record payment & update user plan
+                    try {
+                        const syncRes = await fetch(`${ENV.API_BASE_URL}/subscriptions/update`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                userId: user.id,
+                                planId: targetId,
+                                paymentId: paymentId,
+                                amount: checkoutAmt,
+                                provider: "RAZORPAY",
+                            }),
+                        });
+                        const syncData = await syncRes.json();
+                        console.log("Subscription update response from backend:", syncData);
+                    } catch (syncErr) {
+                        console.error("Background sync error:", syncErr);
+                    }
+
+                    setIsProcessingPayment(false);
+                    setProcessingPlanId(null);
+
+                    router.push("/payment-success", {
+                        planId: targetId,
+                        planName: targetPlan?.name || "Selected Plan",
+                        amount: String(checkoutAmt),
+                        paymentId: paymentId,
+                    });
+                },
+                onError: (err: any) => {
+                    setIsProcessingPayment(false);
+                    setProcessingPlanId(null);
+                    Alert.alert("Payment Failed", err?.description || "Payment could not be completed.");
+                },
+                onClose: () => {
+                    setIsProcessingPayment(false);
+                    setProcessingPlanId(null);
+                },
+            });
+        } catch (err: any) {
+            console.error("Payment initiation error:", err);
+            setIsProcessingPayment(false);
+            setProcessingPlanId(null);
+            Alert.alert("Payment Error", err.message || "Unable to initiate payment.");
+        }
     };
 
     const handleCopy = (text: string) => {
@@ -297,12 +416,21 @@ export default function SubscriptionIndexScreen() {
                 {/* Subscribe Button */}
                 <TouchableOpacity
                     activeOpacity={0.88}
+                    disabled={isProcessingPayment}
                     onPress={() => handleSubscribe(plan.id.toString())}
-                    style={[styles.planCardBtn, { backgroundColor: accentColor }]}
+                    style={[
+                        styles.planCardBtn,
+                        { backgroundColor: accentColor },
+                        isProcessingPayment && processingPlanId === plan.id.toString() && { opacity: 0.85 }
+                    ]}
                 >
-                    <Text style={styles.planCardBtnText}>
-                        Subscribe for ₹{priceNum}
-                    </Text>
+                    {isProcessingPayment && processingPlanId === plan.id.toString() ? (
+                        <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                        <Text style={styles.planCardBtnText}>
+                            {priceNum === 0 ? "Get Started Free" : `Subscribe for ₹${priceNum}`}
+                        </Text>
+                    )}
                 </TouchableOpacity>
 
                 <Text style={[styles.planCardSubtext, { color: colors.textSecondary }]}>
@@ -570,6 +698,30 @@ export default function SubscriptionIndexScreen() {
                                 {getNextBillingDateStr()}
                             </Text>
                         </View>
+
+                        {/* Direct Razorpay Checkout Action */}
+                        <TouchableOpacity
+                            activeOpacity={0.88}
+                            disabled={isProcessingPayment}
+                            onPress={() => handleSubscribe(selectedPlanId || undefined)}
+                            style={[
+                                styles.razorpayPayBtn,
+                                { backgroundColor: isOfferPlan(selectedPlan) ? "#F97316" : "#4F46E5" }
+                            ]}
+                        >
+                            {isProcessingPayment && (!processingPlanId || processingPlanId === selectedPlanId) ? (
+                                <ActivityIndicator size="small" color="#FFF" />
+                            ) : (
+                                <View style={styles.razorpayBtnInner}>
+                                    <Ionicons name="lock-closed" size={15} color="#FFF" />
+                                    <Text style={styles.razorpayPayBtnText}>
+                                        {selectedPlan && (parseFloat(selectedPlan.price) || 0) === 0
+                                            ? "Activate Free Tier"
+                                            : `Pay ₹${selectedPlan ? parseFloat(selectedPlan.price) || 0 : 50} via Razorpay`}
+                                    </Text>
+                                </View>
+                            )}
+                        </TouchableOpacity>
                     </View>
 
 
@@ -791,4 +943,30 @@ const styles = StyleSheet.create({
     securePaymentsBox: { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 12, borderWidth: 1, padding: 12 },
     securePaymentsTitle: { fontSize: 13, fontWeight: "800" },
     securePaymentsSubtitle: { fontSize: 11 },
+
+    // Razorpay Checkout Button in Sidebar
+    razorpayPayBtn: {
+        marginTop: 6,
+        paddingVertical: 13,
+        borderRadius: 12,
+        alignItems: "center",
+        justifyContent: "center",
+        shadowColor: "#4F46E5",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    razorpayBtnInner: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+    },
+    razorpayPayBtnText: {
+        color: "#FFF",
+        fontSize: 14,
+        fontWeight: "800",
+        letterSpacing: 0.2,
+    },
 });

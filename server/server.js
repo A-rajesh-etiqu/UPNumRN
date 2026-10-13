@@ -1327,17 +1327,219 @@ app.post("/api/payments/create", async (req, res) => {
 
 });
 
+const {
+    createRazorpayOrder,
+    verifyRazorpaySignature,
+    getKeyId,
+} = require("./services/razorpay.service");
+
+// Razorpay: Create Order
+app.post("/api/payments/razorpay/create-order", async (req, res) => {
+    try {
+        const { userId, planId, amount } = req.body;
+        if (!userId) {
+            return res.status(400).json({ success: false, message: "userId is required" });
+        }
+        if (!planId) {
+            return res.status(400).json({ success: false, message: "planId is required" });
+        }
+
+        const numAmount = Number(amount);
+        if (!Number.isFinite(numAmount) || numAmount < 0) {
+            return res.status(400).json({ success: false, message: "Invalid amount" });
+        }
+
+        // If free plan ($0), handle without Razorpay
+        if (numAmount === 0) {
+            await activateSubscription(userId, planId);
+            const planDetails = resolvePlanDetails(planId);
+            return res.json({
+                success: true,
+                isFree: true,
+                message: "Free plan activated successfully",
+                plan: planDetails,
+                subscription: {
+                    id: String(planId),
+                    name: planDetails.name,
+                    price: planDetails.price,
+                    currency: "INR",
+                    billingCycle: planDetails.billingCycle,
+                    isLifetimeOffer: planDetails.isLifetimeOffer,
+                    status: "ACTIVE"
+                }
+            });
+        }
+
+        const receipt = `rcpt_${String(userId).substring(0, 8)}_${Date.now()}`;
+        const order = await createRazorpayOrder({
+            amount: numAmount,
+            receipt,
+            notes: {
+                userId: String(userId),
+                planId: String(planId),
+            },
+        });
+
+        return res.json({
+            success: true,
+            orderId: order.id,
+            amount: order.amount, // in paise
+            currency: order.currency,
+            keyId: getKeyId(),
+        });
+    } catch (error) {
+        console.error("Error creating Razorpay order:", error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || "Failed to create Razorpay order",
+        });
+    }
+});
+
+// Razorpay: Verify Payment & Activate Subscription
+app.post("/api/payments/razorpay/verify", async (req, res) => {
+    try {
+        const {
+            razorpay_order_id,
+            razorpay_payment_id,
+            razorpay_signature,
+            userId,
+            planId,
+            amount,
+        } = req.body;
+
+        if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+            return res.status(400).json({
+                success: false,
+                message: "Missing Razorpay payment verification parameters",
+            });
+        }
+
+        const isValid = verifyRazorpaySignature({
+            orderId: razorpay_order_id,
+            paymentId: razorpay_payment_id,
+            signature: razorpay_signature,
+        });
+
+        if (!isValid) {
+            return res.status(400).json({
+                success: false,
+                message: "Razorpay signature verification failed. Invalid transaction.",
+            });
+        }
+
+        const paymentAmount = Number(amount) || 0;
+        const localPaymentId = `pay_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+        // Record payment in payments table
+        await db.query(
+            `INSERT INTO payments (id, user_id, plan_id, amount, status, provider, provider_bill_id, gateway_ref) VALUES (?, ?, ?, ?, 'SUCCESS', 'RAZORPAY', ?, ?);`,
+            [localPaymentId, userId, String(planId), paymentAmount, razorpay_order_id, razorpay_payment_id]
+        );
+
+        // Activate user subscription
+        await activateSubscription(userId, planId);
+
+        // Fetch user and plan details for invoice and response
+        const [users] = await db.query('SELECT name, email, mobile FROM users WHERE id = ?', [userId]);
+        const user = users && users[0];
+        const userEmail = user?.email;
+        const planDetails = resolvePlanDetails(planId);
+
+        if (userEmail) {
+            try {
+                const invoiceData = {
+                    invoiceNo: `INV-${Date.now().toString().slice(-6)}`,
+                    planName: planDetails.name,
+                    amount: paymentAmount.toFixed(2),
+                    date: new Date().toLocaleDateString("en-IN"),
+                    billingCycle: planDetails.billingCycle,
+                    userName: user?.name || "Customer",
+                    transactionId: razorpay_payment_id,
+                    status: "SUCCESS",
+                };
+                const pdfBuffer = await generateInvoicePDF(invoiceData);
+                await sendInvoice(userEmail, invoiceData, pdfBuffer);
+            } catch (err) {
+                console.error("Failed to generate/send invoice email:", err);
+            }
+        }
+
+        return res.json({
+            success: true,
+            message: "Payment verified and subscription activated successfully!",
+            paymentId: razorpay_payment_id,
+            plan: planDetails,
+            subscription: {
+                id: String(planId),
+                name: planDetails.name,
+                price: planDetails.price,
+                currency: "INR",
+                billingCycle: planDetails.billingCycle,
+                isLifetimeOffer: planDetails.isLifetimeOffer,
+                status: "ACTIVE"
+            }
+        });
+    } catch (error) {
+        console.error("Error verifying Razorpay payment:", error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || "Failed to verify Razorpay payment",
+        });
+    }
+});
+
 // Update Subscription Plan API
 app.post("/api/subscriptions/update", async (req, res) => {
-    const { userId, planId } = req.body;
+    const { userId, planId, paymentId, amount, provider } = req.body;
     if (!userId || !planId) {
         return res.status(400).json({ error: "userId and planId are required" });
     }
 
     try {
+        const planDetails = resolvePlanDetails(planId);
+        const paymentAmount = Number(amount) || planDetails.price || 0;
+        const finalPaymentId = paymentId || `pay_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const paymentProvider = provider || (paymentId?.startsWith("pay_") ? "RAZORPAY" : "MANUAL");
+
+        // 1. Record the payment in payments table so it reflects in the Admin Payments dashboard
+        try {
+            await db.query(
+                `INSERT INTO payments (id, user_id, plan_id, amount, status, provider, gateway_ref, created_at)
+                 VALUES (?, ?, ?, ?, 'SUCCESS', ?, ?, NOW())
+                 ON DUPLICATE KEY UPDATE status = 'SUCCESS', plan_id = VALUES(plan_id), amount = VALUES(amount), provider = VALUES(provider);`,
+                [finalPaymentId, userId, String(planId), paymentAmount, paymentProvider, finalPaymentId]
+            );
+        } catch (payErr) {
+            console.error("Failed to insert payment record in subscriptions/update:", payErr);
+        }
+
+        // 2. Activate subscription in database (updates users table & subscriptions table)
         await activateSubscription(userId, planId);
 
-        const planDetails = resolvePlanDetails(planId);
+        // 3. Send invoice email if email is present
+        try {
+            const [users] = await db.query('SELECT name, email FROM users WHERE id = ?', [userId]);
+            const user = users && users[0];
+            const userEmail = user?.email;
+            if (userEmail && paymentAmount > 0) {
+                const invoiceData = {
+                    invoiceNo: `INV-${Date.now().toString().slice(-6)}`,
+                    planName: planDetails.name,
+                    amount: paymentAmount.toFixed(2),
+                    date: new Date().toLocaleDateString("en-IN"),
+                    billingCycle: planDetails.billingCycle,
+                    userName: user?.name || "Customer",
+                    transactionId: finalPaymentId,
+                    status: "SUCCESS",
+                };
+                const pdfBuffer = await generateInvoicePDF(invoiceData);
+                await sendInvoice(userEmail, invoiceData, pdfBuffer);
+            }
+        } catch (invoiceErr) {
+            console.error("Invoice generation/email error in subscriptions/update:", invoiceErr);
+        }
+
         const subscription = {
             id: String(planId),
             name: planDetails.name,
@@ -1351,6 +1553,7 @@ app.post("/api/subscriptions/update", async (req, res) => {
         return res.json({
             success: true,
             message: "Subscription updated successfully",
+            paymentId: finalPaymentId,
             subscription
         });
     } catch (err) {
@@ -1810,27 +2013,192 @@ app.post("/api/setu/consent", async (req, res) => {
 
 app.get("/api/admin/dashboard", async (req, res) => {
     try {
-        const [usersRows] = await db.query("SELECT COUNT(*) as totalUsers FROM users WHERE role = 'USER'");
-        const [businessesRows] = await db.query("SELECT COUNT(*) as activeBusinesses FROM users WHERE user_type = 'BUSINESS' AND status = 'ACTIVE'");
-        const [mrrRows] = await db.query("SELECT SUM(amount) as mrr FROM payments WHERE status = 'SUCCESS' AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
-        const [paymentsRows] = await db.query("SELECT COUNT(*) as successfulPayments FROM payments WHERE status = 'SUCCESS'");
-        const disputes = 0; // Mocked as table does not exist
-        
+        const {
+            period = 'this_month',
+            startDate,
+            endDate,
+            compare = 'previous_period'
+        } = req.query;
+
+        function pad(n) { return (n < 10 ? '0' : '') + n; }
+        function toSqlDateTime(d) {
+            return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        }
+
+        const now = new Date();
+        let curStart, curEnd, currentPeriodLabel, compareLabel;
+
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const formatShortDate = (d) => `${pad(d.getDate())} ${monthNames[d.getMonth()]}, ${d.getFullYear()}`;
+
+        if (period === 'today') {
+            curStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+            curEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+            currentPeriodLabel = `${formatShortDate(curStart)}`;
+        } else if (period === 'last_7_days') {
+            curStart = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
+            curStart.setHours(0, 0, 0, 0);
+            curEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+            currentPeriodLabel = `${formatShortDate(curStart)} - ${formatShortDate(curEnd)}`;
+        } else if (period === 'last_30_days') {
+            curStart = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000);
+            curStart.setHours(0, 0, 0, 0);
+            curEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+            currentPeriodLabel = `${formatShortDate(curStart)} - ${formatShortDate(curEnd)}`;
+        } else if (period === 'last_month') {
+            curStart = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0);
+            curEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+            currentPeriodLabel = `${formatShortDate(curStart)} - ${formatShortDate(curEnd)}`;
+        } else if (period === 'this_year') {
+            curStart = new Date(now.getFullYear(), 0, 1, 0, 0, 0);
+            curEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
+            currentPeriodLabel = `01 Jan, ${now.getFullYear()} - 31 Dec, ${now.getFullYear()}`;
+        } else if (period === 'all') {
+            curStart = new Date(2020, 0, 1, 0, 0, 0);
+            curEnd = new Date(now.getFullYear() + 2, 11, 31, 23, 59, 59);
+            currentPeriodLabel = 'All Time';
+        } else if (startDate && endDate) {
+            curStart = new Date(startDate);
+            curStart.setHours(0, 0, 0, 0);
+            curEnd = new Date(endDate);
+            curEnd.setHours(23, 59, 59);
+            currentPeriodLabel = `${formatShortDate(curStart)} - ${formatShortDate(curEnd)}`;
+        } else {
+            // default: 'this_month'
+            curStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+            curEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+            currentPeriodLabel = `${formatShortDate(curStart)} - ${formatShortDate(curEnd)}`;
+        }
+
+        let prevStart = null;
+        let prevEnd = null;
+
+        if (compare === 'previous_year') {
+            prevStart = new Date(curStart);
+            prevStart.setFullYear(prevStart.getFullYear() - 1);
+            prevEnd = new Date(curEnd);
+            prevEnd.setFullYear(prevEnd.getFullYear() - 1);
+            compareLabel = `vs ${prevStart.getFullYear()}`;
+        } else if (compare === 'none' || period === 'all') {
+            compareLabel = "No comparison";
+        } else {
+            // 'previous_period'
+            const duration = curEnd.getTime() - curStart.getTime();
+            if (period === 'this_month' || period === 'last_month') {
+                prevStart = new Date(curStart.getFullYear(), curStart.getMonth() - 1, 1, 0, 0, 0);
+                prevEnd = new Date(curStart.getFullYear(), curStart.getMonth(), 0, 23, 59, 59);
+                compareLabel = `vs ${monthNames[prevStart.getMonth()]} ${prevStart.getFullYear()}`;
+            } else if (period === 'today') {
+                prevStart = new Date(curStart.getTime() - 24 * 60 * 60 * 1000);
+                prevEnd = new Date(curEnd.getTime() - 24 * 60 * 60 * 1000);
+                compareLabel = "vs Yesterday";
+            } else if (period === 'last_7_days') {
+                prevEnd = new Date(curStart.getTime() - 1000);
+                prevStart = new Date(prevEnd.getTime() - 6 * 24 * 60 * 60 * 1000);
+                prevStart.setHours(0, 0, 0, 0);
+                compareLabel = "vs Prev 7 Days";
+            } else if (period === 'last_30_days') {
+                prevEnd = new Date(curStart.getTime() - 1000);
+                prevStart = new Date(prevEnd.getTime() - 29 * 24 * 60 * 60 * 1000);
+                prevStart.setHours(0, 0, 0, 0);
+                compareLabel = "vs Prev 30 Days";
+            } else if (period === 'this_year') {
+                prevStart = new Date(curStart.getFullYear() - 1, 0, 1, 0, 0, 0);
+                prevEnd = new Date(curStart.getFullYear() - 1, 11, 31, 23, 59, 59);
+                compareLabel = `vs ${curStart.getFullYear() - 1}`;
+            } else {
+                prevEnd = new Date(curStart.getTime() - 1000);
+                prevStart = new Date(prevEnd.getTime() - duration);
+                compareLabel = "vs Previous Period";
+            }
+        }
+
+        const curStartStr = toSqlDateTime(curStart);
+        const curEndStr = toSqlDateTime(curEnd);
+        const prevStartStr = prevStart ? toSqlDateTime(prevStart) : null;
+        const prevEndStr = prevEnd ? toSqlDateTime(prevEnd) : null;
+
+        // Current queries
+        const [usersRows] = await db.query("SELECT COUNT(*) as totalUsers FROM users WHERE role = 'USER' AND created_at <= ?", [curEndStr]);
+        const [businessesRows] = await db.query("SELECT COUNT(*) as activeBusinesses FROM users WHERE user_type = 'BUSINESS' AND status = 'ACTIVE' AND created_at <= ?", [curEndStr]);
+        const [mrrRows] = await db.query("SELECT COALESCE(SUM(amount), 0) as mrr FROM payments WHERE status = 'SUCCESS' AND created_at >= ? AND created_at <= ?", [curStartStr, curEndStr]);
+        const [paymentsRows] = await db.query("SELECT COUNT(*) as successfulPayments FROM payments WHERE status = 'SUCCESS' AND created_at >= ? AND created_at <= ?", [curStartStr, curEndStr]);
+        const [totalPaymentsRows] = await db.query("SELECT COUNT(*) as totalPayments FROM payments WHERE created_at >= ? AND created_at <= ?", [curStartStr, curEndStr]);
+        const [paidUsersRows] = await db.query("SELECT COUNT(DISTINCT user_id) as paidUsers FROM subscriptions WHERE status = 'ACTIVE'");
+
+        const curUsers = usersRows[0]?.totalUsers || 0;
+        const curBusinesses = businessesRows[0]?.activeBusinesses || 0;
+        const curRevenue = parseFloat(mrrRows[0]?.mrr) || 0;
+        const curPayments = paymentsRows[0]?.successfulPayments || 0;
+        const curTotalPayments = totalPaymentsRows[0]?.totalPayments || 0;
+        const paymentSuccessRate = curTotalPayments > 0 ? (curPayments / curTotalPayments) * 100 : (curPayments > 0 ? 100 : 0);
+        const conversionRate = curUsers > 0 ? (paidUsersRows[0]?.paidUsers / curUsers) * 100 : 0;
+        const disputes = 0;
+
+        // Previous queries (if compare is active)
+        let prevUsers = 0;
+        let prevBusinesses = 0;
+        let prevRevenue = 0;
+        let prevPayments = 0;
+        let prevConversion = 0;
+
+        if (prevStartStr && prevEndStr && compare !== 'none') {
+            const [pUsersRows] = await db.query("SELECT COUNT(*) as totalUsers FROM users WHERE role = 'USER' AND created_at <= ?", [prevEndStr]);
+            const [pBusinessesRows] = await db.query("SELECT COUNT(*) as activeBusinesses FROM users WHERE user_type = 'BUSINESS' AND status = 'ACTIVE' AND created_at <= ?", [prevEndStr]);
+            const [pMrrRows] = await db.query("SELECT COALESCE(SUM(amount), 0) as mrr FROM payments WHERE status = 'SUCCESS' AND created_at >= ? AND created_at <= ?", [prevStartStr, prevEndStr]);
+            const [pPaymentsRows] = await db.query("SELECT COUNT(*) as successfulPayments FROM payments WHERE status = 'SUCCESS' AND created_at >= ? AND created_at <= ?", [prevStartStr, prevEndStr]);
+
+            prevUsers = pUsersRows[0]?.totalUsers || 0;
+            prevBusinesses = pBusinessesRows[0]?.activeBusinesses || 0;
+            prevRevenue = parseFloat(pMrrRows[0]?.mrr) || 0;
+            prevPayments = pPaymentsRows[0]?.successfulPayments || 0;
+            prevConversion = prevUsers > 0 ? (paidUsersRows[0]?.paidUsers / prevUsers) * 100 : 0;
+        }
+
+        function calcChange(c, p, isInverse = false) {
+            if (compare === 'none' || !prevStart) {
+                return { value: "-", percent: 0, positive: true, none: true };
+            }
+            const curVal = Number(c) || 0;
+            const prevVal = Number(p) || 0;
+            if (prevVal === 0 && curVal === 0) {
+                return { value: "0.0%", percent: 0, positive: true };
+            }
+            if (prevVal === 0) {
+                const sign = curVal > 0 ? "+" : "";
+                return { value: `${sign}100%`, percent: 100, positive: isInverse ? curVal <= 0 : curVal >= 0 };
+            }
+            const diff = curVal - prevVal;
+            const pct = (diff / prevVal) * 100;
+            const sign = pct >= 0 ? "+" : "";
+            const positive = isInverse ? pct <= 0 : pct >= 0;
+            return {
+                value: `${sign}${pct.toFixed(1)}%`,
+                percent: parseFloat(pct.toFixed(1)),
+                positive
+            };
+        }
+
+        const comparison = {
+            compareMode: compare,
+            compareLabel: compareLabel || "vs Previous Period",
+            currentPeriodLabel,
+            usersChange: calcChange(curUsers, prevUsers),
+            businessesChange: calcChange(curBusinesses, prevBusinesses),
+            revenueChange: calcChange(curRevenue, prevRevenue),
+            paymentsChange: calcChange(curPayments, prevPayments),
+            disputesChange: { value: "0.0%", percent: 0, positive: true },
+            conversionChange: calcChange(conversionRate, prevConversion),
+        };
+
         const [subs] = await db.query("SELECT plan_id, COUNT(*) as count FROM subscriptions GROUP BY plan_id");
-        const [revenueTrend] = await db.query("SELECT DATE(created_at) as date, SUM(amount) as amount FROM payments WHERE status = 'SUCCESS' AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) GROUP BY DATE(created_at) ORDER BY date ASC");
-        const [newUsersTrend] = await db.query("SELECT DATE(created_at) as date, COUNT(*) as count FROM users WHERE role = 'USER' AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) GROUP BY DATE(created_at) ORDER BY date ASC");
-        
+        const [revenueTrend] = await db.query("SELECT DATE(created_at) as date, SUM(amount) as amount FROM payments WHERE status = 'SUCCESS' AND created_at >= ? AND created_at <= ? GROUP BY DATE(created_at) ORDER BY date ASC", [curStartStr, curEndStr]);
+        const [newUsersTrend] = await db.query("SELECT DATE(created_at) as date, COUNT(*) as count FROM users WHERE role = 'USER' AND created_at >= ? AND created_at <= ? GROUP BY DATE(created_at) ORDER BY date ASC", [curStartStr, curEndStr]);
+
         const [recentUsers] = await db.query("SELECT id, name, created_at FROM users ORDER BY created_at DESC LIMIT 5");
         const [recentPayments] = await db.query("SELECT p.id, p.amount, p.created_at, u.name as user_name FROM payments p LEFT JOIN users u ON p.user_id = u.id ORDER BY p.created_at DESC LIMIT 5");
-        
-        const [paymentMethods] = await db.query("SELECT payment_method, COUNT(*) as count FROM transactions GROUP BY payment_method");
 
-        const [totalPaymentsRows] = await db.query("SELECT COUNT(*) as totalPayments FROM payments");
-        const totalPayments = totalPaymentsRows[0]?.totalPayments || 0;
-        const paymentSuccessRate = totalPayments > 0 ? (paymentsRows[0]?.successfulPayments / totalPayments) * 100 : 0;
-        
-        const [paidUsersRows] = await db.query("SELECT COUNT(DISTINCT user_id) as paidUsers FROM subscriptions");
-        const conversionRate = usersRows[0]?.totalUsers > 0 ? (paidUsersRows[0]?.paidUsers / usersRows[0]?.totalUsers) * 100 : 0;
+        const [paymentMethods] = await db.query("SELECT payment_method, COUNT(*) as count FROM transactions GROUP BY payment_method");
 
         const disputeStatus = [
             { status: 'Open', count: 62 },
@@ -1851,13 +2219,14 @@ app.get("/api/admin/dashboard", async (req, res) => {
         recentActivities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
         res.json({
-            totalUsers: usersRows[0]?.totalUsers || 0,
-            activeBusinesses: businessesRows[0]?.activeBusinesses || 0,
-            mrr: parseFloat(mrrRows[0]?.mrr) || 0,
-            successfulPayments: paymentsRows[0]?.successfulPayments || 0,
+            totalUsers: curUsers,
+            activeBusinesses: curBusinesses,
+            mrr: curRevenue,
+            successfulPayments: curPayments,
             disputes,
             conversionRate,
             paymentSuccessRate,
+            comparison,
             subscriptions: subs,
             revenueTrend,
             newUsersTrend,

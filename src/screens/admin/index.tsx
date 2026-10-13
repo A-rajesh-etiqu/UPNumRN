@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
     View,
     Text,
@@ -11,6 +11,7 @@ import {
     Platform,
     ActivityIndicator,
     Alert,
+    Pressable,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -63,6 +64,15 @@ export default function PlatformAdminDashboard() {
 
     const [stats, setStats] = useState<any>(null);
     const [loadingStats, setLoadingStats] = useState(false);
+
+    // Date & Compare Filter states
+    const [selectedPeriod, setSelectedPeriod] = useState("this_month");
+    const [selectedCompare, setSelectedCompare] = useState("previous_period");
+    const [customStartDate, setCustomStartDate] = useState("");
+    const [customEndDate, setCustomEndDate] = useState("");
+    const [showDateDropdown, setShowDateDropdown] = useState(false);
+    const [showCompareDropdown, setShowCompareDropdown] = useState(false);
+    const [showCustomPicker, setShowCustomPicker] = useState(false);
 
     const [plans, setPlans] = useState<any[]>([]);
     const [loadingPlans, setLoadingPlans] = useState(false);
@@ -124,15 +134,139 @@ export default function PlatformAdminDashboard() {
         }
     };
 
-    const fetchDashboardStats = async () => {
+    const fetchDashboardStats = async (
+        period = selectedPeriod,
+        compare = selectedCompare,
+        start = customStartDate,
+        end = customEndDate
+    ) => {
         setLoadingStats(true);
         try {
-            const response = await apiClient.get("/admin/dashboard");
+            let url = `/admin/dashboard?period=${period}&compare=${compare}`;
+            if (period === 'custom' && start && end) {
+                url += `&startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`;
+            }
+            const response = await apiClient.get(url);
             setStats(response.data);
         } catch (err: any) {
             console.warn("Failed to fetch admin dashboard stats:", err.message);
         } finally {
             setLoadingStats(false);
+        }
+    };
+
+    const handleSelectPeriod = (presetId: string) => {
+        setSelectedPeriod(presetId);
+        setShowCustomPicker(false);
+        setShowDateDropdown(false);
+        fetchDashboardStats(presetId, selectedCompare);
+    };
+
+    const handleApplyCustomRange = () => {
+        if (!customStartDate || !customEndDate) {
+            Alert.alert("Invalid Range", "Please enter both Start Date and End Date (YYYY-MM-DD).");
+            return;
+        }
+        setSelectedPeriod("custom");
+        setShowDateDropdown(false);
+        fetchDashboardStats("custom", selectedCompare, customStartDate, customEndDate);
+    };
+
+    const handleSelectCompare = (compareId: string) => {
+        setSelectedCompare(compareId);
+        setShowCompareDropdown(false);
+        fetchDashboardStats(selectedPeriod, compareId, customStartDate, customEndDate);
+    };
+
+    const displayDateLabel = useMemo(() => {
+        if (stats?.comparison?.currentPeriodLabel) {
+            return stats.comparison.currentPeriodLabel;
+        }
+        switch (selectedPeriod) {
+            case "today": return "Today";
+            case "last_7_days": return "Last 7 Days";
+            case "last_30_days": return "Last 30 Days";
+            case "this_month": return "This Month";
+            case "last_month": return "Last Month";
+            case "this_year": return "This Year";
+            case "all": return "All Time";
+            case "custom": return customStartDate && customEndDate ? `${customStartDate} - ${customEndDate}` : "Custom Range";
+            default: return "Select Date";
+        }
+    }, [stats?.comparison?.currentPeriodLabel, selectedPeriod, customStartDate, customEndDate]);
+
+    const displayCompareLabel = useMemo(() => {
+        switch (selectedCompare) {
+            case "previous_period": return "Compare: Previous Period";
+            case "previous_year": return "Compare: Previous Year";
+            case "none": return "Compare: None";
+            default: return "Compare: Previous Period";
+        }
+    }, [selectedCompare]);
+
+    const handleExportReport = () => {
+        try {
+            const periodLabel = stats?.comparison?.currentPeriodLabel || selectedPeriod;
+            const compLabel = stats?.comparison?.compareLabel || selectedCompare;
+            
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += `UP Num - Platform Admin Analytics Report\r\n`;
+            csvContent += `Generated On,"${new Date().toLocaleString()}"\r\n`;
+            csvContent += `Period,"${periodLabel}"\r\n`;
+            csvContent += `Comparison,"${compLabel}"\r\n\r\n`;
+
+            csvContent += `KPI METRICS SUMMARY\r\n`;
+            csvContent += `Metric,Value,Change (%),Benchmark\r\n`;
+            csvContent += `Total Users,"${stats?.totalUsers || 0}","${stats?.comparison?.usersChange?.value || '0%'}","${compLabel}"\r\n`;
+            csvContent += `Active Businesses,"${stats?.activeBusinesses || 0}","${stats?.comparison?.businessesChange?.value || '0%'}","${compLabel}"\r\n`;
+            csvContent += `Total Revenue (INR),"${stats?.mrr || 0}","${stats?.comparison?.revenueChange?.value || '0%'}","${compLabel}"\r\n`;
+            csvContent += `Successful Payments,"${stats?.successfulPayments || 0}","${stats?.comparison?.paymentsChange?.value || '0%'}","${compLabel}"\r\n`;
+            csvContent += `Disputes,"${stats?.disputes || 0}","${stats?.comparison?.disputesChange?.value || '0%'}","${compLabel}"\r\n`;
+            csvContent += `Conversion Rate,"${stats?.conversionRate?.toFixed(2) || 0}%","${stats?.comparison?.conversionChange?.value || '0%'}","${compLabel}"\r\n\r\n`;
+
+            if (stats?.revenueTrend && stats.revenueTrend.length > 0) {
+                csvContent += `DAILY REVENUE BREAKDOWN\r\n`;
+                csvContent += `Date,Revenue (INR)\r\n`;
+                stats.revenueTrend.forEach((item: any) => {
+                    const dt = item.date ? item.date.slice(0, 10) : "";
+                    csvContent += `"${dt}","${item.amount}"\r\n`;
+                });
+                csvContent += `\r\n`;
+            }
+
+            if (stats?.newUsersTrend && stats.newUsersTrend.length > 0) {
+                csvContent += `DAILY NEW USERS\r\n`;
+                csvContent += `Date,New Users\r\n`;
+                stats.newUsersTrend.forEach((item: any) => {
+                    const dt = item.date ? item.date.slice(0, 10) : "";
+                    csvContent += `"${dt}","${item.count}"\r\n`;
+                });
+                csvContent += `\r\n`;
+            }
+
+            if (payments && payments.length > 0) {
+                csvContent += `RECENT TRANSACTIONS\r\n`;
+                csvContent += `Payment ID,Customer Name,Customer Email,Amount (INR),Status,Date\r\n`;
+                payments.slice(0, 25).forEach((p: any) => {
+                    csvContent += `"${p.id || ''}","${p.user_name || ''}","${p.user_email || ''}","${p.amount || 0}","${p.status || ''}","${p.created_at || p.date || ''}"\r\n`;
+                });
+            }
+
+            const doc = typeof window !== "undefined" ? (window as any).document : null;
+            if (doc) {
+                const encodedUri = encodeURI(csvContent);
+                const link = doc.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", `UPNum_Admin_Report_${selectedPeriod}_${new Date().toISOString().slice(0, 10)}.csv`);
+                doc.body.appendChild(link);
+                link.click();
+                doc.body.removeChild(link);
+            } else {
+                Alert.alert("Success", "Report generated successfully!");
+            }
+        } catch (err: any) {
+            console.error("Export error:", err);
+            Alert.alert("Export Error", "Failed to export report: " + err.message);
         }
     };
 
@@ -596,19 +730,174 @@ export default function PlatformAdminDashboard() {
                 )}
 
                 {/* Filters & Export Row */}
-                <View style={[styles.filtersExportRow, { flexDirection: isDesktop ? "row" : "column", gap: 12 }]}>
-                    <View style={{ flexDirection: isDesktop ? "row" : "row", gap: 10, flexWrap: "wrap" }}>
-                        <TouchableOpacity style={[styles.filterDropdownBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.8}>
-                            <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
-                            <Text style={[styles.filterDropdownText, { color: colors.text }]}>01 May, 2024 - 31 May, 2024</Text>
-                            <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={[styles.filterDropdownBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.8}>
-                            <Text style={[styles.filterDropdownText, { color: colors.text }]}>Compare: Previous Period</Text>
-                            <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
-                        </TouchableOpacity>
+                <View style={[styles.filtersExportRow, { flexDirection: isDesktop ? "row" : "column", gap: 12, zIndex: 1000 }]}>
+                    <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                        {/* 1. Date Range Dropdown */}
+                        <View style={{ position: "relative", zIndex: showDateDropdown ? 2000 : 100 }}>
+                            <TouchableOpacity
+                                style={[
+                                    styles.filterDropdownBtn,
+                                    { backgroundColor: colors.surface, borderColor: showDateDropdown ? colors.primary : colors.border }
+                                ]}
+                                activeOpacity={0.8}
+                                onPress={() => {
+                                    setShowDateDropdown(!showDateDropdown);
+                                    setShowCompareDropdown(false);
+                                }}
+                            >
+                                <Ionicons name="calendar-outline" size={14} color={showDateDropdown ? colors.primary : colors.textSecondary} />
+                                <Text style={[styles.filterDropdownText, { color: colors.text }]}>{displayDateLabel}</Text>
+                                <Ionicons name={showDateDropdown ? "chevron-up" : "chevron-down"} size={14} color={colors.textSecondary} />
+                            </TouchableOpacity>
+
+                            {showDateDropdown && (
+                                <>
+                                    <Pressable
+                                        style={styles.dropdownBackdrop}
+                                        onPress={() => setShowDateDropdown(false)}
+                                    />
+                                    <View style={[styles.dropdownMenuCard, { backgroundColor: colors.surface, borderColor: colors.border, width: 280 }]}>
+                                        <Text style={[styles.dropdownSectionTitle, { color: colors.textSecondary }]}>DATE RANGE PRESETS</Text>
+                                        {[
+                                            { id: "today", label: "Today" },
+                                            { id: "last_7_days", label: "Last 7 Days" },
+                                            { id: "last_30_days", label: "Last 30 Days" },
+                                            { id: "this_month", label: "This Month" },
+                                            { id: "last_month", label: "Last Month" },
+                                            { id: "this_year", label: "This Year" },
+                                            { id: "all", label: "All Time" },
+                                        ].map((preset) => {
+                                            const isSelected = selectedPeriod === preset.id;
+                                            return (
+                                                <TouchableOpacity
+                                                    key={preset.id}
+                                                    style={[
+                                                        styles.dropdownMenuItem,
+                                                        isSelected && { backgroundColor: colors.primary + "15" }
+                                                    ]}
+                                                    onPress={() => handleSelectPeriod(preset.id)}
+                                                >
+                                                    <Text style={[styles.dropdownMenuItemText, { color: isSelected ? colors.primary : colors.text, fontWeight: isSelected ? "700" : "500" }]}>
+                                                        {preset.label}
+                                                    </Text>
+                                                    {isSelected && <Ionicons name="checkmark-circle" size={16} color={colors.primary} />}
+                                                </TouchableOpacity>
+                                            );
+                                        })}
+
+                                        <View style={[styles.dropdownDivider, { backgroundColor: colors.border }]} />
+
+                                        {/* Custom Range Accordion */}
+                                        <TouchableOpacity
+                                            style={[styles.dropdownMenuItem, showCustomPicker && { backgroundColor: colors.primary + "10" }]}
+                                            onPress={() => setShowCustomPicker(!showCustomPicker)}
+                                        >
+                                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                                <Ionicons name="options-outline" size={14} color={colors.primary} />
+                                                <Text style={[styles.dropdownMenuItemText, { color: colors.primary, fontWeight: "600" }]}>
+                                                    Custom Range...
+                                                </Text>
+                                            </View>
+                                            <Ionicons name={showCustomPicker ? "chevron-up" : "chevron-down"} size={14} color={colors.primary} />
+                                        </TouchableOpacity>
+
+                                        {showCustomPicker && (
+                                            <View style={{ paddingHorizontal: 4, paddingTop: 8, gap: 8 }}>
+                                                <View>
+                                                    <Text style={{ fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>Start Date (YYYY-MM-DD)</Text>
+                                                    <TextInput
+                                                        style={[styles.customDateInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground || colors.background }]}
+                                                        placeholder="2026-10-01"
+                                                        placeholderTextColor={colors.textSecondary}
+                                                        value={customStartDate}
+                                                        onChangeText={setCustomStartDate}
+                                                    />
+                                                </View>
+                                                <View>
+                                                    <Text style={{ fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>End Date (YYYY-MM-DD)</Text>
+                                                    <TextInput
+                                                        style={[styles.customDateInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground || colors.background }]}
+                                                        placeholder="2026-10-31"
+                                                        placeholderTextColor={colors.textSecondary}
+                                                        value={customEndDate}
+                                                        onChangeText={setCustomEndDate}
+                                                    />
+                                                </View>
+                                                <TouchableOpacity
+                                                    style={styles.customDateApplyBtn}
+                                                    onPress={handleApplyCustomRange}
+                                                >
+                                                    <Text style={styles.customDateApplyText}>Apply Range</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                        )}
+                                    </View>
+                                </>
+                            )}
+                        </View>
+
+                        {/* 2. Compare Dropdown */}
+                        <View style={{ position: "relative", zIndex: showCompareDropdown ? 2000 : 100 }}>
+                            <TouchableOpacity
+                                style={[
+                                    styles.filterDropdownBtn,
+                                    { backgroundColor: colors.surface, borderColor: showCompareDropdown ? colors.primary : colors.border }
+                                ]}
+                                activeOpacity={0.8}
+                                onPress={() => {
+                                    setShowCompareDropdown(!showCompareDropdown);
+                                    setShowDateDropdown(false);
+                                }}
+                            >
+                                <Text style={[styles.filterDropdownText, { color: colors.text }]}>{displayCompareLabel}</Text>
+                                <Ionicons name={showCompareDropdown ? "chevron-up" : "chevron-down"} size={14} color={colors.textSecondary} />
+                            </TouchableOpacity>
+
+                            {showCompareDropdown && (
+                                <>
+                                    <Pressable
+                                        style={styles.dropdownBackdrop}
+                                        onPress={() => setShowCompareDropdown(false)}
+                                    />
+                                    <View style={[styles.dropdownMenuCard, { backgroundColor: colors.surface, borderColor: colors.border, width: 250 }]}>
+                                        <Text style={[styles.dropdownSectionTitle, { color: colors.textSecondary }]}>COMPARE TO</Text>
+                                        {[
+                                            { id: "previous_period", label: "Previous Period", desc: "Preceding timeframe of same duration" },
+                                            { id: "previous_year", label: "Previous Year", desc: "Same timeframe one year earlier" },
+                                            { id: "none", label: "No Comparison", desc: "Hide comparison metrics" },
+                                        ].map((item) => {
+                                            const isSelected = selectedCompare === item.id;
+                                            return (
+                                                <TouchableOpacity
+                                                    key={item.id}
+                                                    style={[
+                                                        styles.dropdownMenuItem,
+                                                        isSelected && { backgroundColor: colors.primary + "15" }
+                                                    ]}
+                                                    onPress={() => handleSelectCompare(item.id)}
+                                                >
+                                                    <View style={{ flex: 1, marginRight: 8 }}>
+                                                        <Text style={[styles.dropdownMenuItemText, { color: isSelected ? colors.primary : colors.text, fontWeight: isSelected ? "700" : "500" }]}>
+                                                            {item.label}
+                                                        </Text>
+                                                        <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 2 }}>{item.desc}</Text>
+                                                    </View>
+                                                    {isSelected && <Ionicons name="checkmark-circle" size={16} color={colors.primary} />}
+                                                </TouchableOpacity>
+                                            );
+                                        })}
+                                    </View>
+                                </>
+                            )}
+                        </View>
                     </View>
-                    <TouchableOpacity style={[styles.exportReportBtn, { width: isDesktop ? "auto" : "100%" }]} activeOpacity={0.8}>
+
+                    {/* Export Report Button */}
+                    <TouchableOpacity
+                        style={[styles.exportReportBtn, { width: isDesktop ? "auto" : "100%" }]}
+                        activeOpacity={0.8}
+                        onPress={handleExportReport}
+                    >
                         <Ionicons name="download-outline" size={16} color="#FFFFFF" />
                         <Text style={styles.exportReportText}>Export Report</Text>
                     </TouchableOpacity>
@@ -617,22 +906,24 @@ export default function PlatformAdminDashboard() {
                 {/* Top KPIs Row */}
                 <View style={[styles.kpisRow, { flexDirection: "row", flexWrap: isDesktop ? "nowrap" : "wrap", justifyContent: "space-between", gap: isDesktop ? 16 : 0 }]}>
                     {[
-                        { title: "Total Users", value: stats?.totalUsers?.toLocaleString() || "0", change: "+12.5%", desc: "vs Apr 2024", color: "#6C2CF4", bg: "#F5F3FF", icon: "people-outline" as const, positive: true },
-                        { title: "Active Businesses", value: stats?.activeBusinesses?.toLocaleString() || "0", change: "+9.4%", desc: "vs Apr 2024", color: "#3B82F6", bg: "#EFF6FF", icon: "briefcase-outline" as const, positive: true },
-                        { title: "Total Revenue", value: `₹${stats?.mrr?.toLocaleString("en-IN") || "0"}`, change: "+18.7%", desc: "vs Apr 2024", color: "#00C853", bg: "#ECFDF5", icon: "cash-outline" as const, positive: true },
-                        { title: "Successful Payments", value: stats?.successfulPayments?.toLocaleString() || "0", change: "+14.2%", desc: "vs Apr 2024", color: "#FF7A00", bg: "#FFF7ED", icon: "card-outline" as const, positive: true },
-                        { title: "Disputes", value: stats?.disputes?.toLocaleString() || "0", change: "+6.3%", desc: "vs Apr 2024", color: "#EF4444", bg: "#FEF2F2", icon: "shield-half-outline" as const, positive: false },
-                        { title: "Conversion Rate", value: `${stats?.conversionRate?.toFixed(2) || "0"}%`, change: "+3.1%", desc: "vs Apr 2024", color: "#8B5CF6", bg: "#F5F3FF", icon: "trending-up-outline" as const, positive: true },
+                        { title: "Total Users", value: stats?.totalUsers?.toLocaleString() || "0", change: stats?.comparison?.usersChange?.value || "+0.0%", desc: stats?.comparison?.compareLabel || "vs Previous Period", color: "#6C2CF4", bg: "#F5F3FF", icon: "people-outline" as const, positive: stats?.comparison?.usersChange?.positive ?? true },
+                        { title: "Active Businesses", value: stats?.activeBusinesses?.toLocaleString() || "0", change: stats?.comparison?.businessesChange?.value || "+0.0%", desc: stats?.comparison?.compareLabel || "vs Previous Period", color: "#3B82F6", bg: "#EFF6FF", icon: "briefcase-outline" as const, positive: stats?.comparison?.businessesChange?.positive ?? true },
+                        { title: "Total Revenue", value: `₹${(stats?.mrr || 0)?.toLocaleString("en-IN")}`, change: stats?.comparison?.revenueChange?.value || "+0.0%", desc: stats?.comparison?.compareLabel || "vs Previous Period", color: "#00C853", bg: "#ECFDF5", icon: "cash-outline" as const, positive: stats?.comparison?.revenueChange?.positive ?? true },
+                        { title: "Successful Payments", value: stats?.successfulPayments?.toLocaleString() || "0", change: stats?.comparison?.paymentsChange?.value || "+0.0%", desc: stats?.comparison?.compareLabel || "vs Previous Period", color: "#FF7A00", bg: "#FFF7ED", icon: "card-outline" as const, positive: stats?.comparison?.paymentsChange?.positive ?? true },
+                        { title: "Disputes", value: stats?.disputes?.toLocaleString() || "0", change: stats?.comparison?.disputesChange?.value || "0.0%", desc: stats?.comparison?.compareLabel || "vs Previous Period", color: "#EF4444", bg: "#FEF2F2", icon: "shield-half-outline" as const, positive: stats?.comparison?.disputesChange?.positive ?? true },
+                        { title: "Conversion Rate", value: `${stats?.conversionRate?.toFixed(2) || "0.00"}%`, change: stats?.comparison?.conversionChange?.value || "+0.0%", desc: stats?.comparison?.compareLabel || "vs Previous Period", color: "#8B5CF6", bg: "#F5F3FF", icon: "trending-up-outline" as const, positive: stats?.comparison?.conversionChange?.positive ?? true },
                     ].map((kpi, idx) => (
                         <View key={idx} style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border, flex: isDesktop ? 1 : 0, width: isDesktop ? "auto" : "48%", marginBottom: isDesktop ? 0 : 16 }]}>
                             <View style={styles.kpiCardHeader}>
                                 <View style={[styles.kpiIconCircle, { backgroundColor: kpi.bg }]}>
                                     <Ionicons name={kpi.icon} size={20} color={kpi.color} />
                                 </View>
-                                <View style={styles.kpiTrendBadge}>
-                                    <Ionicons name={kpi.positive ? "arrow-up" : "arrow-down"} size={10} color={kpi.positive ? "#00C853" : "#EF4444"} />
-                                    <Text style={[styles.kpiTrendText, { color: kpi.positive ? "#00C853" : "#EF4444" }]}>{kpi.change}</Text>
-                                </View>
+                                {kpi.change !== "-" && (
+                                    <View style={styles.kpiTrendBadge}>
+                                        <Ionicons name={kpi.positive ? "arrow-up" : "arrow-down"} size={10} color={kpi.positive ? "#00C853" : "#EF4444"} />
+                                        <Text style={[styles.kpiTrendText, { color: kpi.positive ? "#00C853" : "#EF4444" }]}>{kpi.change}</Text>
+                                    </View>
+                                )}
                             </View>
                             <Text style={[styles.kpiCardValue, { color: colors.text }]}>{kpi.value}</Text>
                             <Text style={[styles.kpiCardTitle, { color: colors.textSecondary }]}>{kpi.title}</Text>
@@ -656,7 +947,10 @@ export default function PlatformAdminDashboard() {
                             ₹{stats?.mrr?.toLocaleString("en-IN") || "0"}
                         </Text>
                         <Text style={styles.kpiTrendText}>
-                            <Text style={{ color: "#00C853" }}>↑ 18.7%</Text> <Text style={{ color: colors.textSecondary }}>vs Apr 2024</Text>
+                            <Text style={{ color: stats?.comparison?.revenueChange?.positive ? "#00C853" : "#EF4444" }}>
+                                {stats?.comparison?.revenueChange?.positive ? "↑" : "↓"} {stats?.comparison?.revenueChange?.value || "0.0%"}
+                            </Text>{" "}
+                            <Text style={{ color: colors.textSecondary }}>{stats?.comparison?.compareLabel || "vs Previous Period"}</Text>
                         </Text>
                         <View style={[styles.chartWrapper, { height: 160, marginTop: 20 }]}>
                             <Svg height="100%" width="100%" viewBox="0 0 450 160">
@@ -690,7 +984,10 @@ export default function PlatformAdminDashboard() {
                             {stats?.totalUsers?.toLocaleString() || "0"}
                         </Text>
                         <Text style={styles.kpiTrendText}>
-                            <Text style={{ color: "#00C853" }}>↑ 12.5%</Text> <Text style={{ color: colors.textSecondary }}>vs Apr 2024</Text>
+                            <Text style={{ color: stats?.comparison?.usersChange?.positive ? "#00C853" : "#EF4444" }}>
+                                {stats?.comparison?.usersChange?.positive ? "↑" : "↓"} {stats?.comparison?.usersChange?.value || "0.0%"}
+                            </Text>{" "}
+                            <Text style={{ color: colors.textSecondary }}>{stats?.comparison?.compareLabel || "vs Previous Period"}</Text>
                         </Text>
                         <View style={[styles.chartWrapper, { height: 160, marginTop: 20 }]}>
                             <Svg height="100%" width="100%" viewBox="0 0 450 160">
@@ -2436,6 +2733,72 @@ const styles = StyleSheet.create({
         gap: 8,
     },
     exportReportText: {
+        color: "#FFFFFF",
+        fontSize: 12,
+        fontWeight: "700",
+    },
+    dropdownBackdrop: {
+        position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 999,
+    },
+    dropdownMenuCard: {
+        position: "absolute",
+        top: 38,
+        left: 0,
+        borderRadius: 12,
+        borderWidth: 1,
+        padding: 10,
+        zIndex: 1000,
+        elevation: 10,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.15,
+        shadowRadius: 16,
+    },
+    dropdownSectionTitle: {
+        fontSize: 10,
+        fontWeight: "700",
+        letterSpacing: 0.8,
+        marginBottom: 6,
+        paddingHorizontal: 8,
+    },
+    dropdownMenuItem: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingVertical: 8,
+        paddingHorizontal: 10,
+        borderRadius: 6,
+        marginBottom: 2,
+    },
+    dropdownMenuItemText: {
+        fontSize: 12,
+    },
+    dropdownDivider: {
+        height: 1,
+        marginVertical: 6,
+    },
+    customDateInput: {
+        height: 32,
+        borderRadius: 6,
+        borderWidth: 1,
+        paddingHorizontal: 8,
+        fontSize: 11,
+    },
+    customDateApplyBtn: {
+        backgroundColor: "#6C2CF4",
+        paddingVertical: 7,
+        paddingHorizontal: 12,
+        borderRadius: 6,
+        alignItems: "center",
+        justifyContent: "center",
+        marginTop: 4,
+    },
+    customDateApplyText: {
         color: "#FFFFFF",
         fontSize: 12,
         fontWeight: "700",
