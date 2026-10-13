@@ -160,13 +160,19 @@ app.post("/api/auth/register", async (req, res) => {
 
 // Simple in-memory mock store for OTPs
 const otpStore = new Map();
+// Simple in-memory store for active login sessions (device location, IP, network carrier)
+const userSessions = new Map();
 
 app.post("/api/auth/login", async (req, res) => {
-    const { mobile, password } = req.body;
+    const { mobile, email, password, location, ip, carrier } = req.body;
     try {
-        const [rows] = await db.query("SELECT * FROM users WHERE mobile = ? LIMIT 1;", [mobile]);
+        const identifier = mobile || email;
+        const [rows] = await db.query(
+            "SELECT * FROM users WHERE (mobile = ? OR email = ?) LIMIT 1;",
+            [identifier, identifier]
+        );
         if (rows.length === 0 || rows[0].password !== password) {
-            return res.status(401).json({ error: "Invalid mobile number or password" });
+            return res.status(401).json({ error: "Invalid mobile number/email or password" });
         }
 
         const userRow = rows[0];
@@ -215,28 +221,40 @@ app.post("/api/auth/login", async (req, res) => {
             }
         }
 
+        const user = {
+            id: userRow.id,
+            firstName,
+            lastName,
+            fullName: userRow.name,
+            email: userRow.email,
+            mobile: userRow.mobile,
+            businessName: profileRow.business_name || null,
+            category: profileRow.category || null,
+            city: profileRow.city || null,
+            role: userRow.role,
+            userType: userRow.user_type,
+            isVerified: true,
+            isUpiVerified,
+            planId: userRow.plan_id || subscription.id,
+            subscription,
+            loginLocation: location || (profileRow.city ? `${profileRow.city}, India` : null),
+            loginIp: ip || req.ip || "192.168.1.2",
+            loginCarrier: carrier || null
+        };
+
+        userSessions.set(userRow.id, {
+            location: user.loginLocation,
+            ip: user.loginIp,
+            carrier: user.loginCarrier,
+            loginTime: new Date()
+        });
+
         res.json({
             accessToken: "mock-access-token",
             refreshToken: "mock-refresh-token",
             expiresIn: 3600,
             tokenType: "Bearer",
-            user: {
-                id: userRow.id,
-                firstName,
-                lastName,
-                fullName: userRow.name,
-                email: userRow.email,
-                mobile: userRow.mobile,
-                businessName: profileRow.business_name || null,
-                category: profileRow.category || null,
-                city: profileRow.city || null,
-                role: userRow.role,
-                userType: userRow.user_type,
-                isVerified: true,
-                isUpiVerified,
-                planId: userRow.plan_id || subscription.id,
-                subscription
-            }
+            user
         });
     } catch (err) {
         console.error("Login Error:", err);
@@ -294,6 +312,114 @@ app.post("/api/auth/reset-password", async (req, res) => {
         res.status(500).json({ error: "Failed to reset password" });
     }
 });
+
+app.post("/api/auth/change-password", async (req, res) => {
+    const { userId, oldPassword, currentPassword, newPassword, confirmPassword } = req.body;
+    const providedOldPassword = oldPassword || currentPassword;
+
+    if (!userId) {
+        return res.status(400).json({ error: "User ID is required" });
+    }
+
+    if (!providedOldPassword) {
+        return res.status(400).json({ error: "Current password is required" });
+    }
+
+    if (!newPassword) {
+        return res.status(400).json({ error: "New password is required" });
+    }
+
+    if (!confirmPassword) {
+        return res.status(400).json({ error: "Confirm password is required" });
+    }
+
+    if (newPassword !== confirmPassword) {
+        return res.status(400).json({ error: "New password and confirm password do not match" });
+    }
+
+    if (providedOldPassword === newPassword) {
+        return res.status(400).json({ error: "New password matches old password. Please choose a different password." });
+    }
+
+    if (newPassword.length < 6) {
+        return res.status(400).json({ error: "New password must be at least 6 characters" });
+    }
+
+    try {
+        const [rows] = await db.query("SELECT id, password, user_type FROM users WHERE id = ? LIMIT 1;", [userId]);
+        if (rows.length === 0) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        const userRow = rows[0];
+        if (userRow.password !== providedOldPassword) {
+            return res.status(400).json({ error: "The old password you entered does not match your current password" });
+        }
+
+        await db.query("UPDATE users SET password = ? WHERE id = ?;", [newPassword, userId]);
+
+        return res.json({ success: true, message: "Password updated successfully" });
+    } catch (err) {
+        console.error("Change Password Error:", err);
+        return res.status(500).json({ error: "Failed to update password. Please try again." });
+    }
+});
+
+app.get("/api/users/active-devices", async (req, res) => {
+    const { userId } = req.query;
+    try {
+        const session = userId ? userSessions.get(userId) : null;
+        let profileLocation = null;
+        if (userId) {
+            const [profiles] = await db.query("SELECT city FROM profiles WHERE user_id = ? LIMIT 1;", [userId]);
+            if (profiles.length > 0 && profiles[0].city) {
+                profileLocation = `${profiles[0].city}, India`;
+            }
+        }
+        const userAgent = req.headers["user-agent"] || "";
+        let deviceName = "Desktop PC (Browser)";
+        if (userAgent.includes("Windows")) deviceName = "Windows PC • Chrome/Edge";
+        else if (userAgent.includes("Macintosh")) deviceName = "MacBook • Safari/Chrome";
+        else if (userAgent.includes("Android")) deviceName = "Android Mobile • UpNum";
+        else if (userAgent.includes("iPhone")) deviceName = "Apple iPhone • UpNum";
+
+        const resolvedLocation = session?.location || profileLocation || "India (Cellular Network)";
+        const resolvedIp = session?.ip || req.ip || "192.168.1.2";
+        const resolvedCarrier = session?.carrier || "Cellular Network Provider";
+
+        res.json({
+            devices: [
+                {
+                    id: "dev-curr",
+                    name: deviceName,
+                    location: resolvedLocation,
+                    ip: resolvedIp,
+                    carrier: resolvedCarrier,
+                    isCurrent: true,
+                    status: "ACTIVE_NOW",
+                    lastActive: "Active Now",
+                    type: deviceName.includes("PC") || deviceName.includes("Mac") ? "desktop" : "mobile"
+                },
+                {
+                    id: "dev-mobile",
+                    name: "UpNum Mobile App",
+                    location: resolvedLocation,
+                    ip: "192.168.1.105",
+                    carrier: resolvedCarrier,
+                    isCurrent: false,
+                    status: "RECENT",
+                    lastActive: "Active 2 hours ago",
+                    type: "mobile"
+                }
+            ]
+        });
+    } catch (err) {
+        console.error("Active Devices Error:", err);
+        res.status(500).json({ error: "Failed to fetch active devices" });
+    }
+});
+
+
 
 // ==========================================
 // User APIs

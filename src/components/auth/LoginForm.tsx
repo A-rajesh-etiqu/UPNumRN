@@ -20,6 +20,7 @@ import { secureStorage } from "../../services/secureStorage";
 import apiClient from "../../api/apiClient";
 import SocialButton from "./SocialButton";
 import { loginSchema, LoginForm as LoginFormType } from "../../validations/auth.schema";
+import { fetchNetworkTowerLocation } from "../../services/networkLocation.service";
 
 export default function LoginForm() {
     const [loginError, setLoginError] = useState<string | null>(null);
@@ -38,9 +39,23 @@ export default function LoginForm() {
 
     const onSubmit = async (data: LoginFormType) => {
         setLoginError(null);
+        let tower: any = null;
         try {
-            const response = await apiClient.post("/auth/login", data);
+            // Capture cell tower / network location while login
+            tower = await fetchNetworkTowerLocation().catch(() => null);
+            const loginPayload = {
+                ...data,
+                location: tower?.formattedLocation,
+                ip: tower?.ip,
+                carrier: tower?.isp,
+            };
+            const response = await apiClient.post("/auth/login", loginPayload);
             const { user, accessToken, refreshToken } = response.data;
+            if (tower && user) {
+                user.loginLocation = tower.formattedLocation;
+                user.loginIp = tower.ip;
+                user.loginCarrier = tower.isp;
+            }
             await secureStorage.saveSession(accessToken, refreshToken, user);
             login(user, accessToken, refreshToken);
             router.replace(user.role === "ADMIN" ? "/admin" : "/tabs/dashboard");
@@ -58,6 +73,9 @@ export default function LoginForm() {
                     role: isAdmin ? "ADMIN" : "USER",
                     isVerified: true,
                     subscription: { id: "lifetime", name: "Lifetime Plan", price: 10, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: true },
+                    loginLocation: tower?.formattedLocation || null,
+                    loginIp: tower?.ip || "192.168.1.2",
+                    loginCarrier: tower?.isp || "Cellular Network Provider",
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString(),
                 };

@@ -4,6 +4,7 @@ import { router } from "../navigation/RootNavigation";
 import { authApi } from "../api/authApi";
 import { secureStorage } from "../services/secureStorage";
 import { useAuthStore } from "../store/auth.store";
+import { fetchNetworkTowerLocation } from "../services/networkLocation.service";
 
 export function useLogin() {
     const {
@@ -18,10 +19,21 @@ export function useLogin() {
         try {
             setLoading(true);
 
+            const tower = await fetchNetworkTowerLocation().catch(() => null);
+
             const response = await authApi.login({
                 email,
                 password,
+                location: tower?.formattedLocation,
+                ip: tower?.ip,
+                carrier: tower?.isp,
             });
+
+            if (tower && response.user) {
+                response.user.loginLocation = tower.formattedLocation;
+                response.user.loginIp = tower.ip;
+                response.user.loginCarrier = tower.isp;
+            }
 
             await secureStorage.saveSession(
                 response.accessToken,

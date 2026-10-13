@@ -44,6 +44,10 @@ export interface User {
     planId?: string;
     subscription: SubscriptionPlan;
 
+    loginLocation?: string | null;
+    loginIp?: string | null;
+    loginCarrier?: string | null;
+
     createdAt: string;
     updatedAt: string;
 }
@@ -53,8 +57,12 @@ export interface User {
 =========================================== */
 
 export interface LoginRequest {
-    mobile: string;
+    mobile?: string;
+    email?: string;
     password: string;
+    location?: string;
+    ip?: string;
+    carrier?: string;
 }
 
 export interface LoginResponse {
@@ -166,10 +174,18 @@ export interface UpdateProfileRequest {
 =========================================== */
 
 export interface ChangePasswordRequest {
-    currentPassword: string;
+    userId: string;
+    currentPassword?: string;
+    oldPassword?: string;
     newPassword: string;
     confirmPassword: string;
 }
+
+export interface ChangePasswordResponse {
+    success: boolean;
+    message: string;
+}
+
 
 /* ===========================================
    Generic API Error

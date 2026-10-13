@@ -75,6 +75,11 @@ class AuthApi {
         const response = await apiClient.post<import("../types/auth").ResetPasswordResponse>("/auth/reset-password", data);
         return response.data;
     }
+
+    async changePassword(data: import("../types/auth").ChangePasswordRequest) {
+        const response = await apiClient.post<import("../types/auth").ChangePasswordResponse>("/auth/change-password", data);
+        return response.data;
+    }
 }
 
 export const authApi = new AuthApi();
