@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
     View,
     Text,
@@ -7,6 +7,7 @@ import {
     TextInput,
     Platform,
     Image,
+    useWindowDimensions,
 } from "react-native";
 import { router } from "../../navigation/RootNavigation";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -22,9 +23,12 @@ import SocialButton from "./SocialButton";
 import { loginSchema, LoginForm as LoginFormType } from "../../validations/auth.schema";
 
 export default function LoginForm() {
+    const { width } = useWindowDimensions();
+    const isDesktop = width >= 1024;
     const [loginError, setLoginError] = useState<string | null>(null);
     const [remember, setRemember] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+    const passwordRef = useRef<TextInput>(null);
     const { login } = useAuthStore();
 
     const {
@@ -72,10 +76,12 @@ export default function LoginForm() {
 
     return (
         <View style={styles.container}>
-            {/* Logo Section */}
-            <View style={styles.logoSection}>
-                <Image source={require('../../../assets/images/logo.png')} style={{ width: 140, height: 60 }} resizeMode="contain" />
-            </View>
+            {/* Logo Section (Mobile / Tablet only, Desktop has HeroPanel) */}
+            {!isDesktop && (
+                <View style={styles.logoSection}>
+                    <Image source={require('../../../assets/images/logo.png')} style={{ width: 140, height: 60 }} resizeMode="contain" />
+                </View>
+            )}
 
             {/* Welcome Section */}
             <View style={styles.welcomeSection}>
@@ -105,6 +111,13 @@ export default function LoginForm() {
                                 keyboardType="phone-pad"
                                 maxLength={10}
                                 style={styles.textInput}
+                                returnKeyType="next"
+                                onSubmitEditing={() => passwordRef.current?.focus()}
+                                onKeyPress={(e: any) => {
+                                    if (e.nativeEvent?.key === "Enter") {
+                                        passwordRef.current?.focus();
+                                    }
+                                }}
                             />
                         </View>
                     </View>
@@ -123,6 +136,7 @@ export default function LoginForm() {
                         <View style={styles.inputInner}>
                             <Text style={styles.inputLabelFloating}>Password</Text>
                             <TextInput
+                                ref={passwordRef}
                                 secureTextEntry={!showPassword}
                                 placeholder="Enter your password"
                                 placeholderTextColor="#94A3B8"
@@ -130,6 +144,13 @@ export default function LoginForm() {
                                 onChangeText={onChange}
                                 autoCapitalize="none"
                                 style={styles.textInput}
+                                returnKeyType="go"
+                                onSubmitEditing={() => handleSubmit(onSubmit)()}
+                                onKeyPress={(e: any) => {
+                                    if (e.nativeEvent?.key === "Enter") {
+                                        handleSubmit(onSubmit)();
+                                    }
+                                }}
                             />
                         </View>
                         <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
@@ -192,37 +213,37 @@ export default function LoginForm() {
 const styles = StyleSheet.create({
     container: {
         width: "100%",
-        paddingTop: 10, // Reduced from 40
+        paddingTop: 0,
     },
     logoSection: {
         alignItems: "center",
-        marginBottom: 24, // Reduced from 40
+        marginBottom: 20,
     },
     appName: {
-        fontSize: 32, // Slightly smaller text
+        fontSize: 32,
         fontWeight: "800",
         color: "#0F172A",
-        marginTop: 4, // Reduced from 8
+        marginTop: 4,
     },
     appTagline: {
-        fontSize: 13, // Smaller text
+        fontSize: 13,
         color: "#6D28D9",
         fontWeight: "500",
-        marginTop: 2, // Reduced from 4
+        marginTop: 2,
     },
     gradientTextRow: {
         flexDirection: "row",
-        marginTop: 2, // Reduced from 4
+        marginTop: 2,
     },
     gradText: {
         fontSize: 13,
         fontWeight: "700",
     },
     welcomeSection: {
-        marginBottom: 20, // Reduced from 24
+        marginBottom: 14,
     },
     welcomeTitle: {
-        fontSize: 22, // Smaller
+        fontSize: 22,
         fontWeight: "700",
         color: "#0F172A",
         marginBottom: 4,
@@ -236,11 +257,11 @@ const styles = StyleSheet.create({
         alignItems: "center",
         borderWidth: 1,
         borderColor: "#E2E8F0",
-        borderRadius: 12, // More squared corners
+        borderRadius: 12,
         backgroundColor: "#FFFFFF",
-        marginBottom: 12, // Reduced from 16
-        height: 60, // Reduced from 64
-        paddingHorizontal: 10, // Reduced from 12
+        marginBottom: 10,
+        height: 52,
+        paddingHorizontal: 10,
         ...Platform.select({
             ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 2 },
             android: { elevation: 1 },
@@ -251,7 +272,7 @@ const styles = StyleSheet.create({
         borderColor: Colors.danger,
     },
     iconBox: {
-        width: 36, // Smaller icon box
+        width: 36,
         height: 36,
         borderRadius: 8,
         backgroundColor: "#F3E8FF",
@@ -282,30 +303,30 @@ const styles = StyleSheet.create({
     errorText: {
         color: Colors.danger,
         fontSize: 12,
-        marginTop: -8,
-        marginBottom: 12,
+        marginTop: -6,
+        marginBottom: 10,
         marginLeft: 4,
     },
     errorTextTop: {
         color: Colors.danger,
         fontSize: 14,
         fontWeight: "600",
-        marginBottom: 12,
+        marginBottom: 10,
     },
     optionsRow: {
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
-        marginBottom: 20,
+        marginBottom: 14,
     },
     checkboxRow: {
         flexDirection: "row",
         alignItems: "center",
     },
     checkbox: {
-        width: 20,
-        height: 20,
-        borderRadius: 6,
+        width: 18,
+        height: 18,
+        borderRadius: 5,
         borderWidth: 2,
         borderColor: "#E2E8F0",
         justifyContent: "center",
@@ -327,8 +348,8 @@ const styles = StyleSheet.create({
         fontSize: 13,
     },
     loginButton: {
-        backgroundColor: "#5A32FA", // Matched exact blue/purple from screenshot
-        height: 52, // Reduced from 56
+        backgroundColor: "#5A32FA",
+        height: 48,
         borderRadius: 12,
         flexDirection: "row",
         justifyContent: "center",
@@ -350,7 +371,7 @@ const styles = StyleSheet.create({
     dividerRow: {
         flexDirection: "row",
         alignItems: "center",
-        marginVertical: 20, // Reduced from 24
+        marginVertical: 14,
     },
     dividerLine: {
         flex: 1,
@@ -364,13 +385,13 @@ const styles = StyleSheet.create({
     },
     socialCol: {
         flexDirection: "column",
-        marginBottom: 20,
-        gap: 12,
+        marginBottom: 14,
+        gap: 8,
     },
     signupRow: {
         flexDirection: "row",
         justifyContent: "center",
-        marginBottom: 20, // Reduced from 32
+        marginBottom: 12,
     },
     signupText: {
         fontSize: 13,
@@ -385,8 +406,8 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
-        marginTop: 10,
-        marginBottom: 20,
+        marginTop: 4,
+        marginBottom: 8,
     },
     secureText: {
         marginLeft: 6,

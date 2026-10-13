@@ -256,7 +256,21 @@ export default function SignupForm() {
                             <Ionicons name="lock-closed-outline" size={20} color="#6D28D9" style={styles.iconBoxMargin} />
                             <View style={styles.inputInner}>
                                 <Text style={styles.inputLabelFloating}>Confirm Password</Text>
-                                <TextInput secureTextEntry={!showConfirmPassword} placeholder="Confirm your password" placeholderTextColor="#94A3B8" value={value} onChangeText={onChange} style={styles.textInput} />
+                                <TextInput
+                                    secureTextEntry={!showConfirmPassword}
+                                    placeholder="Confirm your password"
+                                    placeholderTextColor="#94A3B8"
+                                    value={value}
+                                    onChangeText={onChange}
+                                    style={styles.textInput}
+                                    returnKeyType="go"
+                                    onSubmitEditing={() => handleSubmit(onSubmit)()}
+                                    onKeyPress={(e: any) => {
+                                        if (e.nativeEvent?.key === "Enter") {
+                                            handleSubmit(onSubmit)();
+                                        }
+                                    }}
+                                />
                             </View>
                             <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeIcon}>
                                 <Ionicons name={showConfirmPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#94A3B8" />

@@ -108,7 +108,7 @@ app.post("/api/auth/register", async (req, res) => {
         // 2. Insert into profiles table
         await db.query(`
             INSERT INTO profiles (user_id, business_name, category, city, language, currency)
-            VALUES (?, ?, ?, ?, 'English (India)', 'INR - Indian Rupee (₹)');
+            VALUES (?, ?, ?, ?, 'English (India)', 'INR - Indian Rupee');
         `, [id, businessName || null, category || null, city || null]);
 
         // 3. Create default upi account (unverified)

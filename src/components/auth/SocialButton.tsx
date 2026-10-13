@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
 
     button: {
 
-        height: 52,
+        height: 46,
 
         borderRadius: Radius.md,
 
