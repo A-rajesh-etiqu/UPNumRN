@@ -108,15 +108,6 @@ export default function PaymentSuccessScreen() {
                 : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         });
 
-        // 3. Persist Active Subscription to Backend Server Database
-        if (currentUser?.id) {
-            apiClient.post("/subscriptions/update", {
-                userId: currentUser.id,
-                planId: String(planId || fallbackPlan.id),
-                status: "ACTIVE",
-            }).catch(err => console.warn("Backend subscription update failed:", err));
-        }
-
         // Run animation
         Animated.parallel([
             Animated.timing(opacityAnim, {

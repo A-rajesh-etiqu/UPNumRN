@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const crypto = require("crypto");
 const db = require("./db");
 const { sendOTP, sendInvoice } = require("./services/mailer");
 const { generateInvoicePDF } = require("./services/pdfGenerator");
@@ -16,6 +17,32 @@ app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT || 8085;
+const JWT_SECRET = process.env.JWT_SECRET || "upnum_secure_jwt_secret_key_2026";
+
+function generateToken(payload, expiresInSeconds = 7 * 24 * 3600) {
+    const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+    const exp = Math.floor(Date.now() / 1000) + expiresInSeconds;
+    const body = Buffer.from(JSON.stringify({ ...payload, exp: exp * 1000 })).toString("base64url");
+    const signature = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${body}`).digest("base64url");
+    return `${header}.${body}.${signature}`;
+}
+
+function verifyToken(token) {
+    if (!token || typeof token !== "string") return null;
+    if (token === "mock-access-token") return { userId: null, isMock: true };
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const [header, body, signature] = parts;
+    const expectedSig = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${body}`).digest("base64url");
+    if (signature !== expectedSig) return null;
+    try {
+        const payload = JSON.parse(Buffer.from(body, "base64url").toString());
+        if (payload.exp && payload.exp < Date.now()) return null;
+        return payload;
+    } catch {
+        return null;
+    }
+}
 
 function resolvePlanDetails(planId) {
     const id = String(planId || '').toLowerCase();
@@ -131,8 +158,8 @@ app.post("/api/auth/register", async (req, res) => {
         res.status(201).json({
             message: "User registered successfully",
             userId: id,
-            accessToken: "mock-access-token",
-            refreshToken: "mock-refresh-token",
+            accessToken: generateToken({ userId: id, email, role }),
+            refreshToken: generateToken({ userId: id, email, type: "refresh" }, 30 * 24 * 3600),
             otpRequired: false,
             user: {
                 id,
@@ -249,10 +276,13 @@ app.post("/api/auth/login", async (req, res) => {
             loginTime: new Date()
         });
 
+        const accessToken = generateToken({ userId: userRow.id, email: userRow.email, role: userRow.role });
+        const refreshToken = generateToken({ userId: userRow.id, email: userRow.email, type: "refresh" }, 30 * 24 * 3600);
+
         res.json({
-            accessToken: "mock-access-token",
-            refreshToken: "mock-refresh-token",
-            expiresIn: 3600,
+            accessToken,
+            refreshToken,
+            expiresIn: 7 * 24 * 3600,
             tokenType: "Bearer",
             user
         });
@@ -260,6 +290,16 @@ app.post("/api/auth/login", async (req, res) => {
         console.error("Login Error:", err);
         res.status(500).json({ error: "Authentication failed" });
     }
+});
+
+app.post("/api/auth/refresh-token", (req, res) => {
+    const { refreshToken } = req.body;
+    const payload = verifyToken(refreshToken);
+    if (!payload || !payload.userId) {
+        return res.status(401).json({ error: "Invalid refresh token" });
+    }
+    const accessToken = generateToken({ userId: payload.userId, email: payload.email, role: payload.role });
+    return res.json({ accessToken });
 });
 
 app.post("/api/auth/forgot-password", async (req, res) => {
@@ -708,9 +748,9 @@ app.post("/api/billing/send-invoice", async (req, res) => {
         }
 
         // 2. Fetch payment + invoice details
-        const [payRows] = await db.query(
+        let [payRows] = await db.query(
             `SELECT
-                p.amount, p.status, p.created_at, p.provider,
+                p.id, p.amount, p.status, p.created_at, p.provider,
                 p.gateway_ref AS transaction_reference, p.upi_id,
                 pl.name AS plan_name, pl.type AS billing_cycle,
                 i.invoice_no
@@ -722,6 +762,22 @@ app.post("/api/billing/send-invoice", async (req, res) => {
              LIMIT 1;`,
             [invoiceNo, userId]
         );
+
+        if (payRows.length === 0) {
+            [payRows] = await db.query(
+                `SELECT
+                    p.id, p.amount, p.status, p.created_at, p.provider,
+                    p.gateway_ref AS transaction_reference, p.upi_id,
+                    pl.name AS plan_name, pl.type AS billing_cycle,
+                    ? AS invoice_no
+                 FROM payments p
+                 LEFT JOIN subscriptions s ON s.user_id = p.user_id
+                 LEFT JOIN plans pl ON pl.id = s.plan_id
+                 WHERE p.user_id = ? AND (p.id = ? OR ? LIKE CONCAT('%', p.id, '%') OR ? LIKE CONCAT('%', REPLACE(p.id, 'pay-', ''), '%'))
+                 ORDER BY p.created_at DESC LIMIT 1;`,
+                [invoiceNo, userId, invoiceNo, invoiceNo, invoiceNo]
+            );
+        }
 
         let invoiceData = { invoiceNo, userName };
 
@@ -1456,6 +1512,7 @@ app.post("/api/payments/create", async (req, res) => {
 const {
     createRazorpayOrder,
     verifyRazorpaySignature,
+    fetchRazorpayPayment,
     getKeyId,
 } = require("./services/razorpay.service");
 
@@ -1563,6 +1620,15 @@ app.post("/api/payments/razorpay/verify", async (req, res) => {
             [localPaymentId, userId, String(planId), paymentAmount, razorpay_order_id, razorpay_payment_id]
         );
 
+        // Record unique invoice in invoices table
+        const cleanVerifyId = localPaymentId.replace(/[^a-zA-Z0-9]/g, '').slice(-8).toUpperCase();
+        const invoiceNo = `INV-${new Date().getFullYear()}-${cleanVerifyId}`;
+        await db.query(
+            `INSERT INTO invoices (invoice_no, payment_id, amount) VALUES (?, ?, ?)
+             ON DUPLICATE KEY UPDATE invoice_no = VALUES(invoice_no);`,
+            [invoiceNo, localPaymentId, paymentAmount]
+        ).catch(err => console.error("Failed to insert invoice record:", err));
+
         // Activate user subscription
         await activateSubscription(userId, planId);
 
@@ -1575,7 +1641,7 @@ app.post("/api/payments/razorpay/verify", async (req, res) => {
         if (userEmail) {
             try {
                 const invoiceData = {
-                    invoiceNo: `INV-${Date.now().toString().slice(-6)}`,
+                    invoiceNo: invoiceNo,
                     planName: planDetails.name,
                     amount: paymentAmount.toFixed(2),
                     date: new Date().toLocaleDateString("en-IN"),
@@ -1625,19 +1691,58 @@ app.post("/api/subscriptions/update", async (req, res) => {
     try {
         const planDetails = resolvePlanDetails(planId);
         const paymentAmount = Number(amount) || planDetails.price || 0;
+
+        // Security check: Paid plans require verified payment
+        if (planDetails.price > 0) {
+            if (!paymentId) {
+                return res.status(400).json({
+                    error: "Payment required. Cannot activate paid subscription without payment verification.",
+                });
+            }
+
+            // If paymentId starts with pay_ or provider is RAZORPAY, verify with Razorpay
+            if (provider === "RAZORPAY" || String(paymentId).startsWith("pay_")) {
+                const rzpDetails = await fetchRazorpayPayment(paymentId);
+                if (rzpDetails) {
+                    if (rzpDetails.status !== "captured" && rzpDetails.status !== "authorized") {
+                        return res.status(400).json({
+                            error: `Payment verification failed: Razorpay payment status is '${rzpDetails.status}'.`,
+                        });
+                    }
+                }
+            }
+        }
+
         const finalPaymentId = paymentId || `pay_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
         const paymentProvider = provider || (paymentId?.startsWith("pay_") ? "RAZORPAY" : "MANUAL");
 
         // 1. Record the payment in payments table so it reflects in the Admin Payments dashboard
         try {
-            await db.query(
-                `INSERT INTO payments (id, user_id, plan_id, amount, status, provider, gateway_ref, created_at)
-                 VALUES (?, ?, ?, ?, 'SUCCESS', ?, ?, NOW())
-                 ON DUPLICATE KEY UPDATE status = 'SUCCESS', plan_id = VALUES(plan_id), amount = VALUES(amount), provider = VALUES(provider);`,
-                [finalPaymentId, userId, String(planId), paymentAmount, paymentProvider, finalPaymentId]
+            const [existingPay] = await db.query(
+                `SELECT id FROM payments WHERE (id = ? OR gateway_ref = ?) AND user_id = ? LIMIT 1;`,
+                [finalPaymentId, finalPaymentId, userId]
             );
+            if (existingPay.length === 0 && paymentAmount > 0) {
+                await db.query(
+                    `INSERT INTO payments (id, user_id, plan_id, amount, status, provider, gateway_ref, created_at)
+                     VALUES (?, ?, ?, ?, 'SUCCESS', ?, ?, NOW())
+                     ON DUPLICATE KEY UPDATE status = 'SUCCESS', plan_id = VALUES(plan_id), amount = VALUES(amount), provider = VALUES(provider);`,
+                    [finalPaymentId, userId, String(planId), paymentAmount, paymentProvider, finalPaymentId]
+                );
+            }
         } catch (payErr) {
             console.error("Failed to insert payment record in subscriptions/update:", payErr);
+        }
+
+        // Record unique invoice in invoices table
+        const cleanTailId = finalPaymentId.replace(/[^a-zA-Z0-9]/g, '').slice(-8).toUpperCase();
+        const subInvoiceNo = `INV-${new Date().getFullYear()}-${cleanTailId}`;
+        if (paymentAmount > 0) {
+            await db.query(
+                `INSERT INTO invoices (invoice_no, payment_id, amount) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE invoice_no = VALUES(invoice_no);`,
+                [subInvoiceNo, finalPaymentId, paymentAmount]
+            ).catch(err => console.error("Failed to insert invoice record in update:", err));
         }
 
         // 2. Activate subscription in database (updates users table & subscriptions table)
@@ -1650,7 +1755,7 @@ app.post("/api/subscriptions/update", async (req, res) => {
             const userEmail = user?.email;
             if (userEmail && paymentAmount > 0) {
                 const invoiceData = {
-                    invoiceNo: `INV-${Date.now().toString().slice(-6)}`,
+                    invoiceNo: subInvoiceNo,
                     planName: planDetails.name,
                     amount: paymentAmount.toFixed(2),
                     date: new Date().toLocaleDateString("en-IN"),

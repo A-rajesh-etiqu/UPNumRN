@@ -9,6 +9,7 @@ import {
     Platform,
     Alert,
     ActivityIndicator,
+    Linking,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -16,6 +17,7 @@ import Svg, { Path } from "react-native-svg";
 import { useAppTheme, Radius, Spacing, Shadows, Typography } from "../../../theme";
 import apiClient from "../../../api/apiClient";
 import { useAuthStore } from "../../../store/auth.store";
+import { ENV } from "../../../config/env";
 import DashboardHeader from "../../../components/layout/DashboardHeader";
 
 export default function SubscriptionHistoryScreen() {
@@ -27,6 +29,8 @@ export default function SubscriptionHistoryScreen() {
     const [invoices, setInvoices] = useState<any[]>([]);
     const [subscription, setSubscription] = useState<any>(null);
     const [sendingInvoice, setSendingInvoice] = useState<Record<string, boolean>>({});
+    const [dateRange, setDateRange] = useState<string>("all");
+    const [statusFilter, setStatusFilter] = useState<string>("all");
 
     useEffect(() => {
         const fetchHistory = async () => {
@@ -34,13 +38,24 @@ export default function SubscriptionHistoryScreen() {
                 const response = await apiClient.get("/billing/history", {
                     params: { userId: user?.id }
                 });
-                setInvoices(response.data.history || []);
+                const fetchedHistory: any[] = response.data.history || [];
+                // Deterministic sort: Ensure the most recent successful payment (what was lastly paid) is at Row #1
+                const sortedHistory = [...fetchedHistory].sort((a, b) => {
+                    const isASuccess = (a.status || "").toUpperCase() === "SUCCESS";
+                    const isBSuccess = (b.status || "").toUpperCase() === "SUCCESS";
+                    if (isASuccess && !isBSuccess) return -1;
+                    if (!isASuccess && isBSuccess) return 1;
+                    const timeA = a.timestamp || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+                    const timeB = b.timestamp || (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+                    return timeB - timeA;
+                });
+                setInvoices(sortedHistory);
                 setSubscription(response.data.subscription || null);
             } catch (err: any) {
                 console.warn("Failed to load billing history, falling back to mock:", err.message);
                 setInvoices([
-                    { date: "01 May, 2024", time: "10:23 AM", plan: "Lifetime Plan", rate: "₹10 / month", amount: "₹10.00", status: "Success", upi: "you@upi", invoiceNo: "INV-2024-MOCK1" },
-                    { date: "01 Apr, 2024", time: "10:23 AM", plan: "Lifetime Plan", rate: "₹10 / month", amount: "₹10.00", status: "Success", upi: "you@upi", invoiceNo: "INV-2024-MOCK2" },
+                    { date: "01 May, 2024", time: "10:23 AM", plan: "Lifetime Plan", rate: "₹10 / one-time", amount: "₹10.00", status: "Success", upi: "you@upi", invoiceNo: "INV-2024-MOCK1", timestamp: new Date("2024-05-01T10:23:00Z").getTime() },
+                    { date: "01 Apr, 2024", time: "10:23 AM", plan: "Lifetime Plan", rate: "₹10 / one-time", amount: "₹10.00", status: "Success", upi: "you@upi", invoiceNo: "INV-2024-MOCK2", timestamp: new Date("2024-04-01T10:23:00Z").getTime() },
                 ]);
             }
         };
@@ -48,6 +63,22 @@ export default function SubscriptionHistoryScreen() {
             fetchHistory();
         }
     }, [user?.id]);
+
+    const handleDownloadInvoice = (invoiceNo: string) => {
+        if (!invoiceNo) {
+            Alert.alert("No Invoice", "This payment does not have an invoice number yet.");
+            return;
+        }
+        const downloadUrl = `${ENV.API_BASE_URL}/billing/invoice/${encodeURIComponent(invoiceNo)}`;
+        const g = globalThis as any;
+        if (Platform.OS === "web" && typeof g.window !== "undefined") {
+            g.window.open(downloadUrl, "_blank");
+        } else {
+            Linking.openURL(downloadUrl).catch(() => {
+                Alert.alert("Error", "Could not open invoice URL.");
+            });
+        }
+    };
 
     const handleResendInvoice = async (invoiceNo: string) => {
         if (!invoiceNo) {
@@ -72,15 +103,53 @@ export default function SubscriptionHistoryScreen() {
         }
     };
 
-    const totalAmt = invoices.reduce((sum, item) => {
-        const parsed = parseFloat(item.amount.replace("₹", ""));
+    const filteredInvoices = invoices.filter(item => {
+        // Status filter
+        if (statusFilter !== "all") {
+            const itemStatus = (item.status || "").toLowerCase();
+            if (itemStatus !== statusFilter.toLowerCase()) {
+                return false;
+            }
+        }
+
+        // Date range filter
+        if (dateRange !== "all") {
+            const itemTime = item.timestamp || (item.createdAt ? new Date(item.createdAt).getTime() : 0);
+            if (itemTime) {
+                const itemDate = new Date(itemTime);
+                const now = new Date();
+
+                if (dateRange === "this_month") {
+                    if (itemDate.getMonth() !== now.getMonth() || itemDate.getFullYear() !== now.getFullYear()) {
+                        return false;
+                    }
+                } else if (dateRange === "last_month") {
+                    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                    if (itemDate.getMonth() !== lastMonth.getMonth() || itemDate.getFullYear() !== lastMonth.getFullYear()) {
+                        return false;
+                    }
+                } else if (dateRange === "last_30") {
+                    const thirtyDaysAgo = now.getTime() - (30 * 24 * 60 * 60 * 1000);
+                    if (itemTime < thirtyDaysAgo) {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
+    });
+
+    const successfulInvoices = invoices.filter(i => (i.status || "").toUpperCase() === "SUCCESS");
+    const totalPaidAmt = successfulInvoices.reduce((sum, item) => {
+        const parsed = parseFloat(String(item.amount || "").replace("₹", ""));
         return sum + (isNaN(parsed) ? 0 : parsed);
     }, 0);
-    const successCount = invoices.filter(i => i.status === "Success" || i.status === "SUCCESS").length;
-    const failedCount = invoices.filter(i => i.status === "Failed" || i.status === "FAILED").length;
+    const successCount = successfulInvoices.length;
+    const failedCount = invoices.filter(i => (i.status || "").toUpperCase() === "FAILED").length;
 
     // Replicate exact stats values from screenshot when using fallback mock data
-    const displayAmtStr = totalAmt === 50 ? "500" : totalAmt.toFixed(2);
+    const displayAmtStr = totalPaidAmt === 50 ? "500" : totalPaidAmt.toFixed(2);
 
     const billingStats = [
         { title: "Total Payments", value: `₹ ${displayAmtStr}`, label: "All time payments", color: colors.primary, bg: isDark ? colors.border : "#F5F3FF", icon: "calendar" as const },
@@ -94,6 +163,10 @@ export default function SubscriptionHistoryScreen() {
             <DashboardHeader
                 title="Billing History"
                 subtitle="Track your subscription payments, invoices, and billing statistics."
+                dateRange={dateRange}
+                onDateRangeChange={setDateRange}
+                statusFilter={statusFilter}
+                onStatusFilterChange={setStatusFilter}
             />
             <ScrollView
                 style={{ flex: 1 }}
@@ -135,7 +208,60 @@ export default function SubscriptionHistoryScreen() {
                 {/* Left Side: Table & bottom alert banner */}
                 <View style={[styles.mainContentCol, isDesktop && { gap: Spacing.md }]}>
                     <View style={[styles.tableCard, { backgroundColor: colors.surface, borderColor: colors.border }, isDesktop && { padding: Spacing.md, borderRadius: 16 }]}>
-                        <Text style={[styles.tableHeaderTitle, { color: colors.text }]}>Billing History</Text>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+                            <Text style={[styles.tableHeaderTitle, { color: colors.text, marginBottom: 0 }]}>Billing History</Text>
+                            
+                            {/* In-page quick filter tags (visible on mobile and desktop) */}
+                            <View style={styles.quickFilterRow}>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickFilterScroll}>
+                                    <View style={styles.quickFilterGroup}>
+                                        {[
+                                            { key: "all", label: "All Time" },
+                                            { key: "this_month", label: "This Month" },
+                                            { key: "last_30", label: "Last 30 Days" },
+                                            { key: "last_month", label: "Last Month" },
+                                        ].map(p => (
+                                            <TouchableOpacity
+                                                key={p.key}
+                                                style={[
+                                                    styles.quickFilterPill,
+                                                    { borderColor: colors.border, backgroundColor: dateRange === p.key ? colors.primary : colors.surface }
+                                                ]}
+                                                onPress={() => setDateRange(p.key)}
+                                            >
+                                                <Text style={[styles.quickFilterPillText, { color: dateRange === p.key ? "#FFFFFF" : colors.textSecondary }]}>
+                                                    {p.label}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+
+                                    <View style={[styles.quickFilterDivider, { backgroundColor: colors.border }]} />
+
+                                    <View style={styles.quickFilterGroup}>
+                                        {[
+                                            { key: "all", label: "All Status" },
+                                            { key: "success", label: "Success" },
+                                            { key: "cancelled", label: "Cancelled" },
+                                            { key: "failed", label: "Failed" },
+                                        ].map(p => (
+                                            <TouchableOpacity
+                                                key={p.key}
+                                                style={[
+                                                    styles.quickFilterPill,
+                                                    { borderColor: colors.border, backgroundColor: statusFilter === p.key ? colors.primary : colors.surface }
+                                                ]}
+                                                onPress={() => setStatusFilter(p.key)}
+                                            >
+                                                <Text style={[styles.quickFilterPillText, { color: statusFilter === p.key ? "#FFFFFF" : colors.textSecondary }]}>
+                                                    {p.label}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                </ScrollView>
+                            </View>
+                        </View>
                         
                         {/* Invoices Table wrapped in horizontal scroll for responsiveness */}
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalTableScroll}>
@@ -145,94 +271,116 @@ export default function SubscriptionHistoryScreen() {
                                     <Text style={[styles.tableHeaderCell, { width: 140, color: colors.textSecondary }]}>Date</Text>
                                     <Text style={[styles.tableHeaderCell, { width: 120, color: colors.textSecondary }]}>Plan</Text>
                                     <Text style={[styles.tableHeaderCell, { width: 80, color: colors.textSecondary }]}>Amount</Text>
-                                    <Text style={[styles.tableHeaderCell, { width: 90, color: colors.textSecondary }]}>Status</Text>
+                                    <Text style={[styles.tableHeaderCell, { width: 95, color: colors.textSecondary }]}>Status</Text>
                                     <Text style={[styles.tableHeaderCell, { width: 140, color: colors.textSecondary }]}>Payment Method</Text>
-                                    <Text style={[styles.tableHeaderCell, { width: 90, textAlign: "right", color: colors.textSecondary }]}>Invoice</Text>
+                                    <Text style={[styles.tableHeaderCell, { width: 130, textAlign: "right", color: colors.textSecondary }]}>Actions</Text>
                                 </View>
 
                                  {/* Rows */}
-                                {invoices.length === 0 ? (
-                                    <View style={{ paddingVertical: 20, alignItems: "center" }}>
-                                        <Text style={{ color: colors.textSecondary }}>No billing history available.</Text>
+                                {filteredInvoices.length === 0 ? (
+                                    <View style={{ paddingVertical: 24, alignItems: "center" }}>
+                                        <Text style={{ color: colors.textSecondary }}>No billing records match your filter criteria.</Text>
                                     </View>
                                 ) : (
-                                    invoices.map((row, idx) => (
-                                        <View key={idx} style={[styles.tableRow, { borderBottomColor: colors.border }]}>
-                                            {/* Date */}
-                                            <View style={{ width: 140 }}>
-                                                <Text style={[styles.cellMainText, { color: colors.text }]}>{row.date}</Text>
-                                                <Text style={[styles.cellSubText, { color: colors.textSecondary }]}>{row.time}</Text>
-                                            </View>
-                                            
-                                            {/* Plan */}
-                                            <View style={{ width: 120 }}>
-                                                <View style={[styles.planBadge, { backgroundColor: isDark ? colors.border : "#F5F3FF" }]}>
-                                                    <Text style={[styles.planBadgeText, { color: colors.primary }]}>{row.plan}</Text>
+                                    filteredInvoices.map((row, idx) => {
+                                        const isCancelled = (row.status || "").toLowerCase() === "cancelled";
+                                        const isFailed = (row.status || "").toLowerCase() === "failed";
+                                        const isSuccess = (row.status || "").toLowerCase() === "success";
+
+                                        return (
+                                            <View key={idx} style={[styles.tableRow, { borderBottomColor: colors.border }]}>
+                                                {/* Date */}
+                                                <View style={{ width: 140 }}>
+                                                    <Text style={[styles.cellMainText, { color: colors.text }]}>{row.date}</Text>
+                                                    <Text style={[styles.cellSubText, { color: colors.textSecondary }]}>{row.time}</Text>
                                                 </View>
-                                                <Text style={[styles.cellSubText, { color: colors.textSecondary }]}>{row.rate}</Text>
-                                            </View>
+                                                
+                                                {/* Plan */}
+                                                <View style={{ width: 120 }}>
+                                                    <View style={[styles.planBadge, { backgroundColor: isDark ? colors.border : "#F5F3FF" }]}>
+                                                        <Text style={[styles.planBadgeText, { color: colors.primary }]}>{row.plan}</Text>
+                                                    </View>
+                                                    <Text style={[styles.cellSubText, { color: colors.textSecondary }]}>{row.rate}</Text>
+                                                </View>
 
-                                            {/* Amount */}
-                                            <Text style={[styles.cellMainText, { width: 80, color: colors.text }]}>{row.amount}</Text>
+                                                {/* Amount */}
+                                                <Text style={[styles.cellMainText, { width: 80, color: colors.text }]}>{row.amount}</Text>
 
-                                            {/* Status */}
-                                            <View style={{ width: 90 }}>
-                                                <View style={[
-                                                    styles.statusPill, 
-                                                    { backgroundColor: isDark ? "#064e3b" : "#ECFDF5" },
-                                                    (row.status === "Failed" || row.status === "FAILED") && { backgroundColor: isDark ? "#7f1d1d" : "#FEE2E2" }
-                                                ]}>
+                                                {/* Status */}
+                                                <View style={{ width: 95 }}>
                                                     <View style={[
-                                                        styles.statusDot, 
-                                                        { backgroundColor: colors.success },
-                                                        (row.status === "Failed" || row.status === "FAILED") && { backgroundColor: colors.danger }
-                                                    ]} />
-                                                    <Text style={[
-                                                        styles.statusText, 
-                                                        { color: colors.success },
-                                                        (row.status === "Failed" || row.status === "FAILED") && { color: colors.danger }
-                                                    ]}>{row.status}</Text>
+                                                        styles.statusPill, 
+                                                        { backgroundColor: isDark ? "#064e3b" : "#ECFDF5" },
+                                                        isCancelled && { backgroundColor: isDark ? "#78350f" : "#FEF3C7" },
+                                                        isFailed && { backgroundColor: isDark ? "#7f1d1d" : "#FEE2E2" }
+                                                    ]}>
+                                                        <View style={[
+                                                            styles.statusDot, 
+                                                            { backgroundColor: colors.success },
+                                                            isCancelled && { backgroundColor: "#D97706" },
+                                                            isFailed && { backgroundColor: colors.danger }
+                                                        ]} />
+                                                        <Text style={[
+                                                            styles.statusText, 
+                                                            { color: colors.success },
+                                                            isCancelled && { color: "#D97706" },
+                                                            isFailed && { color: colors.danger }
+                                                        ]}>{row.status}</Text>
+                                                    </View>
+                                                </View>
+
+                                                {/* Payment Method */}
+                                                <View style={[styles.upiMethodRow, { width: 140 }]}>
+                                                    <View style={styles.upiBrandBox}>
+                                                        <Svg width="14" height="10" viewBox="0 0 24 16" style={{ marginRight: 2 }}>
+                                                            <Path d="M2 14 L8 2 L12 2 L6 14 Z" fill="#EAB308" />
+                                                            <Path d="M8 14 L14 2 L18 2 L12 14 Z" fill="#00C853" />
+                                                            <Path d="M14 14 L20 2 L24 2 L18 14 Z" fill="#3B82F6" />
+                                                        </Svg>
+                                                        <Text style={[styles.upiItalicText, { color: colors.text }]}>UPI</Text>
+                                                    </View>
+                                                    <Text style={[styles.upiMethodText, { color: colors.textSecondary }]}>{row.upi}</Text>
+                                                </View>
+
+                                                {/* Actions: Direct PDF Download & Send Email */}
+                                                <View style={{ width: 130, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
+                                                    <TouchableOpacity
+                                                        style={[styles.invoiceActionBtn, { borderColor: colors.border, backgroundColor: isDark ? colors.border : "#F8FAFC" }]}
+                                                        activeOpacity={0.8}
+                                                        onPress={() => handleDownloadInvoice(row.invoiceNo || row.id)}
+                                                    >
+                                                        <Ionicons name="document-text-outline" size={13} color={colors.primary} />
+                                                        <Text style={[styles.invoiceActionText, { color: colors.primary }]}>PDF</Text>
+                                                    </TouchableOpacity>
+
+                                                    <TouchableOpacity
+                                                        style={[styles.invoiceActionBtn, { borderColor: colors.border, backgroundColor: isDark ? colors.border : "#F8FAFC", opacity: sendingInvoice[row.invoiceNo] ? 0.7 : 1 }]}
+                                                        activeOpacity={0.8}
+                                                        disabled={sendingInvoice[row.invoiceNo]}
+                                                        onPress={() => handleResendInvoice(row.invoiceNo)}
+                                                    >
+                                                        {sendingInvoice[row.invoiceNo] ? (
+                                                            <ActivityIndicator size="small" color={colors.textSecondary} style={{ transform: [{ scale: 0.7 }] }} />
+                                                        ) : (
+                                                            <Ionicons name="mail-outline" size={13} color={colors.textSecondary} />
+                                                        )}
+                                                        <Text style={[styles.invoiceActionText, { color: colors.textSecondary }]}>
+                                                            {sendingInvoice[row.invoiceNo] ? "..." : "Email"}
+                                                        </Text>
+                                                    </TouchableOpacity>
                                                 </View>
                                             </View>
-
-                                            {/* Payment Method */}
-                                            <View style={[styles.upiMethodRow, { width: 140 }]}>
-                                                <View style={styles.upiBrandBox}>
-                                                    <Svg width="14" height="10" viewBox="0 0 24 16" style={{ marginRight: 2 }}>
-                                                        <Path d="M2 14 L8 2 L12 2 L6 14 Z" fill="#EAB308" />
-                                                        <Path d="M8 14 L14 2 L18 2 L12 14 Z" fill="#00C853" />
-                                                        <Path d="M14 14 L20 2 L24 2 L18 14 Z" fill="#3B82F6" />
-                                                    </Svg>
-                                                    <Text style={[styles.upiItalicText, { color: colors.text }]}>UPI</Text>
-                                                </View>
-                                                <Text style={[styles.upiMethodText, { color: colors.textSecondary }]}>{row.upi}</Text>
-                                            </View>
-
-                                            {/* Invoice Send to Email */}
-                                            <TouchableOpacity
-                                                style={[styles.downloadBtn, { width: 110, opacity: sendingInvoice[row.invoiceNo] ? 0.7 : 1 }]}
-                                                activeOpacity={0.8}
-                                                disabled={sendingInvoice[row.invoiceNo]}
-                                                onPress={() => handleResendInvoice(row.invoiceNo)}
-                                            >
-                                                {sendingInvoice[row.invoiceNo] ? (
-                                                    <ActivityIndicator size="small" color={colors.primary} />
-                                                ) : (
-                                                    <Ionicons name="mail-outline" size={14} color={colors.primary} />
-                                                )}
-                                                <Text style={[styles.downloadText, { color: colors.primary }]}>
-                                                    {sendingInvoice[row.invoiceNo] ? "Sending..." : "Send Email"}
-                                                </Text>
-                                            </TouchableOpacity>
-                                        </View>
-                                    ))
+                                        );
+                                    })
                                 )}
                             </View>
                         </ScrollView>
 
                         {/* Pagination Row */}
                         <View style={styles.paginationRow}>
-                            <Text style={[styles.paginationLabel, { color: colors.textSecondary }]}>Showing 1 to {invoices.length} of {invoices.length} records</Text>
+                            <Text style={[styles.paginationLabel, { color: colors.textSecondary }]}>
+                                Showing 1 to {filteredInvoices.length} of {filteredInvoices.length} records {filteredInvoices.length !== invoices.length && `(filtered from ${invoices.length})`}
+                            </Text>
                             <View style={styles.paginationControls}>
                                 <TouchableOpacity style={[styles.pageArrow, { backgroundColor: colors.surface, borderColor: colors.border }]} disabled>
                                     <Ionicons name="chevron-back" size={16} color={colors.textSecondary} />
@@ -311,7 +459,7 @@ export default function SubscriptionHistoryScreen() {
 
                         <View style={styles.planRateRow}>
                             <Text style={styles.planRateValueWhite}>₹{subscription?.price ?? 10}</Text>
-                            <Text style={styles.planRatePeriodWhite}>/month</Text>
+                            <Text style={styles.planRatePeriodWhite}>/{subscription?.billingCycle?.toLowerCase() === 'lifetime' || subscription?.planName?.toLowerCase().includes('lifetime') ? 'one-time' : 'month'}</Text>
                         </View>
 
                         {/* Next billing date */}
@@ -554,6 +702,48 @@ const styles = StyleSheet.create({
     downloadText: {
         fontSize: 11,
         fontWeight: "700",
+    },
+    quickFilterRow: {
+        flexDirection: "row",
+        alignItems: "center",
+    },
+    quickFilterScroll: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+    },
+    quickFilterGroup: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+    },
+    quickFilterDivider: {
+        width: 1,
+        height: 18,
+        marginHorizontal: 4,
+    },
+    quickFilterPill: {
+        borderWidth: 1,
+        borderRadius: 16,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+    },
+    quickFilterPillText: {
+        fontSize: 11,
+        fontWeight: "600",
+    },
+    invoiceActionBtn: {
+        flexDirection: "row",
+        alignItems: "center",
+        borderWidth: 1,
+        borderRadius: 8,
+        paddingHorizontal: 8,
+        paddingVertical: 5,
+        gap: 4,
+    },
+    invoiceActionText: {
+        fontSize: 11,
+        fontWeight: "600",
     },
     paginationRow: {
         flexDirection: "row",

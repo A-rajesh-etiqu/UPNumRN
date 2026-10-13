@@ -32,9 +32,24 @@ function verifyRazorpaySignature({ orderId, paymentId, signature }) {
     return expectedSignature === signature;
 }
 
+async function fetchRazorpayPayment(paymentId) {
+    if (!paymentId || typeof paymentId !== "string" || !paymentId.startsWith("pay_")) {
+        return null;
+    }
+    try {
+        const razorpay = getRazorpayInstance();
+        const payment = await razorpay.payments.fetch(paymentId);
+        return payment;
+    } catch (err) {
+        console.warn("Could not verify payment via Razorpay API:", err.message);
+        return null;
+    }
+}
+
 module.exports = {
     createRazorpayOrder,
     verifyRazorpaySignature,
+    fetchRazorpayPayment,
     getKeyId,
     getKeySecret,
 };

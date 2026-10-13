@@ -34,6 +34,8 @@ async function initDatabase() {
         waitForConnections: true,
         connectionLimit: 10,
         queueLimit: 0,
+        timezone: 'Z',
+        dateStrings: true,
     });
 
     console.log(`Connected to MySQL database: ${dbName}`);
@@ -449,7 +451,29 @@ async function seedDatabase() {
     }
 }
 
+let initPromise = null;
+
+function safeInitDatabase() {
+    if (!initPromise) {
+        initPromise = initDatabase();
+    }
+    return initPromise;
+}
+
+async function ensurePool() {
+    if (pool) return pool;
+    await safeInitDatabase();
+    return pool;
+}
+
 module.exports = {
-    initDatabase,
-    query: (text, params) => pool.query(text, params),
+    initDatabase: safeInitDatabase,
+    query: async (text, params) => {
+        const p = await ensurePool();
+        return p.query(text, params);
+    },
+    getConnection: async () => {
+        const p = await ensurePool();
+        return p.getConnection();
+    }
 };

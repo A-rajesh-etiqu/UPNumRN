@@ -12,6 +12,7 @@ import {
     Modal,
     ActivityIndicator,
     KeyboardAvoidingView,
+    Linking,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAppTheme, Colors, Radius, Spacing, Shadows, Typography } from "../../../theme";
@@ -19,6 +20,7 @@ import { useAuthStore } from "../../../store/auth.store";
 import { useSubscriptionStore } from "../../../store/subscription.store";
 import apiClient from "../../../api/apiClient";
 import { authApi } from "../../../api/authApi";
+import { ENV } from "../../../config/env";
 import { getPasswordStrength } from "../../../utils/passwordStrength";
 import { fetchNetworkTowerLocation } from "../../../services/networkLocation.service";
 import DashboardHeader from "../../../components/layout/DashboardHeader";
@@ -321,7 +323,17 @@ export default function SettingsScreen() {
                         }
                     }
                     if (res.data?.history) {
-                        setBillingHistory(res.data.history);
+                        const fetchedHistory: any[] = res.data.history || [];
+                        const sortedHistory = [...fetchedHistory].sort((a, b) => {
+                            const isASuccess = (a.status || "").toUpperCase() === "SUCCESS";
+                            const isBSuccess = (b.status || "").toUpperCase() === "SUCCESS";
+                            if (isASuccess && !isBSuccess) return -1;
+                            if (!isASuccess && isBSuccess) return 1;
+                            const timeA = a.timestamp || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+                            const timeB = b.timestamp || (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+                            return timeB - timeA;
+                        });
+                        setBillingHistory(sortedHistory);
                     }
                 })
                 .catch(err => console.warn("Failed to fetch subscription info in settings:", err));
@@ -1253,19 +1265,45 @@ export default function SettingsScreen() {
                                             ) : (
                                                 billingHistory.slice(0, 5).map((item, idx, arr) => {
                                                     const isSuccess = item.status === "Success" || item.status === "SUCCESS";
+                                                    const isCancelled = item.status === "Cancelled" || item.status === "CANCELLED";
                                                     return (
                                                         <View key={item.id || idx} style={{ flexDirection: "row", padding: 12, borderBottomWidth: idx === arr.length - 1 ? 0 : 1, borderBottomColor: colors.border, alignItems: "center" }}>
                                                             <Text style={{ width: 120, fontSize: 13, fontWeight: "500", color: colors.text }}>{item.date}</Text>
                                                             <Text style={{ width: 100, fontSize: 13, color: colors.text }}>{item.amount}</Text>
                                                             <View style={{ width: 100, alignItems: "flex-start" }}>
-                                                                <View style={[styles.statusBadge, { backgroundColor: isSuccess ? "#ECFDF5" : "#FEE2E2", paddingHorizontal: 8, paddingVertical: 4 }]}>
-                                                                    <Text style={[styles.statusBadgeText, { color: isSuccess ? "#10B981" : "#EF4444" }]}>{item.status}</Text>
+                                                                <View style={[
+                                                                    styles.statusBadge, 
+                                                                    { 
+                                                                        backgroundColor: isSuccess ? "#ECFDF5" : isCancelled ? "#FEF3C7" : "#FEE2E2", 
+                                                                        paddingHorizontal: 8, 
+                                                                        paddingVertical: 4 
+                                                                    }
+                                                                ]}>
+                                                                    <Text style={[
+                                                                        styles.statusBadgeText, 
+                                                                        { color: isSuccess ? "#10B981" : isCancelled ? "#D97706" : "#EF4444" }
+                                                                    ]}>{item.status}</Text>
                                                                 </View>
                                                             </View>
                                                             <TouchableOpacity
                                                                 style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }}
                                                                 activeOpacity={0.7}
-                                                                onPress={() => Alert.alert("Invoice Download", `Downloading invoice ${item.invoiceNo || item.id || ''}`)}
+                                                                onPress={() => {
+                                                                    const invoiceNoOrId = item.invoiceNo || item.id || '';
+                                                                    if (!invoiceNoOrId) {
+                                                                        Alert.alert("Invoice Download", "No invoice number available for this transaction.");
+                                                                        return;
+                                                                    }
+                                                                    const downloadUrl = `${ENV.API_BASE_URL}/billing/invoice/${encodeURIComponent(invoiceNoOrId)}`;
+                                                                    const g = globalThis as any;
+                                                                    if (Platform.OS === "web" && typeof g.window !== "undefined") {
+                                                                        g.window.open(downloadUrl, "_blank");
+                                                                    } else {
+                                                                        Linking.openURL(downloadUrl).catch(() => {
+                                                                            Alert.alert("Error", "Could not open invoice URL.");
+                                                                        });
+                                                                    }
+                                                                }}
                                                             >
                                                                 <Ionicons name="document-text-outline" size={14} color={colors.primary} />
                                                                 <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Download</Text>

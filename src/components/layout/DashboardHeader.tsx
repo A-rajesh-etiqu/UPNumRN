@@ -30,6 +30,10 @@ interface Props {
     subtitle: string;
     onProfilePress?: () => void;
     isAdmin?: boolean;
+    dateRange?: string;
+    onDateRangeChange?: (range: string) => void;
+    statusFilter?: string;
+    onStatusFilterChange?: (status: string) => void;
 }
 
 export default function DashboardHeader({
@@ -37,12 +41,18 @@ export default function DashboardHeader({
     subtitle,
     onProfilePress,
     isAdmin = false,
+    dateRange = "all",
+    onDateRangeChange,
+    statusFilter = "all",
+    onStatusFilterChange,
 }: Props) {
     const { width } = useWindowDimensions();
     const isDesktop = width >= 900;
     const { user, logout, updateUser } = useAuthStore();
     const [dropdownOpen, setDropdownOpen] = React.useState(false);
     const [notifDropdownOpen, setNotifDropdownOpen] = React.useState(false);
+    const [dateDropdownOpen, setDateDropdownOpen] = React.useState(false);
+    const [filterDropdownOpen, setFilterDropdownOpen] = React.useState(false);
     const [notifications, setNotifications] = React.useState<any[]>([]);
 
     const pathname = usePathname();
@@ -144,17 +154,123 @@ export default function DashboardHeader({
                 {/* Date range filter and general filter for Billing History (Desktop only) */}
                 {isDesktop && isHistoryPage && (
                     <View style={styles.headerFilters}>
-                        <TouchableOpacity style={[styles.datePickerBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.8}>
-                            <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} style={{ marginRight: 6 }} />
-                            <Text style={[styles.filterBtnText, { color: colors.text }]}>01 May, 2024 - 31 May, 2024</Text>
-                            <Ionicons name="chevron-down" size={12} color={colors.textSecondary} style={{ marginLeft: 6 }} />
-                        </TouchableOpacity>
+                        <View style={{ position: "relative" }}>
+                            <TouchableOpacity
+                                style={[styles.datePickerBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                                activeOpacity={0.8}
+                                onPress={() => {
+                                    setDateDropdownOpen(!dateDropdownOpen);
+                                    setFilterDropdownOpen(false);
+                                    setNotifDropdownOpen(false);
+                                    setDropdownOpen(false);
+                                }}
+                            >
+                                <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} style={{ marginRight: 6 }} />
+                                <Text style={[styles.filterBtnText, { color: colors.text }]}>
+                                    {dateRange === "this_month" ? "This Month" : dateRange === "last_30" ? "Last 30 Days" : dateRange === "last_month" ? "Last Month" : "All Time"}
+                                </Text>
+                                <Ionicons name={dateDropdownOpen ? "chevron-up" : "chevron-down"} size={12} color={colors.textSecondary} style={{ marginLeft: 6 }} />
+                            </TouchableOpacity>
 
-                        <TouchableOpacity style={[styles.filterBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.8}>
-                            <Ionicons name="funnel-outline" size={14} color={colors.textSecondary} style={{ marginRight: 6 }} />
-                            <Text style={[styles.filterBtnText, { color: colors.text }]}>Filter</Text>
-                            <Ionicons name="chevron-down" size={12} color={colors.textSecondary} style={{ marginLeft: 6 }} />
-                        </TouchableOpacity>
+                            {dateDropdownOpen && (
+                                <>
+                                    <TouchableOpacity
+                                        style={styles.overlay}
+                                        activeOpacity={1}
+                                        onPress={() => setDateDropdownOpen(false)}
+                                    />
+                                    <View style={[styles.filterDropdownMenu, { backgroundColor: colors.surface, borderColor: colors.border, left: 0 }]}>
+                                        {[
+                                            { key: "all", label: "All Time" },
+                                            { key: "this_month", label: "This Month" },
+                                            { key: "last_30", label: "Last 30 Days" },
+                                            { key: "last_month", label: "Last Month" },
+                                        ].map(opt => (
+                                            <TouchableOpacity
+                                                key={opt.key}
+                                                style={[
+                                                    styles.dropdownItem,
+                                                    dateRange === opt.key && { backgroundColor: isDark ? colors.border : "#F5F3FF" }
+                                                ]}
+                                                onPress={() => {
+                                                    onDateRangeChange?.(opt.key);
+                                                    setDateDropdownOpen(false);
+                                                }}
+                                            >
+                                                <Ionicons
+                                                    name={dateRange === opt.key ? "checkmark-circle" : "ellipse-outline"}
+                                                    size={14}
+                                                    color={dateRange === opt.key ? colors.primary : colors.textSecondary}
+                                                    style={{ marginRight: 8 }}
+                                                />
+                                                <Text style={[styles.dropdownItemText, { color: dateRange === opt.key ? colors.primary : colors.text }]}>
+                                                    {opt.label}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                </>
+                            )}
+                        </View>
+
+                        <View style={{ position: "relative" }}>
+                            <TouchableOpacity
+                                style={[styles.filterBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                                activeOpacity={0.8}
+                                onPress={() => {
+                                    setFilterDropdownOpen(!filterDropdownOpen);
+                                    setDateDropdownOpen(false);
+                                    setNotifDropdownOpen(false);
+                                    setDropdownOpen(false);
+                                }}
+                            >
+                                <Ionicons name="funnel-outline" size={14} color={colors.textSecondary} style={{ marginRight: 6 }} />
+                                <Text style={[styles.filterBtnText, { color: colors.text }]}>
+                                    {statusFilter === "all" ? "Filter" : (statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1))}
+                                </Text>
+                                <Ionicons name={filterDropdownOpen ? "chevron-up" : "chevron-down"} size={12} color={colors.textSecondary} style={{ marginLeft: 6 }} />
+                            </TouchableOpacity>
+
+                            {filterDropdownOpen && (
+                                <>
+                                    <TouchableOpacity
+                                        style={styles.overlay}
+                                        activeOpacity={1}
+                                        onPress={() => setFilterDropdownOpen(false)}
+                                    />
+                                    <View style={[styles.filterDropdownMenu, { backgroundColor: colors.surface, borderColor: colors.border, right: 0 }]}>
+                                        {[
+                                            { key: "all", label: "All Statuses" },
+                                            { key: "success", label: "Success" },
+                                            { key: "cancelled", label: "Cancelled" },
+                                            { key: "failed", label: "Failed" },
+                                        ].map(opt => (
+                                            <TouchableOpacity
+                                                key={opt.key}
+                                                style={[
+                                                    styles.dropdownItem,
+                                                    statusFilter === opt.key && { backgroundColor: isDark ? colors.border : "#F5F3FF" }
+                                                ]}
+                                                onPress={() => {
+                                                    onStatusFilterChange?.(opt.key);
+                                                    setFilterDropdownOpen(false);
+                                                }}
+                                            >
+                                                <Ionicons
+                                                    name={statusFilter === opt.key ? "checkmark-circle" : "ellipse-outline"}
+                                                    size={14}
+                                                    color={statusFilter === opt.key ? colors.primary : colors.textSecondary}
+                                                    style={{ marginRight: 8 }}
+                                                />
+                                                <Text style={[styles.dropdownItemText, { color: statusFilter === opt.key ? colors.primary : colors.text }]}>
+                                                    {opt.label}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                </>
+                            )}
+                        </View>
                     </View>
                 )}
 
@@ -426,6 +542,16 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         borderWidth: 1,
         paddingVertical: Spacing.sm,
+        minWidth: 160,
+        zIndex: ZIndex.dropdown,
+        ...Shadows.md,
+    },
+    filterDropdownMenu: {
+        position: "absolute",
+        top: 42,
+        borderRadius: 12,
+        borderWidth: 1,
+        paddingVertical: Spacing.xs,
         minWidth: 160,
         zIndex: ZIndex.dropdown,
         ...Shadows.md,

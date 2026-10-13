@@ -95,7 +95,13 @@ export async function launchDirectRazorpayCheckout(options: DirectCheckoutOption
             description: `${options.planName} Subscription`,
             image: "https://upnum.etiquetteai.in/favicon.ico",
             handler: function (response: any) {
-                const paymentId = response?.razorpay_payment_id || `pay_${Date.now()}`;
+                const paymentId = response?.razorpay_payment_id;
+                if (!paymentId) {
+                    if (options.onError) {
+                        options.onError(new Error("Payment failed: Missing payment ID from Razorpay checkout."));
+                    }
+                    return;
+                }
                 options.onSuccess(paymentId);
             },
             prefill: {
