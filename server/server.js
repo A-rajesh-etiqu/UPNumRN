@@ -711,7 +711,7 @@ app.post("/api/billing/send-invoice", async (req, res) => {
         const [payRows] = await db.query(
             `SELECT
                 p.amount, p.status, p.created_at, p.provider,
-                p.transaction_reference, p.upi_id,
+                p.gateway_ref AS transaction_reference, p.upi_id,
                 pl.name AS plan_name, pl.type AS billing_cycle,
                 i.invoice_no
              FROM invoices i
