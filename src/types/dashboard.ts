@@ -39,7 +39,7 @@ export interface RecentTransaction {
     amount: number;
 
     date: string;
-
+    date_time?: string;
     type: "income" | "expense";
 
 }

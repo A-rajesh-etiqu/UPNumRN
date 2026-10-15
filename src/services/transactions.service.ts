@@ -5,6 +5,7 @@ export interface Transaction extends RecentTransaction {
     time?: string;
     status?: string;
     upi?: string;
+    date_time?: string;
 }
 
 export const transactionsService = {

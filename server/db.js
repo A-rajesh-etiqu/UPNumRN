@@ -33,6 +33,10 @@ async function initDatabase() {
         database: dbName,
         waitForConnections: true,
         connectionLimit: 10,
+        maxIdle: 10,
+        idleTimeout: 60000,
+        enableKeepAlive: true,
+        keepAliveInitialDelay: 10000,
         queueLimit: 0,
         timezone: 'Z',
         dateStrings: true,
@@ -470,7 +474,22 @@ module.exports = {
     initDatabase: safeInitDatabase,
     query: async (text, params) => {
         const p = await ensurePool();
-        return p.query(text, params);
+        try {
+            return await p.query(text, params);
+        } catch (err) {
+            const isConnectionError =
+                err.code === "ECONNRESET" ||
+                err.code === "PROTOCOL_CONNECTION_LOST" ||
+                err.code === "ETIMEDOUT" ||
+                err.code === "EPIPE" ||
+                err.fatal === true;
+
+            if (isConnectionError) {
+                console.warn(`[db] Connection reset/lost (${err.code || "fatal"}). Retrying query once...`);
+                return await p.query(text, params);
+            }
+            throw err;
+        }
     },
     getConnection: async () => {
         const p = await ensurePool();

@@ -590,6 +590,7 @@ app.get("/api/transactions", async (req, res) => {
             amount: parseFloat(r.amount),
             date: new Date(r.date_time).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
             time: new Date(r.date_time).toLocaleTimeString("en-IN", { hour: "numeric", minute: "numeric", hour12: true }),
+            date_time: r.date_time ? new Date(r.date_time).toISOString() : null,
             type: parseFloat(r.amount) >= 0 ? "income" : "expense",
             status: r.status,
             upi: r.payer_upi

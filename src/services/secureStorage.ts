@@ -44,7 +44,11 @@ class SecureStorageService {
     }
 
     async saveUser(user: User) {
-        await setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+        try {
+            await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+        } catch (e) {
+            console.error("Failed to save user to AsyncStorage:", e);
+        }
     }
 
     async saveSession(
@@ -68,9 +72,16 @@ class SecureStorageService {
     }
 
     async getUser(): Promise<User | null> {
-        const value = await getItem(STORAGE_KEYS.USER);
-
-        return value ? JSON.parse(value) : null;
+        try {
+            let value = await AsyncStorage.getItem(STORAGE_KEYS.USER);
+            if (!value && !isWeb) {
+                value = await SecureStore.getItemAsync(STORAGE_KEYS.USER);
+            }
+            return value ? JSON.parse(value) : null;
+        } catch (e) {
+            console.error("Failed to load user from storage:", e);
+            return null;
+        }
     }
 
     async updateAccessToken(token: string) {
@@ -81,7 +92,8 @@ class SecureStorageService {
         await Promise.all([
             deleteItem(STORAGE_KEYS.ACCESS_TOKEN),
             deleteItem(STORAGE_KEYS.REFRESH_TOKEN),
-            deleteItem(STORAGE_KEYS.USER),
+            AsyncStorage.removeItem(STORAGE_KEYS.USER).catch(() => {}),
+            !isWeb ? SecureStore.deleteItemAsync(STORAGE_KEYS.USER).catch(() => {}) : Promise.resolve(),
         ]);
     }
 }

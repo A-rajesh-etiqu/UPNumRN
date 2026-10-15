@@ -7,18 +7,86 @@ import {
     TouchableOpacity,
     ActivityIndicator,
     Platform,
-    useWindowDimensions
+    useWindowDimensions,
+    Modal,
 } from "react-native";
 import { useAuthStore } from "../../../store/auth.store";
 import { useTransactionStore } from "../../../store/transaction.store";
 import { useAppTheme } from "../../../theme";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import DatePickerField from "../../../components/common/DatePickerField";
 import { LineChart, PieChart, BarChart } from "react-native-gifted-charts";
 import dayjs from "dayjs";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { router } from "../../../navigation/RootNavigation";
 import DashboardHeader from "../../../components/layout/DashboardHeader";
+
+// Universal date parser that handles ISO, YYYY-MM-DD, and localized strings ("2 Oct, 2026", "13/08/2026", "31 May, 2024")
+const parseTransactionDate = (tx: any): dayjs.Dayjs | null => {
+    if (!tx) return null;
+
+    const rawDateTime = tx.date_time || tx.dateTime || tx.created_at;
+    if (rawDateTime) {
+        const isoNormalized = typeof rawDateTime === "string" ? rawDateTime.replace(" ", "T") : rawDateTime;
+        const d = dayjs(isoNormalized);
+        if (d.isValid()) return d;
+    }
+
+    const rawDate = tx.date;
+    if (!rawDate) return null;
+
+    const direct = dayjs(rawDate);
+    if (direct.isValid()) return direct;
+
+    if (typeof rawDate === "string") {
+        const cleaned = rawDate.replace(",", "").trim();
+        const parts = cleaned.split(/[\s/-]+/);
+        if (parts.length === 3) {
+            const months: Record<string, string> = {
+                jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+                jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+                january: "01", february: "02", march: "03", april: "04", june: "06",
+                july: "07", august: "08", september: "09", october: "10", november: "11", december: "12"
+            };
+            const p0Lower = parts[0].toLowerCase();
+            const p1Lower = parts[1].toLowerCase();
+
+            if (months[p1Lower]) {
+                const day = parts[0].padStart(2, "0");
+                const month = months[p1Lower];
+                const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+                const d = dayjs(`${year}-${month}-${day}`);
+                if (d.isValid()) return d;
+            }
+            if (months[p0Lower]) {
+                const day = parts[1].padStart(2, "0");
+                const month = months[p0Lower];
+                const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+                const d = dayjs(`${year}-${month}-${day}`);
+                if (d.isValid()) return d;
+            }
+            if (/^\d+$/.test(parts[0]) && /^\d+$/.test(parts[1]) && /^\d{4}$/.test(parts[2])) {
+                const day = parts[0].padStart(2, "0");
+                const month = parts[1].padStart(2, "0");
+                const year = parts[2];
+                const d = dayjs(`${year}-${month}-${day}`);
+                if (d.isValid()) return d;
+            }
+        }
+    }
+
+    return null;
+};
+
+// Safe local date parser for datepicker without UTC offset shifts
+const toLocalDateObj = (dateStr: string): Date => {
+    if (!dateStr) return new Date();
+    const parts = dateStr.split("-").map(Number);
+    if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+        return new Date(parts[0], parts[1] - 1, parts[2]);
+    }
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? new Date() : d;
+};
 
 export default function ReportsScreen() {
     const { user } = useAuthStore();
@@ -30,9 +98,21 @@ export default function ReportsScreen() {
 
     const [startDate, setStartDate] = useState("");
     const [endDate, setEndDate] = useState("");
-    const [activeFilter, setActiveFilter] = useState("This Month");
+    const [activeFilter, setActiveFilter] = useState("All Time");
     const [showStartPicker, setShowStartPicker] = useState(false);
     const [showEndPicker, setShowEndPicker] = useState(false);
+    const [tempStartDate, setTempStartDate] = useState<Date>(new Date());
+    const [tempEndDate, setTempEndDate] = useState<Date>(new Date());
+
+    const openStartPicker = () => {
+        setTempStartDate(toLocalDateObj(startDate));
+        setShowStartPicker(true);
+    };
+
+    const openEndPicker = () => {
+        setTempEndDate(toLocalDateObj(endDate));
+        setShowEndPicker(true);
+    };
 
     // Brand Colors from Design
     const colorIncome = "#10B981";
@@ -50,12 +130,12 @@ export default function ReportsScreen() {
         setActiveFilter(filter);
         const today = dayjs();
 
-        setEndDate(today.format("YYYY-MM-DD"));
-
         if (filter === "Last 7 Days") {
             setStartDate(today.subtract(7, 'day').format("YYYY-MM-DD"));
+            setEndDate(today.format("YYYY-MM-DD"));
         } else if (filter === "This Month") {
             setStartDate(today.startOf('month').format("YYYY-MM-DD"));
+            setEndDate(today.endOf('month').format("YYYY-MM-DD"));
         } else if (filter === "All Time") {
             setStartDate("");
             setEndDate("");
@@ -70,9 +150,10 @@ export default function ReportsScreen() {
     const filteredTransactions = useMemo(() => {
         return transactions.filter(tx => {
             if (!startDate && !endDate) return true;
-            const txDate = dayjs((tx as any).date_time || tx.date);
-            if (startDate && txDate.isBefore(dayjs(startDate), 'day')) return false;
-            if (endDate && txDate.isAfter(dayjs(endDate), 'day')) return false;
+            const txDate = parseTransactionDate(tx);
+            if (!txDate) return false;
+            if (startDate && txDate.isBefore(dayjs(startDate).startOf('day'))) return false;
+            if (endDate && txDate.isAfter(dayjs(endDate).endOf('day'))) return false;
             return true;
         });
     }, [transactions, startDate, endDate]);
@@ -94,16 +175,18 @@ export default function ReportsScreen() {
     const { incomeChartData, expenseChartData, maxLineValue } = useMemo(() => {
         const grouped: Record<string, { inc: number; exp: number }> = {};
 
-        let minDate: Date | null = null;
-        let maxDate: Date | null = null;
+        let minDate: Date | null = startDate ? toLocalDateObj(startDate) : null;
+        let maxDate: Date | null = endDate ? toLocalDateObj(endDate) : null;
 
         filteredTransactions.forEach(tx => {
-            const dateStr = dayjs((tx as any).date_time || tx.date).format("YYYY-MM-DD");
+            const parsed = parseTransactionDate(tx);
+            if (!parsed) return;
+            const dateStr = parsed.format("YYYY-MM-DD");
             if (!grouped[dateStr]) grouped[dateStr] = { inc: 0, exp: 0 };
             if (tx.type === "income") grouped[dateStr].inc += Math.abs(tx.amount);
             else grouped[dateStr].exp += Math.abs(tx.amount);
 
-            const txDate = new Date(dateStr);
+            const txDate = toLocalDateObj(dateStr);
             if (!minDate || txDate < minDate) minDate = txDate;
             if (!maxDate || txDate > maxDate) maxDate = txDate;
         });
@@ -111,11 +194,13 @@ export default function ReportsScreen() {
         const sortedDates: string[] = [];
         const mMinDate = minDate as Date | null;
         const mMaxDate = maxDate as Date | null;
-        if (mMinDate && mMaxDate) {
+        if (mMinDate && mMaxDate && mMinDate <= mMaxDate) {
             let current = new Date(mMinDate);
-            while (current.getTime() <= mMaxDate.getTime()) {
+            let loopGuard = 0;
+            while (current.getTime() <= mMaxDate.getTime() && loopGuard < 365) {
                 sortedDates.push(dayjs(current).format("YYYY-MM-DD"));
                 current.setDate(current.getDate() + 1);
+                loopGuard++;
             }
         }
 
@@ -145,7 +230,7 @@ export default function ReportsScreen() {
         }
 
         return { incomeChartData: incData, expenseChartData: expData, maxLineValue: maxVal };
-    }, [filteredTransactions, colors]);
+    }, [filteredTransactions, startDate, endDate, colors]);
 
     const stepLine = Math.max(Math.ceil(maxLineValue / 4 / 1000) * 1000, 100);
     const maxLineRounded = stepLine * 4;
@@ -166,6 +251,13 @@ export default function ReportsScreen() {
             value: expensesByCategory[key],
         })).sort((a, b) => b.value - a.value);
 
+        if (sorted.length === 0) {
+            return {
+                pieChartData: [{ value: 1, color: isDark ? "#334155" : "#E2E8F0", text: "No Spending", percent: 100 }],
+                topCategories: []
+            };
+        }
+
         const pieData = sorted.map((item, index) => ({
             value: item.value,
             color: categoryColors[index % categoryColors.length],
@@ -174,20 +266,23 @@ export default function ReportsScreen() {
         }));
 
         return { pieChartData: pieData, topCategories: pieData };
-    }, [filteredTransactions, totalSpending]);
+    }, [filteredTransactions, totalSpending, isDark]);
 
     // Monthly Comparison Data (Bar Chart)
     const { barChartData, maxBarValue } = useMemo(() => {
-        const groupedByMonth: Record<string, { inc: number; exp: number }> = {};
+        const groupedByMonth: Record<string, { inc: number; exp: number; sortKey: number }> = {};
         
         filteredTransactions.forEach(tx => {
-            const monthStr = dayjs((tx as any).date_time || tx.date).format("MMM");
-            if (!groupedByMonth[monthStr]) groupedByMonth[monthStr] = { inc: 0, exp: 0 };
+            const parsed = parseTransactionDate(tx);
+            if (!parsed) return;
+            const monthStr = parsed.format("MMM");
+            const sortKey = parsed.year() * 12 + parsed.month();
+            if (!groupedByMonth[monthStr]) groupedByMonth[monthStr] = { inc: 0, exp: 0, sortKey };
             if (tx.type === "income") groupedByMonth[monthStr].inc += Math.abs(tx.amount);
             else groupedByMonth[monthStr].exp += Math.abs(tx.amount);
         });
 
-        const sortedMonths = Object.keys(groupedByMonth).sort((a, b) => dayjs(a, "MMM").month() - dayjs(b, "MMM").month());
+        const sortedMonths = Object.keys(groupedByMonth).sort((a, b) => groupedByMonth[a].sortKey - groupedByMonth[b].sortKey);
 
         const bData: any[] = [];
         let maxVal = 0;
@@ -221,7 +316,11 @@ export default function ReportsScreen() {
     // Top Recent Transactions
     const recentTx = useMemo(() => {
         return [...filteredTransactions].sort((a, b) => {
-            return dayjs((b as any).date_time || b.date).valueOf() - dayjs((a as any).date_time || a.date).valueOf();
+            const da = parseTransactionDate(a);
+            const db = parseTransactionDate(b);
+            const va = da ? da.valueOf() : 0;
+            const vb = db ? db.valueOf() : 0;
+            return vb - va;
         }).slice(0, 5);
     }, [filteredTransactions]);
 
@@ -294,67 +393,186 @@ export default function ReportsScreen() {
             />
             <ScrollView style={styles.container}>
 
-                <View style={[styles.headerRow, { flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'center' : 'flex-end', paddingTop: 16 }]}>
+                <View style={[styles.headerRow, { flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'center' : 'stretch', gap: 12, paddingTop: 16 }]}>
 
-                    <View style={styles.headerActions}>
+                    <View style={[styles.headerActions, { flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'center' : 'stretch', gap: 12, width: isDesktop ? 'auto' : '100%' }]}>
                         {Platform.OS === 'web' ? (
-                            <View style={styles.datePickerRow}>
-                                <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} style={{ marginRight: 8 }} />
-                                {renderWebDatePicker("", startDate, setStartDate)}
-                                <Text style={{ marginHorizontal: 8, color: colors.textSecondary }}>-</Text>
-                                {renderWebDatePicker("", endDate, setEndDate)}
+                            <View style={[styles.datePickerRow, { flexWrap: 'wrap', gap: 8 }]}>
+                                <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} style={{ marginRight: 4 }} />
+                                {renderWebDatePicker("", startDate, (v) => { setStartDate(v); setActiveFilter("Custom"); })}
+                                <Text style={{ marginHorizontal: 4, color: colors.textSecondary, alignSelf: 'center' }}>-</Text>
+                                {renderWebDatePicker("", endDate, (v) => { setEndDate(v); setActiveFilter("Custom"); })}
+                                {(startDate || endDate) && (
+                                    <TouchableOpacity 
+                                        onPress={() => { setStartDate(""); setEndDate(""); setActiveFilter("All Time"); }}
+                                        style={{ padding: 6, justifyContent: 'center' }}
+                                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                    >
+                                        <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+                                    </TouchableOpacity>
+                                )}
                             </View>
                         ) : (
-                            <View style={styles.datePickerRow}>
-                                <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} style={{ marginRight: 8 }} />
-                                <TouchableOpacity 
-                                    style={{ paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 8, backgroundColor: isDark ? colors.inputBackground : '#FFF' }}
-                                    onPress={() => setShowStartPicker(true)}
-                                >
-                                    <Text style={{ color: colors.text, fontSize: 13 }}>{startDate || 'Start Date'}</Text>
-                                </TouchableOpacity>
-                                <Text style={{ marginHorizontal: 8, color: colors.textSecondary }}>-</Text>
-                                <TouchableOpacity 
-                                    style={{ paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 8, backgroundColor: isDark ? colors.inputBackground : '#FFF' }}
-                                    onPress={() => setShowEndPicker(true)}
-                                >
-                                    <Text style={{ color: colors.text, fontSize: 13 }}>{endDate || 'End Date'}</Text>
-                                </TouchableOpacity>
+                            <View style={[styles.datePickerRow, { flexWrap: 'wrap', gap: 8, width: isDesktop ? 'auto' : '100%' }]}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', flex: isDesktop ? undefined : 1 }}>
+                                    <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} style={{ marginRight: 6 }} />
+                                    <TouchableOpacity 
+                                        style={[styles.dateBtn, { borderColor: colors.border, backgroundColor: isDark ? colors.inputBackground : '#FFF', flex: isDesktop ? undefined : 1 }]}
+                                        onPress={openStartPicker}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Text style={{ color: startDate ? colors.text : colors.textSecondary, fontSize: 13, fontWeight: startDate ? "600" : "400" }}>
+                                            {startDate ? dayjs(startDate).format("DD MMM YYYY") : 'Start Date'}
+                                        </Text>
+                                    </TouchableOpacity>
+                                    <Text style={{ marginHorizontal: 6, color: colors.textSecondary }}>-</Text>
+                                    <TouchableOpacity 
+                                        style={[styles.dateBtn, { borderColor: colors.border, backgroundColor: isDark ? colors.inputBackground : '#FFF', flex: isDesktop ? undefined : 1 }]}
+                                        onPress={openEndPicker}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Text style={{ color: endDate ? colors.text : colors.textSecondary, fontSize: 13, fontWeight: endDate ? "600" : "400" }}>
+                                            {endDate ? dayjs(endDate).format("DD MMM YYYY") : 'End Date'}
+                                        </Text>
+                                    </TouchableOpacity>
 
-                                {showStartPicker && (
+                                    {(startDate || endDate) && (
+                                        <TouchableOpacity 
+                                            onPress={() => { setStartDate(""); setEndDate(""); setActiveFilter("All Time"); }}
+                                            style={{ padding: 6, marginLeft: 4, justifyContent: 'center' }}
+                                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                        >
+                                            <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+
+                                {Platform.OS === 'android' && showStartPicker && (
                                     <DateTimePicker
-                                        value={startDate ? new Date(startDate) : new Date()}
+                                        value={toLocalDateObj(startDate)}
                                         mode="date"
-                                        display={Platform.OS === "ios" ? "spinner" : "default"}
-                                        onChange={(event, date) => {
+                                        display="default"
+                                        onChange={(event, selectedDate) => {
                                             setShowStartPicker(false);
-                                            if (date) {
-                                                setStartDate(dayjs(date).format("YYYY-MM-DD"));
+                                            if (event.type === "set" && selectedDate) {
+                                                setStartDate(dayjs(selectedDate).format("YYYY-MM-DD"));
                                                 setActiveFilter("Custom");
                                             }
                                         }}
                                     />
                                 )}
-                                {showEndPicker && (
+                                {Platform.OS === 'android' && showEndPicker && (
                                     <DateTimePicker
-                                        value={endDate ? new Date(endDate) : new Date()}
+                                        value={toLocalDateObj(endDate)}
                                         mode="date"
-                                        display={Platform.OS === "ios" ? "spinner" : "default"}
-                                        onChange={(event, date) => {
+                                        display="default"
+                                        onChange={(event, selectedDate) => {
                                             setShowEndPicker(false);
-                                            if (date) {
-                                                setEndDate(dayjs(date).format("YYYY-MM-DD"));
+                                            if (event.type === "set" && selectedDate) {
+                                                setEndDate(dayjs(selectedDate).format("YYYY-MM-DD"));
                                                 setActiveFilter("Custom");
                                             }
                                         }}
                                     />
+                                )}
+
+                                {Platform.OS === 'ios' && (
+                                    <>
+                                        <Modal
+                                            visible={showStartPicker}
+                                            transparent={true}
+                                            animationType="slide"
+                                            onRequestClose={() => setShowStartPicker(false)}
+                                        >
+                                            <View style={styles.modalOverlay}>
+                                                <View style={[styles.modalContent, { backgroundColor: isDark ? colors.surface : "#FFF" }]}>
+                                                    <View style={styles.modalHeader}>
+                                                        <TouchableOpacity onPress={() => setShowStartPicker(false)} style={{ padding: 6 }}>
+                                                            <Text style={{ color: colors.textSecondary, fontSize: 16 }}>Cancel</Text>
+                                                        </TouchableOpacity>
+                                                        <Text style={[styles.modalTitle, { color: colors.text }]}>Select Start Date</Text>
+                                                        <TouchableOpacity onPress={() => {
+                                                            setStartDate(dayjs(tempStartDate).format("YYYY-MM-DD"));
+                                                            setActiveFilter("Custom");
+                                                            setShowStartPicker(false);
+                                                        }} style={{ padding: 6 }}>
+                                                            <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '700' }}>Done</Text>
+                                                        </TouchableOpacity>
+                                                    </View>
+                                                    <DateTimePicker
+                                                        value={tempStartDate}
+                                                        mode="date"
+                                                        display="spinner"
+                                                        onChange={(_, date) => {
+                                                            if (date) setTempStartDate(date);
+                                                        }}
+                                                    />
+                                                </View>
+                                            </View>
+                                        </Modal>
+
+                                        <Modal
+                                            visible={showEndPicker}
+                                            transparent={true}
+                                            animationType="slide"
+                                            onRequestClose={() => setShowEndPicker(false)}
+                                        >
+                                            <View style={styles.modalOverlay}>
+                                                <View style={[styles.modalContent, { backgroundColor: isDark ? colors.surface : "#FFF" }]}>
+                                                    <View style={styles.modalHeader}>
+                                                        <TouchableOpacity onPress={() => setShowEndPicker(false)} style={{ padding: 6 }}>
+                                                            <Text style={{ color: colors.textSecondary, fontSize: 16 }}>Cancel</Text>
+                                                        </TouchableOpacity>
+                                                        <Text style={[styles.modalTitle, { color: colors.text }]}>Select End Date</Text>
+                                                        <TouchableOpacity onPress={() => {
+                                                            setEndDate(dayjs(tempEndDate).format("YYYY-MM-DD"));
+                                                            setActiveFilter("Custom");
+                                                            setShowEndPicker(false);
+                                                        }} style={{ padding: 6 }}>
+                                                            <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '700' }}>Done</Text>
+                                                        </TouchableOpacity>
+                                                    </View>
+                                                    <DateTimePicker
+                                                        value={tempEndDate}
+                                                        mode="date"
+                                                        display="spinner"
+                                                        onChange={(_, date) => {
+                                                            if (date) setTempEndDate(date);
+                                                        }}
+                                                    />
+                                                </View>
+                                            </View>
+                                        </Modal>
+                                    </>
                                 )}
                             </View>
                         )}
-                        <TouchableOpacity style={[styles.downloadBtn, { borderColor: colorSpending }]}>
-                            <Ionicons name="download-outline" size={16} color={colorSpending} style={{ marginRight: 8 }} />
-                            <Text style={{ color: colorSpending, fontWeight: '600', fontSize: 13 }}>Report</Text>
-                        </TouchableOpacity>
+
+                        {/* Preset Filters Row */}
+                        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                            {["All Time", "This Month", "Last 7 Days"].map(preset => (
+                                <TouchableOpacity
+                                    key={preset}
+                                    onPress={() => setPresetFilter(preset)}
+                                    style={{
+                                        paddingHorizontal: 12,
+                                        paddingVertical: 6,
+                                        borderRadius: 16,
+                                        backgroundColor: activeFilter === preset ? colors.primary : (isDark ? colors.surface : "#F1F5F9"),
+                                        borderWidth: 1,
+                                        borderColor: activeFilter === preset ? colors.primary : colors.border
+                                    }}
+                                >
+                                    <Text style={{
+                                        fontSize: 12,
+                                        fontWeight: '600',
+                                        color: activeFilter === preset ? "#FFF" : colors.textSecondary
+                                    }}>
+                                        {preset}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
                     </View>
                 </View>
 
@@ -496,25 +714,31 @@ export default function ReportsScreen() {
                             <Text style={[styles.th, { color: colors.textSecondary, flex: 1.5 }]}>Category</Text>
                             <Text style={[styles.th, { color: colors.textSecondary, flex: 1, textAlign: 'right' }]}>Amount</Text>
                         </View>
-                        {recentTx.map((tx, index) => {
-                            const dateStr = tx.date || (tx as any).date_time || "";
-                            const displayDate = dayjs(dateStr).isValid() && !dateStr.includes("May,") ? dayjs(dateStr).format("DD MMM YYYY") : dateStr;
-                            return (
-                                <View key={tx.id || index.toString()} style={[styles.tr, { borderBottomColor: colors.border, borderBottomWidth: index === recentTx.length - 1 ? 0 : 1 }]}>
-                                    <View style={{ flex: 1.5, flexDirection: 'row', alignItems: 'center', paddingRight: 4 }}>
-                                        <View style={[styles.txTinyIcon, { backgroundColor: tx.type === 'income' ? colorIncome + "15" : colors.danger + "15" }]}>
-                                            <Ionicons name={tx.type === 'income' ? "arrow-down" : "arrow-up"} size={12} color={tx.type === 'income' ? colorIncome : colors.danger} />
+                        {recentTx.length === 0 ? (
+                            <View style={{ paddingVertical: 24, alignItems: "center" }}>
+                                <Text style={{ color: colors.textSecondary, fontSize: 13 }}>No transactions found for selected date range</Text>
+                            </View>
+                        ) : (
+                            recentTx.map((tx, index) => {
+                                const parsed = parseTransactionDate(tx);
+                                const displayDate = parsed ? parsed.format("DD MMM YYYY") : (tx.date || "");
+                                return (
+                                    <View key={tx.id || index.toString()} style={[styles.tr, { borderBottomColor: colors.border, borderBottomWidth: index === recentTx.length - 1 ? 0 : 1 }]}>
+                                        <View style={{ flex: 1.5, flexDirection: 'row', alignItems: 'center', paddingRight: 4 }}>
+                                            <View style={[styles.txTinyIcon, { backgroundColor: tx.type === 'income' ? colorIncome + "15" : colors.danger + "15" }]}>
+                                                <Ionicons name={tx.type === 'income' ? "arrow-down" : "arrow-up"} size={12} color={tx.type === 'income' ? colorIncome : colors.danger} />
+                                            </View>
+                                            <Text style={[styles.td, { color: colors.textSecondary, flex: 1 }]} numberOfLines={1}>{displayDate}</Text>
                                         </View>
-                                        <Text style={[styles.td, { color: colors.textSecondary, flex: 1 }]} numberOfLines={1}>{displayDate}</Text>
+                                        <Text style={[styles.td, { color: colors.text, flex: 2, fontWeight: '500', paddingRight: 4 }]} numberOfLines={1}>{tx.title || tx.category || "Transaction"}</Text>
+                                        <Text style={[styles.td, { color: colors.textSecondary, flex: 1.5, paddingRight: 4 }]} numberOfLines={1}>{tx.category || "General"}</Text>
+                                        <Text style={[styles.td, { flex: 1, textAlign: 'right', fontWeight: '600', color: tx.type === 'income' ? colorIncome : colors.danger }]} numberOfLines={1} adjustsFontSizeToFit>
+                                            {tx.type === 'income' ? "+" : "-"}₹{Math.abs(tx.amount || 0).toLocaleString()}
+                                        </Text>
                                     </View>
-                                    <Text style={[styles.td, { color: colors.text, flex: 2, fontWeight: '500', paddingRight: 4 }]} numberOfLines={1}>{tx.title || tx.category || "Transaction"}</Text>
-                                    <Text style={[styles.td, { color: colors.textSecondary, flex: 1.5, paddingRight: 4 }]} numberOfLines={1}>{tx.category || "General"}</Text>
-                                    <Text style={[styles.td, { flex: 1, textAlign: 'right', fontWeight: '600', color: tx.type === 'income' ? colorIncome : colors.danger }]} numberOfLines={1} adjustsFontSizeToFit>
-                                        {tx.type === 'income' ? "+" : "-"}₹{Math.abs(tx.amount || 0).toLocaleString()}
-                                    </Text>
-                                </View>
-                            );
-                        })}
+                                );
+                            })
+                        )}
                     </View>
 
                     {/* Monthly Comparison */}
@@ -759,5 +983,37 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 8,
+    },
+    dateBtn: {
+        paddingHorizontal: 12,
+        paddingVertical: 9,
+        borderWidth: 1,
+        borderRadius: 8,
+        minWidth: 100,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.4)',
+        justifyContent: 'flex-end',
+    },
+    modalContent: {
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        paddingBottom: 24,
+        paddingHorizontal: 16,
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 14,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: '#CBD5E1',
+    },
+    modalTitle: {
+        fontSize: 16,
+        fontWeight: '700',
     },
 });

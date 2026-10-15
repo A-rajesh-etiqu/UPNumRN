@@ -72,7 +72,21 @@ export interface DirectCheckoutOptions {
 }
 
 /**
- * Launch Razorpay checkout directly in the browser using encoded keys
+ * Mobile handler registry for rendering the native/WebView checkout modal
+ */
+type RazorpayMobileHandler = (options: DirectCheckoutOptions) => void;
+const mobileHandlers = new Set<RazorpayMobileHandler>();
+
+export function registerRazorpayMobileHandler(handler: RazorpayMobileHandler): () => void {
+    mobileHandlers.add(handler);
+    return () => {
+        mobileHandlers.delete(handler);
+    };
+}
+
+/**
+ * Launch Razorpay checkout directly in the browser using encoded keys,
+ * or trigger the Mobile Checkout Modal on Android / iOS
  */
 export async function launchDirectRazorpayCheckout(options: DirectCheckoutOptions): Promise<void> {
     const g = globalThis as any;
@@ -127,6 +141,15 @@ export async function launchDirectRazorpayCheckout(options: DirectCheckoutOption
         });
         rzp.open();
     } else {
-        throw new Error("Razorpay Web Checkout is currently only available on web browsers.");
+        // Mobile platform (Android & iOS)
+        if (mobileHandlers.size > 0) {
+            const handlersArray = Array.from(mobileHandlers);
+            const activeHandler = handlersArray[handlersArray.length - 1];
+            activeHandler(options);
+        } else {
+            console.error("Razorpay mobile checkout modal is not mounted.");
+            throw new Error("Razorpay checkout is initializing. Please try again.");
+        }
     }
 }
+

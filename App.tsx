@@ -39,6 +39,7 @@ import PaymentSuccessScreen from './src/screens/payment-success';
 import SubscriptionIndexScreen from './src/screens/tabs/subscription/index';
 import SubscriptionHistoryScreen from './src/screens/tabs/subscription/history';
 import AiInsightsScreen from './src/screens/tabs/dashboard/ai-insights';
+import RazorpayCheckoutModal from './src/components/RazorpayCheckoutModal';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -191,6 +192,7 @@ export default function App() {
                 <Stack.Screen name="/payment-success" component={PaymentSuccessScreen} />
               </Stack.Navigator>
             </NavigationContainer>
+            <RazorpayCheckoutModal />
           </AuthProvider>
         </SafeAreaProvider>
       </QueryClientProvider>

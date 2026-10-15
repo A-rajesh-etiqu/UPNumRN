@@ -29,7 +29,7 @@ import { ReportCard } from "../../../components/dashboard/ReportCard";
 import { router } from "../../../navigation/RootNavigation";
 
 // Types
-type TabType = "All";
+type TabType = "All" | "Credited" | "Debited";
 
 // SVG Components
 const UpiLogo = () => (
@@ -229,18 +229,29 @@ export default function TransactionsScreen() {
         return name ? name.charAt(0).toUpperCase() : "T";
     };
 
+    // Helper to determine if transaction is credited or debited
+    const isCreditTransaction = (tx: any) => {
+        if (tx.type === "income" || tx.type === "CREDIT" || tx.type === "credit") return true;
+        if (tx.type === "expense" || tx.type === "DEBIT" || tx.type === "debit") return false;
+        return typeof tx.amount === "number" ? tx.amount >= 0 : true;
+    };
+
     // KPI Stats computations
     const totalTxCount = transactions.length;
-    const successCount = transactions.filter(tx => !tx.status || tx.status.toLowerCase() === "success" || tx.status.toLowerCase() === "successful").length;
-    const failedCount = transactions.filter(tx => tx.status?.toLowerCase() === "failed").length;
-    const pendingCount = transactions.filter(tx => tx.status?.toLowerCase() === "pending").length;
+    const creditedCount = transactions.filter(tx => isCreditTransaction(tx)).length;
+    const debitedCount = transactions.filter(tx => !isCreditTransaction(tx)).length;
 
     // Filter transactions
     const filteredTransactions = transactions.filter(tx => {
-        const normalizedTab = activeTab.toLowerCase() === "successful" ? "success" : activeTab.toLowerCase();
-        const matchTab = activeTab === "All" || (tx.status && tx.status.toLowerCase() === normalizedTab);
-        const matchSearch = (tx.title || "").toLowerCase().includes(search.toLowerCase()) ||
-            (tx.category || "").toLowerCase().includes(search.toLowerCase());
+        const isCredit = isCreditTransaction(tx);
+        const matchTab =
+            activeTab === "All" ||
+            (activeTab === "Credited" && isCredit) ||
+            (activeTab === "Debited" && !isCredit);
+        const matchSearch =
+            (tx.title || "").toLowerCase().includes(search.toLowerCase()) ||
+            (tx.category || "").toLowerCase().includes(search.toLowerCase()) ||
+            (isCredit ? "credited" : "debited").includes(search.toLowerCase());
         return matchTab && matchSearch;
     });
 
@@ -269,18 +280,21 @@ export default function TransactionsScreen() {
                 doc.text(`Total Transactions: ${filteredTransactions.length}`, 14, 30);
 
                 // Prepare table data
-                const tableData = filteredTransactions.map(tx => [
-                    tx.title || tx.category || 'N/A',
-                    'UPI Payment',
-                    `Rs. ${Math.abs(tx.amount || 0).toFixed(2)}`,
-                    tx.date || new Date().toLocaleDateString(),
-                    tx.status || 'Successful'
-                ]);
+                const tableData = filteredTransactions.map(tx => {
+                    const isCredit = isCreditTransaction(tx);
+                    return [
+                        tx.title || tx.category || 'N/A',
+                        'UPI Payment',
+                        `${isCredit ? '+' : '-'} Rs. ${Math.abs(tx.amount || 0).toFixed(2)}`,
+                        tx.date || new Date().toLocaleDateString(),
+                        isCredit ? 'Credited' : 'Debited'
+                    ];
+                });
 
                 // Generate table
                 autoTable(doc, {
                     startY: 36,
-                    head: [['Title', 'Type', 'Amount', 'Date', 'Status']],
+                    head: [['Title', 'Type', 'Amount', 'Date', 'Action']],
                     body: tableData,
                     theme: 'striped',
                     headStyles: { fillColor: [109, 40, 217] }
@@ -337,17 +351,20 @@ export default function TransactionsScreen() {
                                     <th>Type</th>
                                     <th>Amount</th>
                                     <th>Date</th>
-                                    <th>Status</th>
+                                    <th>Action</th>
                                 </tr>
-                                ${filteredTransactions.map(tx => `
-                                    <tr>
-                                        <td>${tx.title || tx.category || 'N/A'}</td>
-                                        <td>UPI Payment</td>
-                                        <td class="amount">₹${Math.abs(tx.amount || 0).toFixed(2)}</td>
-                                        <td>${tx.date || new Date().toLocaleDateString()} ${tx.time || ''}</td>
-                                        <td>${tx.status || 'Successful'}</td>
-                                    </tr>
-                                `).join('')}
+                                ${filteredTransactions.map(tx => {
+                                    const isCredit = isCreditTransaction(tx);
+                                    return `
+                                        <tr>
+                                            <td>${tx.title || tx.category || 'N/A'}</td>
+                                            <td>UPI Payment</td>
+                                            <td class="amount" style="color: ${isCredit ? '#16A34A' : '#DC2626'}; font-weight: bold;">${isCredit ? '+' : '-'} ₹${Math.abs(tx.amount || 0).toFixed(2)}</td>
+                                            <td>${tx.date || new Date().toLocaleDateString()} ${tx.time || ''}</td>
+                                            <td style="color: ${isCredit ? '#16A34A' : '#DC2626'}; font-weight: bold;">${isCredit ? 'Credited' : 'Debited'}</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
                             </table>
                         </body>
                     </html>
@@ -482,17 +499,19 @@ export default function TransactionsScreen() {
                                 <Text style={[styles.thText, { flex: 2, minWidth: 200 }]}>Transaction</Text>
                                 <Text style={[styles.thText, { flex: 1.2, minWidth: 100 }]}>Type</Text>
                                 <Text style={[styles.thText, { flex: 1.5, minWidth: 140 }]}>Amount</Text>
-                                <Text style={[styles.thText, { width: 100 }]}>Status</Text>
+                                <Text style={[styles.thText, { width: 100 }]}>Action</Text>
                             </View>
 
                             {/* Table Rows */}
-                            {paginatedTransactions.map((tx, index) => (
+                            {paginatedTransactions.map((tx, index) => {
+                                const isCredit = isCreditTransaction(tx);
+                                return (
                                 <View key={tx.id || index} style={[styles.tableRow, index !== paginatedTransactions.length - 1 && { borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : "#F1F5F9" }]}>
 
                                     {/* Transaction Column */}
                                     <View style={[styles.tdCol, { flex: 2, minWidth: 200, flexDirection: "row", alignItems: "center" }]}>
-                                        <View style={[styles.merchantIcon, { backgroundColor: isDark ? colors.border : "#E0E7FF" }]}>
-                                            <Text style={{ color: "#6366F1", fontWeight: "800", fontSize: 16 }}>{getInitials(tx.title || tx.category)}</Text>
+                                        <View style={[styles.merchantIcon, { backgroundColor: isDark ? colors.border : (isCredit ? "#DCFCE7" : "#FEE2E2") }]}>
+                                            <Text style={{ color: isCredit ? "#16A34A" : "#DC2626", fontWeight: "800", fontSize: 16 }}>{getInitials(tx.title || tx.category)}</Text>
                                         </View>
                                         <View style={{ marginLeft: 10, flex: 1 }}>
                                             <Text style={[styles.tdMainText, { color: colors.text }]} numberOfLines={1}>{tx.title || tx.category}</Text>
@@ -510,38 +529,43 @@ export default function TransactionsScreen() {
 
                                     {/* Amount Column */}
                                     <View style={[styles.tdCol, { flex: 1.5, minWidth: 140, justifyContent: "center" }]}>
-                                        <Text style={[styles.tdMainText, { color: colors.text }]}>₹ {Math.abs(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</Text>
+                                        <Text style={[styles.tdMainText, { color: isCredit ? (isDark ? "#4ade80" : "#16A34A") : (isDark ? "#f87171" : "#DC2626") }]}>
+                                            {isCredit ? "+" : "-"} ₹ {Math.abs(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                        </Text>
                                         <Text style={styles.tdSubText}>{tx.date} • {tx.time || "12:00 PM"}</Text>
                                     </View>
 
-                                    {/* Status Column */}
+                                    {/* Action Column */}
                                     <View style={[styles.tdCol, { width: 100, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
                                         <View style={[
-                                            styles.statusPill,
-                                            (!tx.status || tx.status.toLowerCase() === "success" || tx.status.toLowerCase() === "successful") && { backgroundColor: isDark ? "#064e3b" : "#DCFCE7" },
-                                            tx.status?.toLowerCase() === "pending" && { backgroundColor: isDark ? "#1e3a8a" : "#E0F2FE" },
-                                            tx.status?.toLowerCase() === "failed" && { backgroundColor: isDark ? "#7f1d1d" : "#FEE2E2" },
+                                            styles.actionPill,
+                                            isCredit
+                                                ? { backgroundColor: isDark ? "#064e3b" : "#DCFCE7" }
+                                                : { backgroundColor: isDark ? "#7f1d1d" : "#FEE2E2" },
                                         ]}>
                                             <Text style={[
-                                                styles.statusText,
-                                                (!tx.status || tx.status.toLowerCase() === "success" || tx.status.toLowerCase() === "successful") && { color: "#16A34A" },
-                                                tx.status?.toLowerCase() === "pending" && { color: "#0284C7" },
-                                                tx.status?.toLowerCase() === "failed" && { color: "#DC2626" },
-                                            ]}>{tx.status || "Successful"}</Text>
+                                                styles.actionText,
+                                                { color: isCredit ? "#16A34A" : "#DC2626" },
+                                            ]}>
+                                                {isCredit ? "Credited" : "Debited"}
+                                            </Text>
                                         </View>
                                         <Ionicons name="chevron-forward" size={16} color="#94A3B8" />
                                     </View>
                                 </View>
-                            ))}
+                            );
+                            })}
                         </View>
                     </ScrollView>
                 ) : (
                     <View style={{ gap: 12, marginTop: 8 }}>
-                        {paginatedTransactions.map((tx, index) => (
+                        {paginatedTransactions.map((tx, index) => {
+                            const isCredit = isCreditTransaction(tx);
+                            return (
                             <View key={tx.id || index} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: isDark ? colors.surface : '#FFF', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: isDark ? colors.border : '#F1F5F9' }}>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 10 }}>
-                                    <View style={[styles.merchantIcon, { backgroundColor: isDark ? colors.border : "#E0E7FF" }]}>
-                                        <Text style={{ color: "#6366F1", fontWeight: "800", fontSize: 16 }}>{getInitials(tx.title || tx.category)}</Text>
+                                    <View style={[styles.merchantIcon, { backgroundColor: isDark ? colors.border : (isCredit ? "#DCFCE7" : "#FEE2E2") }]}>
+                                        <Text style={{ color: isCredit ? "#16A34A" : "#DC2626", fontWeight: "800", fontSize: 16 }}>{getInitials(tx.title || tx.category)}</Text>
                                     </View>
                                     <View style={{ marginLeft: 10, flex: 1 }}>
                                         <Text style={[styles.tdMainText, { color: colors.text }]} numberOfLines={1}>{tx.title || tx.category}</Text>
@@ -549,17 +573,27 @@ export default function TransactionsScreen() {
                                     </View>
                                 </View>
                                 <View style={{ alignItems: 'flex-end' }}>
-                                    <Text style={[styles.tdMainText, { color: colors.text }]}>₹ {Math.abs(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</Text>
-                                    <Text style={[
-                                        styles.statusText,
-                                        (!tx.status || tx.status.toLowerCase() === "success" || tx.status.toLowerCase() === "successful") && { color: "#16A34A" },
-                                        tx.status?.toLowerCase() === "pending" && { color: "#0284C7" },
-                                        tx.status?.toLowerCase() === "failed" && { color: "#DC2626" },
+                                    <Text style={[styles.tdMainText, { color: isCredit ? (isDark ? "#4ade80" : "#16A34A") : (isDark ? "#f87171" : "#DC2626") }]}>
+                                        {isCredit ? "+" : "-"} ₹ {Math.abs(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                    </Text>
+                                    <View style={[
+                                        styles.actionPill,
+                                        isCredit
+                                            ? { backgroundColor: isDark ? "#064e3b" : "#DCFCE7" }
+                                            : { backgroundColor: isDark ? "#7f1d1d" : "#FEE2E2" },
                                         { marginTop: 4 }
-                                    ]}>{tx.status || "Successful"}</Text>
+                                    ]}>
+                                        <Text style={[
+                                            styles.actionText,
+                                            { color: isCredit ? "#16A34A" : "#DC2626" }
+                                        ]}>
+                                            {isCredit ? "Credited" : "Debited"}
+                                        </Text>
+                                    </View>
                                 </View>
                             </View>
-                        ))}
+                        );
+                        })}
                     </View>
                 )}
 
@@ -1006,6 +1040,15 @@ const styles = StyleSheet.create({
     tdSubText: {
         fontSize: 10,
         color: "#94A3B8",
+    },
+    actionPill: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+    },
+    actionText: {
+        fontSize: 10,
+        fontWeight: "700",
     },
     statusPill: {
         paddingHorizontal: 10,
