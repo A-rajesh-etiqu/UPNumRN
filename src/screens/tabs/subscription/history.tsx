@@ -19,6 +19,7 @@ import apiClient from "../../../api/apiClient";
 import { useAuthStore } from "../../../store/auth.store";
 import { ENV } from "../../../config/env";
 import DashboardHeader from "../../../components/layout/DashboardHeader";
+import { router } from "../../../navigation/RootNavigation";
 
 export default function SubscriptionHistoryScreen() {
     const { width } = useWindowDimensions();
@@ -28,13 +29,58 @@ export default function SubscriptionHistoryScreen() {
     const { user } = useAuthStore();
     const [invoices, setInvoices] = useState<any[]>([]);
     const [subscription, setSubscription] = useState<any>(null);
+    const [currentPlan, setCurrentPlan] = useState<any>(null);
+    const [loadingPlan, setLoadingPlan] = useState<boolean>(true);
     const [sendingInvoice, setSendingInvoice] = useState<Record<string, boolean>>({});
     const [dateRange, setDateRange] = useState<string>("all");
     const [statusFilter, setStatusFilter] = useState<string>("all");
 
+    const fetchPlanDetails = async (planId: string | number) => {
+        try {
+            setLoadingPlan(true);
+            // Query plans table (SELECT * FROM plans WHERE id = plan_id)
+            const allPlansRes = await apiClient.get("/plans");
+            if (Array.isArray(allPlansRes.data)) {
+                const matched = allPlansRes.data.find(
+                    (p: any) =>
+                        String(p.id) === String(planId) ||
+                        (p.name && p.name.toLowerCase() === String(planId).toLowerCase())
+                );
+                if (matched) {
+                    setCurrentPlan(matched);
+                    return;
+                }
+            }
+            const res = await apiClient.get(`/plans/${encodeURIComponent(String(planId))}`);
+            if (res.data) {
+                setCurrentPlan(res.data);
+                return;
+            }
+        } catch (planErr: any) {
+            console.warn("Could not query plan by ID:", planErr?.message);
+        } finally {
+            setLoadingPlan(false);
+        }
+    };
+
     useEffect(() => {
         const fetchHistory = async () => {
             try {
+                // Step 1: Fetch current logged-in user data to find the plan_id the user subscribed to
+                let userSubscribedPlanId: string | number | null = user?.planId || user?.subscription?.id || null;
+                try {
+                    const profileRes = await apiClient.get("/profile", {
+                        params: { userId: user?.id }
+                    });
+                    const profile = profileRes.data?.profile || profileRes.data;
+                    if (profile) {
+                        userSubscribedPlanId = profile.plan_id || profile.planId || profile.subscription?.id || userSubscribedPlanId;
+                    }
+                } catch (profErr: any) {
+                    console.warn("Could not fetch user profile for plan_id:", profErr?.message);
+                }
+
+                // Step 2: Fetch billing history and subscription status
                 const response = await apiClient.get("/billing/history", {
                     params: { userId: user?.id }
                 });
@@ -50,19 +96,28 @@ export default function SubscriptionHistoryScreen() {
                     return timeB - timeA;
                 });
                 setInvoices(sortedHistory);
-                setSubscription(response.data.subscription || null);
+                const sub = response.data.subscription || null;
+                setSubscription(sub);
+
+                // Determine active plan_id from user data or active subscription
+                const finalPlanId = userSubscribedPlanId || sub?.planId || "1";
+
+                // Step 3: Query the exact plan based on plan_id (SELECT * FROM plans WHERE id = plan_id)
+                await fetchPlanDetails(finalPlanId);
             } catch (err: any) {
                 console.warn("Failed to load billing history, falling back to mock:", err.message);
                 setInvoices([
                     { date: "01 May, 2024", time: "10:23 AM", plan: "Lifetime Plan", rate: "₹10 / one-time", amount: "₹10.00", status: "Success", upi: "you@upi", invoiceNo: "INV-2024-MOCK1", timestamp: new Date("2024-05-01T10:23:00Z").getTime() },
                     { date: "01 Apr, 2024", time: "10:23 AM", plan: "Lifetime Plan", rate: "₹10 / one-time", amount: "₹10.00", status: "Success", upi: "you@upi", invoiceNo: "INV-2024-MOCK2", timestamp: new Date("2024-04-01T10:23:00Z").getTime() },
                 ]);
+                const fallbackPlanId = user?.planId || user?.subscription?.id || "1";
+                await fetchPlanDetails(fallbackPlanId);
             }
         };
         if (user?.id) {
             fetchHistory();
         }
-    }, [user?.id]);
+    }, [user?.id, user?.planId, user?.subscription?.id]);
 
     const handleDownloadInvoice = (invoiceNo: string) => {
         if (!invoiceNo) {
@@ -157,6 +212,36 @@ export default function SubscriptionHistoryScreen() {
         { title: "Successful Payments", value: String(successCount), label: "All transactions", color: colors.success, bg: isDark ? colors.border : "#ECFDF5", icon: "checkmark-circle" as const },
         { title: "Failed Payments", value: String(failedCount), label: "Unsuccessful attempts", color: colors.danger, bg: isDark ? colors.border : "#FEE2E2", icon: "close-circle" as const },
     ];
+
+    const planName = currentPlan?.name || subscription?.planName || "Current Plan";
+    const planStatus = subscription?.status || currentPlan?.status || "Active";
+    const planPrice = currentPlan?.price !== undefined ? parseFloat(String(currentPlan.price)) : (subscription?.price ?? 0);
+
+    const planBillingPeriod = React.useMemo(() => {
+        const cycle = String(currentPlan?.billing || subscription?.billingCycle || "").toLowerCase();
+        const type = String(currentPlan?.type || "").toLowerCase();
+        const name = String(currentPlan?.name || subscription?.planName || "").toLowerCase();
+        if (cycle === "yearly" || cycle === "annual") return "year";
+        if (cycle === "lifetime" || cycle === "one-time" || type.includes("one-time") || name.includes("lifetime")) return "one-time";
+        return "month";
+    }, [currentPlan, subscription]);
+
+    const planFeatures: string[] = React.useMemo(() => {
+        if (currentPlan?.description) {
+            const parts = currentPlan.description.split(",").map((s: string) => s.trim()).filter(Boolean);
+            if (parts.length > 0) return parts;
+        }
+        if (subscription?.features && Array.isArray(subscription.features) && subscription.features.length > 0) {
+            return subscription.features;
+        }
+        return [
+            "All Dashboard Features",
+            "AI Insights & Suggestions",
+            "Unlimited Transactions",
+            "Priority Support",
+            "Secure Data & Backups",
+        ];
+    }, [currentPlan?.description, subscription?.features]);
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -450,20 +535,20 @@ export default function SubscriptionHistoryScreen() {
                         
                         <View style={styles.planStatusRow}>
                             <View style={styles.translucentPlanBadge}>
-                                <Text style={styles.translucentPlanText}>{subscription?.planName || "Lifetime Plan"}</Text>
+                                <Text style={styles.translucentPlanText}>{planName}</Text>
                             </View>
                             <View style={styles.translucentGreenBadge}>
-                                <Text style={styles.translucentGreenText}>{subscription?.status || "Active"}</Text>
+                                <Text style={styles.translucentGreenText}>{planStatus}</Text>
                             </View>
                         </View>
 
                         <View style={styles.planRateRow}>
-                            <Text style={styles.planRateValueWhite}>₹{subscription?.price ?? 10}</Text>
-                            <Text style={styles.planRatePeriodWhite}>/{subscription?.billingCycle?.toLowerCase() === 'lifetime' || subscription?.planName?.toLowerCase().includes('lifetime') ? 'one-time' : 'month'}</Text>
+                            <Text style={styles.planRateValueWhite}>₹{planPrice}</Text>
+                            <Text style={styles.planRatePeriodWhite}>/{planBillingPeriod}</Text>
                         </View>
 
                         {/* Next billing date */}
-                        {subscription?.nextBillingDate && (
+                        {subscription?.nextBillingDate && planBillingPeriod !== "one-time" && (
                             <View style={styles.billingDateRow}>
                                 <View style={styles.billingDateItem}>
                                     <Ionicons name="calendar-outline" size={14} color="rgba(255, 255, 255, 0.7)" style={{ marginRight: 6 }} />
@@ -480,13 +565,7 @@ export default function SubscriptionHistoryScreen() {
 
                         {/* Checklist */}
                         <View style={styles.featuresList}>
-                            {[
-                                "All Dashboard Features",
-                                "AI Insights & Suggestions",
-                                "Unlimited Transactions",
-                                "Priority Support",
-                                "Secure Data & Backups",
-                            ].map((feat, idx) => (
+                            {planFeatures.map((feat, idx) => (
                                 <View key={idx} style={styles.featureItem}>
                                     <Ionicons name="checkmark-circle" size={16} color="#8B5CF6" />
                                     <Text style={styles.featureTextWhite}>{feat}</Text>
@@ -495,7 +574,11 @@ export default function SubscriptionHistoryScreen() {
                         </View>
 
                         {/* Manage Subscription gradient button */}
-                        <TouchableOpacity style={styles.manageBtnWrapper} activeOpacity={0.9}>
+                        <TouchableOpacity
+                            style={styles.manageBtnWrapper}
+                            activeOpacity={0.9}
+                            onPress={() => router.push("/tabs/subscription")}
+                        >
                             <LinearGradient
                                 colors={["#FF7E40", "#FF455B"]}
                                 start={{ x: 0, y: 0 }}

@@ -868,6 +868,7 @@ app.get("/api/profile", async (req, res) => {
                 userType: userRow.user_type,
                 isVerified: true,
                 planId: userRow.plan_id || subscription.id,
+                plan_id: userRow.plan_id || subscription.id,
                 subscription
             }
         });
@@ -1113,6 +1114,40 @@ app.get("/api/plans", async (req, res) => {
     } catch (err) {
         console.error("Fetch active plans error:", err);
         res.status(500).json({ error: "Failed to fetch active plans" });
+    }
+});
+
+app.get("/api/plans/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await db.query(
+            "SELECT * FROM plans WHERE CAST(id AS CHAR) = ? OR LOWER(name) = LOWER(?) LIMIT 1;",
+            [id, id]
+        );
+        if (rows.length > 0) {
+            return res.json(rows[0]);
+        }
+
+        // Virtual / fallback lookup
+        const resolved = resolvePlanDetails(id);
+        if (resolved) {
+            return res.json({
+                id: resolved.id,
+                name: resolved.name,
+                type: resolved.type || (resolved.isLifetimeOffer ? 'One-time Offer' : 'Standard'),
+                price: resolved.price,
+                billing: resolved.billingCycle === 'LIFETIME' ? 'Lifetime' : 'Monthly',
+                status: 'Active',
+                description: resolved.id === '1'
+                    ? 'Basic Dashboard Features,100 Transactions/mo,Community Support,Standard Data Backups'
+                    : 'All Dashboard Features,AI Insights & Suggestions,Unlimited Transactions,Priority Support,Secure Data & Backups'
+            });
+        }
+
+        return res.status(404).json({ error: "Plan not found" });
+    } catch (err) {
+        console.error("Fetch plan by id error:", err);
+        res.status(500).json({ error: "Failed to fetch plan" });
     }
 });
 

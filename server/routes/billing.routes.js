@@ -164,7 +164,27 @@ router.get("/history", authenticateBilling, async (req, res) => {
                 : ((row.sub_plan_id && row.sub_plan_id !== 'free-trial') ? row.sub_plan_id : (row.user_plan_id || row.sub_plan_id || '1'));
         }
 
-        const planDetails = resolvePlanDetails(activePlanId);
+        let planDetails = resolvePlanDetails(activePlanId);
+        try {
+            const [planDbRows] = await db.query(
+                "SELECT * FROM plans WHERE CAST(id AS CHAR) = ? OR LOWER(name) = LOWER(?) LIMIT 1;",
+                [activePlanId, activePlanId]
+            );
+            if (planDbRows.length > 0) {
+                const dbPlan = planDbRows[0];
+                planDetails = {
+                    id: String(dbPlan.id),
+                    name: dbPlan.name,
+                    price: parseFloat(dbPlan.price),
+                    billingCycle: (dbPlan.billing || 'MONTHLY').toUpperCase(),
+                    isLifetimeOffer: (dbPlan.billing || '').toLowerCase().includes('lifetime') || (dbPlan.name || '').toLowerCase().includes('lifetime') || (dbPlan.type || '').toLowerCase().includes('one-time'),
+                    description: dbPlan.description || '',
+                    status: dbPlan.status
+                };
+            }
+        } catch (planDbErr) {
+            console.warn("Could not query plans table for details:", planDbErr.message);
+        }
 
         let nextBilling = null;
         if (userSubRows.length > 0 && userSubRows[0]?.next_billing_date && new Date(userSubRows[0].next_billing_date) > new Date()) {
@@ -183,7 +203,15 @@ router.get("/history", authenticateBilling, async (req, res) => {
             planName: planDetails.name,
             price: planDetails.price,
             billingCycle: planDetails.billingCycle,
-            status: activePlanId === 'free-trial' ? 'TRIAL' : 'ACTIVE',
+            description: planDetails.description || '',
+            features: planDetails.description ? planDetails.description.split(",").map(f => f.trim()).filter(Boolean) : [
+                "All Dashboard Features",
+                "AI Insights & Suggestions",
+                "Unlimited Transactions",
+                "Priority Support",
+                "Secure Data & Backups"
+            ],
+            status: activePlanId === 'free-trial' ? 'TRIAL' : (userSubRows[0]?.sub_status || 'ACTIVE'),
             currentPeriodStart: latestPaymentDate || new Date(),
             nextBillingDate: nextBilling,
             autoRenew: true

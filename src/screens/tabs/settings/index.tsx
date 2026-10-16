@@ -231,9 +231,39 @@ export default function SettingsScreen() {
     const [bankAccounts, setBankAccounts] = useState<any[]>([]);
     const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
     const [subInfo, setSubInfo] = useState<any>(null);
+    const [currentPlan, setCurrentPlan] = useState<any>(null);
+    const [loadingPlan, setLoadingPlan] = useState<boolean>(true);
     const [billingHistory, setBillingHistory] = useState<any[]>([]);
 
     const storeSub = useSubscriptionStore((state) => state.subscription);
+
+    const fetchPlanDetails = async (planId: string | number) => {
+        try {
+            setLoadingPlan(true);
+            // Query plans table (SELECT * FROM plans WHERE id = plan_id)
+            const allPlansRes = await apiClient.get("/plans");
+            if (Array.isArray(allPlansRes.data)) {
+                const matched = allPlansRes.data.find(
+                    (p: any) =>
+                        String(p.id) === String(planId) ||
+                        (p.name && p.name.toLowerCase() === String(planId).toLowerCase())
+                );
+                if (matched) {
+                    setCurrentPlan(matched);
+                    return;
+                }
+            }
+            const res = await apiClient.get(`/plans/${encodeURIComponent(String(planId))}`);
+            if (res.data) {
+                setCurrentPlan(res.data);
+                return;
+            }
+        } catch (planErr: any) {
+            console.warn("Could not query plan by ID in settings:", planErr?.message);
+        } finally {
+            setLoadingPlan(false);
+        }
+    };
 
     const getPlanFallback = (planIdOrName?: string) => {
         const key = String(planIdOrName || '').toLowerCase();
@@ -253,12 +283,22 @@ export default function SettingsScreen() {
     };
 
     const planData = useMemo(() => {
+        if (currentPlan) {
+            return {
+                name: currentPlan.name,
+                price: parseFloat(String(currentPlan.price ?? 0)),
+                billingCycle: currentPlan.billing || currentPlan.type || "Monthly",
+                status: currentPlan.status || subInfo?.status || "Active",
+                description: currentPlan.description || "",
+            };
+        }
         if (subInfo && subInfo.planName) {
             return {
                 name: subInfo.planName,
                 price: subInfo.price ?? 0,
                 billingCycle: subInfo.billingCycle || "MONTHLY",
                 status: subInfo.status || "Active",
+                description: subInfo.description || "",
             };
         }
         if (user?.subscription?.name) {
@@ -267,6 +307,7 @@ export default function SettingsScreen() {
                 price: user.subscription.price ?? 0,
                 billingCycle: user.subscription.billingCycle || "MONTHLY",
                 status: user.subscription.status || "Active",
+                description: "",
             };
         }
         if (storeSub?.planName) {
@@ -276,6 +317,7 @@ export default function SettingsScreen() {
                 price: fallback.price,
                 billingCycle: fallback.billingCycle,
                 status: storeSub.active ? "Active" : "Inactive",
+                description: "",
             };
         }
         if (user?.planId) {
@@ -285,6 +327,7 @@ export default function SettingsScreen() {
                 price: fallback.price,
                 billingCycle: fallback.billingCycle,
                 status: "Active",
+                description: "",
             };
         }
         return {
@@ -292,16 +335,33 @@ export default function SettingsScreen() {
             price: 0,
             billingCycle: "MONTHLY",
             status: "Active",
+            description: "",
         };
-    }, [subInfo, user?.subscription, storeSub, user?.planId]);
+    }, [currentPlan, subInfo, user?.subscription, storeSub, user?.planId]);
 
     useEffect(() => {
         if ((activeTab === "UPI & Bank Accounts" || activeTab === "Data & Sync" || activeTab === "Billing & Subscription") && user) {
             fetchBankAccounts();
         }
         if (user?.id) {
-            apiClient.get("/billing/history", { params: { userId: user.id } })
-                .then(res => {
+            const loadUserSubscriptionAndPlan = async () => {
+                // Step 1: Fetch current logged-in user data to find the plan_id the user subscribed to
+                let userSubscribedPlanId: string | number | null = user?.planId || user?.subscription?.id || null;
+                try {
+                    const profileRes = await apiClient.get("/profile", {
+                        params: { userId: user.id }
+                    });
+                    const profile = profileRes.data?.profile || profileRes.data;
+                    if (profile) {
+                        userSubscribedPlanId = profile.plan_id || profile.planId || profile.subscription?.id || userSubscribedPlanId;
+                    }
+                } catch (profErr: any) {
+                    console.warn("Could not fetch user profile for plan_id in settings:", profErr?.message);
+                }
+
+                // Step 2: Fetch billing history & subscription status
+                try {
+                    const res = await apiClient.get("/billing/history", { params: { userId: user.id } });
                     if (res.data?.subscription) {
                         setSubInfo(res.data.subscription);
                         const sub = res.data.subscription;
@@ -335,10 +395,50 @@ export default function SettingsScreen() {
                         });
                         setBillingHistory(sortedHistory);
                     }
-                })
-                .catch(err => console.warn("Failed to fetch subscription info in settings:", err));
+
+                    // Step 3: Query the exact plan based on the plan_id (SELECT * FROM plans WHERE id = plan_id)
+                    const finalPlanId = userSubscribedPlanId || res.data?.subscription?.planId || "1";
+                    await fetchPlanDetails(finalPlanId);
+                } catch (err: any) {
+                    console.warn("Failed to fetch subscription info in settings:", err);
+                    const finalPlanId = userSubscribedPlanId || "1";
+                    await fetchPlanDetails(finalPlanId);
+                }
+            };
+
+            loadUserSubscriptionAndPlan();
         }
     }, [activeTab, user?.id]);
+
+    const calculateNextBillingDate = () => {
+        const cycle = String(planData.billingCycle || currentPlan?.billing || "").toLowerCase();
+        const type = String(currentPlan?.type || "").toLowerCase();
+        const name = String(planData.name || currentPlan?.name || "").toLowerCase();
+        if (cycle.includes("lifetime") || name.includes("lifetime") || type.includes("one-time")) {
+            return "Lifetime Access";
+        }
+        if (subInfo?.nextBillingDate) {
+            return new Date(subInfo.nextBillingDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+        if (user?.subscription?.expiresAt) {
+            return new Date(user.subscription.expiresAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+
+        const sub = user?.subscription as any;
+        const rawStartDate = subInfo?.startDate || subInfo?.currentPeriodStart || subInfo?.created_at || subInfo?.createdAt || sub?.purchasedAt || user?.createdAt;
+        const startDate = rawStartDate ? new Date(rawStartDate) : new Date();
+
+        const isYearly = cycle.includes("yearly") || cycle.includes("annual") || cycle.includes("year");
+
+        const nextDate = new Date(startDate);
+        if (isYearly) {
+            nextDate.setFullYear(nextDate.getFullYear() + 1);
+        } else {
+            nextDate.setMonth(nextDate.getMonth() + 1);
+        }
+
+        return nextDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    };
 
     const fetchBankAccounts = async () => {
         setIsLoadingAccounts(true);
@@ -360,42 +460,6 @@ export default function SettingsScreen() {
         } finally {
             setIsLoadingAccounts(false);
         }
-    };
-
-    const calculateNextBillingDate = () => {
-        if (planData.billingCycle?.toUpperCase() === "LIFETIME" || planData.name?.toLowerCase().includes("lifetime")) {
-            return "Lifetime Access";
-        }
-        if (subInfo?.nextBillingDate) {
-            return new Date(subInfo.nextBillingDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-        }
-        if (user?.subscription?.expiresAt) {
-            return new Date(user.subscription.expiresAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-        }
-
-        const sub = user?.subscription as any;
-        const rawStartDate = subInfo?.startDate || subInfo?.currentPeriodStart || subInfo?.created_at || subInfo?.createdAt || sub?.purchasedAt || user?.createdAt;
-        const startDate = rawStartDate ? new Date(rawStartDate) : new Date();
-
-        const cycle = (
-            planData.billingCycle ||
-            subInfo?.billingCycle ||
-            subInfo?.billing ||
-            sub?.billingCycle ||
-            sub?.name ||
-            ""
-        ).toLowerCase();
-
-        const isYearly = cycle.includes("yearly") || cycle.includes("annual") || cycle.includes("year");
-
-        const nextDate = new Date(startDate);
-        if (isYearly) {
-            nextDate.setFullYear(nextDate.getFullYear() + 1);
-        } else {
-            nextDate.setMonth(nextDate.getMonth() + 1);
-        }
-
-        return nextDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     };
 
     const handleSyncNow = async () => {
@@ -1183,7 +1247,13 @@ export default function SettingsScreen() {
                                                         {planData.name}
                                                     </Text>
                                                     <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>
-                                                        ₹{planData.price} / {planData.billingCycle.toLowerCase() === "lifetime" ? "one-time" : planData.billingCycle.toLowerCase() === "yearly" ? "year" : "month"}
+                                                        ₹{planData.price} / {
+                                                            (planData.billingCycle?.toLowerCase() === "lifetime" || planData.name?.toLowerCase().includes("lifetime") || currentPlan?.type?.toLowerCase().includes("one-time"))
+                                                                ? "one-time"
+                                                                : (planData.billingCycle?.toLowerCase() === "yearly" || currentPlan?.billing?.toLowerCase() === "yearly")
+                                                                ? "year"
+                                                                : "month"
+                                                        }
                                                     </Text>
                                                 </View>
                                             </View>
