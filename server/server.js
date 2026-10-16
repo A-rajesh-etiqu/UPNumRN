@@ -276,6 +276,26 @@ app.post("/api/auth/login", async (req, res) => {
             loginTime: new Date()
         });
 
+        // Record in login_history table
+        try {
+            const ua = req.headers["user-agent"] || "";
+            let devName = req.body.deviceName;
+            if (!devName) {
+                if (ua.includes("Windows")) devName = "Windows 11 PC • " + (ua.includes("Edg") ? "Edge" : ua.includes("Chrome") ? "Google Chrome" : "Web Browser");
+                else if (ua.includes("Macintosh")) devName = "macOS Workstation • Safari";
+                else if (ua.includes("iPhone")) devName = "Apple iPhone • UpNum App";
+                else if (ua.includes("Android")) devName = "Android Phone • UpNum App";
+                else if (ua.includes("Linux")) devName = "Linux PC • Web Browser";
+                else devName = "Desktop Workstation • Web Session";
+            }
+            await db.query(
+                "INSERT INTO login_history (user_id, device_name, ip_address, location, login_time, status) VALUES (?, ?, ?, ?, NOW(), ?);",
+                [userRow.id, devName, user.loginIp, user.loginLocation || "Bengaluru, India", "SUCCESS"]
+            );
+        } catch (lhErr) {
+            console.warn("Could not record login_history:", lhErr);
+        }
+
         const accessToken = generateToken({ userId: userRow.id, email: userRow.email, role: userRow.role });
         const refreshToken = generateToken({ userId: userRow.id, email: userRow.email, type: "refresh" }, 30 * 24 * 3600);
 
@@ -456,6 +476,82 @@ app.get("/api/users/active-devices", async (req, res) => {
     } catch (err) {
         console.error("Active Devices Error:", err);
         res.status(500).json({ error: "Failed to fetch active devices" });
+    }
+});
+
+app.get("/api/users/login-history", async (req, res) => {
+    const userId = req.query.userId || req.headers["x-user-id"];
+    if (!userId) {
+        return res.status(400).json({ error: "userId is required" });
+    }
+    try {
+        const [rows] = await db.query(
+            "SELECT * FROM login_history WHERE user_id = ? ORDER BY login_time DESC LIMIT 50;",
+            [userId]
+        );
+
+        if (rows.length === 0) {
+            // Auto-record the user's real current session from request
+            const userAgent = req.headers["user-agent"] || "";
+            const clientDevice = req.query.device || req.query.deviceName;
+            let currentDev = clientDevice;
+            if (!currentDev) {
+                if (userAgent.includes("Windows")) currentDev = "Windows 11 PC • " + (userAgent.includes("Edg") ? "Edge" : userAgent.includes("Chrome") ? "Google Chrome" : "Web Browser");
+                else if (userAgent.includes("Macintosh")) currentDev = "macOS Workstation • Safari";
+                else if (userAgent.includes("iPhone")) currentDev = "Apple iPhone • UpNum App";
+                else if (userAgent.includes("Android")) currentDev = "Android Phone • UpNum App";
+                else currentDev = "Current Device • Web Session";
+            }
+
+            const session = userSessions.get(userId);
+            const clientLocation = req.query.location || session?.location || "Bengaluru, Karnataka, India";
+            const clientIp = req.query.ip || session?.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress || "192.168.1.7";
+
+            await db.query(
+                "INSERT INTO login_history (user_id, device_name, ip_address, location, login_time, status) VALUES (?, ?, ?, ?, NOW(), 'ACTIVE');",
+                [userId, currentDev, clientIp, clientLocation]
+            ).catch(err => console.warn("Failed to auto-insert session:", err));
+
+            const [newRows] = await db.query(
+                "SELECT * FROM login_history WHERE user_id = ? ORDER BY login_time DESC LIMIT 50;",
+                [userId]
+            );
+            return res.json(newRows);
+        }
+
+        res.json(rows);
+    } catch (err) {
+        console.error("Login History Error:", err);
+        res.status(500).json({ error: "Failed to fetch login history" });
+    }
+});
+
+app.post("/api/users/login-record", async (req, res) => {
+    const { userId, deviceName, location, ip } = req.body;
+    if (!userId) {
+        return res.status(400).json({ error: "userId is required" });
+    }
+    try {
+        const userAgent = req.headers["user-agent"] || "";
+        let devName = deviceName;
+        if (!devName) {
+            if (userAgent.includes("Windows")) devName = "Windows 11 PC • " + (userAgent.includes("Edg") ? "Edge" : userAgent.includes("Chrome") ? "Google Chrome" : "Web Browser");
+            else if (userAgent.includes("Macintosh")) devName = "macOS Workstation • Safari";
+            else if (userAgent.includes("iPhone")) devName = "Apple iPhone • UpNum App";
+            else if (userAgent.includes("Android")) devName = "Android Phone • UpNum App";
+            else devName = "Current Device";
+        }
+        const userIp = ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress || "192.168.1.7";
+        const userLoc = location || "Bengaluru, Karnataka, India";
+
+        await db.query(
+            "INSERT INTO login_history (user_id, device_name, ip_address, location, login_time, status) VALUES (?, ?, ?, ?, NOW(), 'SUCCESS');",
+            [userId, devName, userIp, userLoc]
+        );
+        res.json({ success: true, message: "Login recorded in realtime." });
+    } catch (err) {
+        console.error("Error recording login:", err);
+        res.status(500).json({ error: "Failed to record login" });
     }
 });
 

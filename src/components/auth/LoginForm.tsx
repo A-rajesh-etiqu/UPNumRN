@@ -46,9 +46,34 @@ export default function LoginForm() {
         let tower: any = null;
         try {
             // Capture cell tower / network location while login
-            tower = await fetchNetworkTowerLocation().catch(() => null);
+            // Resolve actual realtime device name
+            let deviceName = "Personal Device";
+            const nav = typeof globalThis !== "undefined" ? (globalThis as any).navigator : null;
+            if (Platform.OS === "web" && nav) {
+                const ua: string = nav.userAgent || "";
+                let os = "Desktop PC";
+                let browser = "Web Browser";
+                if (ua.includes("Windows")) os = "Windows 11 / 10 PC";
+                else if (ua.includes("Macintosh")) os = "macOS Workstation";
+                else if (ua.includes("Android")) os = "Android Device";
+                else if (ua.includes("iPhone")) os = "Apple iPhone";
+                else if (ua.includes("Linux")) os = "Linux PC";
+
+                if (ua.includes("Edg/")) browser = "Microsoft Edge";
+                else if (ua.includes("Chrome/")) browser = "Google Chrome";
+                else if (ua.includes("Safari/")) browser = "Apple Safari";
+                else if (ua.includes("Firefox/")) browser = "Mozilla Firefox";
+
+                deviceName = `${os} • ${browser}`;
+            } else if (Platform.OS === "ios") {
+                deviceName = "Apple iPhone • UpNum App";
+            } else if (Platform.OS === "android") {
+                deviceName = "Android Phone • UpNum App";
+            }
+
             const loginPayload = {
                 ...data,
+                deviceName,
                 location: tower?.formattedLocation,
                 ip: tower?.ip,
                 carrier: tower?.isp,

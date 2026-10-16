@@ -91,6 +91,11 @@ export default function SettingsScreen() {
     // Active Devices Modal State & Cell Tower Info
     const [isActiveDevicesModalVisible, setIsActiveDevicesModalVisible] = useState(false);
     const [isDetectingTower, setIsDetectingTower] = useState(false);
+
+    // Login History Modal State
+    const [isLoginHistoryModalVisible, setIsLoginHistoryModalVisible] = useState(false);
+    const [loginHistoryList, setLoginHistoryList] = useState<any[]>([]);
+    const [isLoadingLoginHistory, setIsLoadingLoginHistory] = useState(false);
     const [networkTowerInfo, setNetworkTowerInfo] = useState<{
         location: string;
         ip: string;
@@ -225,6 +230,106 @@ export default function SettingsScreen() {
             signInTime: "Today at " + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         };
     }, [user?.loginLocation, user?.loginIp, user?.loginCarrier, user?.city, networkTowerInfo, isDetectingTower]);
+
+    const formatLoginDateTime = (dateStr: string | Date) => {
+        if (!dateStr) return "Just now";
+        try {
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return String(dateStr);
+
+            const now = new Date();
+            const isToday = d.toDateString() === now.toDateString();
+            const yesterday = new Date(now);
+            yesterday.setDate(now.getDate() - 1);
+            const isYesterday = d.toDateString() === yesterday.toDateString();
+
+            const timeStr = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+            if (isToday) return `Today at ${timeStr}`;
+            if (isYesterday) return `Yesterday at ${timeStr}`;
+
+            const day = d.getDate();
+            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            const month = months[d.getMonth()];
+            const year = d.getFullYear();
+            return `${day} ${month} ${year}, ${timeStr}`;
+        } catch {
+            return String(dateStr);
+        }
+    };
+
+    const getDeviceIcon = (deviceName: string = "") => {
+        const dLower = (deviceName || "").toLowerCase();
+        if (dLower.includes("iphone") || dLower.includes("android") || dLower.includes("phone") || dLower.includes("mobile")) {
+            return "phone-portrait-outline" as const;
+        }
+        if (dLower.includes("ipad") || dLower.includes("tablet")) {
+            return "tablet-portrait-outline" as const;
+        }
+        if (dLower.includes("macbook") || dLower.includes("laptop")) {
+            return "laptop-outline" as const;
+        }
+        return "desktop-outline" as const;
+    };
+
+    const fetchLoginHistory = async () => {
+        setIsLoadingLoginHistory(true);
+        try {
+            const userId = user?.id;
+            if (!userId) {
+                // If not logged in with an ID, display current device session
+                setLoginHistoryList([
+                    {
+                        id: "current",
+                        device_name: activeDeviceInfo.deviceName,
+                        ip_address: activeDeviceInfo.ipAddress,
+                        location: activeDeviceInfo.locationName,
+                        login_time: new Date().toISOString(),
+                        status: "ACTIVE",
+                    }
+                ]);
+                setIsLoadingLoginHistory(false);
+                return;
+            }
+
+            const queryParams = new URLSearchParams({
+                userId: String(userId),
+                deviceName: activeDeviceInfo.deviceName,
+                location: activeDeviceInfo.locationName,
+                ip: activeDeviceInfo.ipAddress,
+            }).toString();
+
+            const res = await apiClient.get(`/users/login-history?${queryParams}`);
+            if (Array.isArray(res.data) && res.data.length > 0) {
+                setLoginHistoryList(res.data);
+            } else {
+                setLoginHistoryList([
+                    {
+                        id: "current",
+                        device_name: activeDeviceInfo.deviceName,
+                        ip_address: activeDeviceInfo.ipAddress,
+                        location: activeDeviceInfo.locationName,
+                        login_time: new Date().toISOString(),
+                        status: "ACTIVE",
+                    }
+                ]);
+            }
+        } catch (err) {
+            console.warn("Failed to fetch login history from server:", err);
+            // Fallback strictly to the user's actual live device session
+            setLoginHistoryList([
+                {
+                    id: "current",
+                    device_name: activeDeviceInfo.deviceName,
+                    ip_address: activeDeviceInfo.ipAddress,
+                    location: activeDeviceInfo.locationName,
+                    login_time: new Date().toISOString(),
+                    status: "ACTIVE",
+                }
+            ]);
+        } finally {
+            setIsLoadingLoginHistory(false);
+        }
+    };
 
     // Bank Accounts State
     const [upiAccounts, setUpiAccounts] = useState<any[]>([]);
@@ -1038,11 +1143,23 @@ export default function SettingsScreen() {
                                             <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginLeft: "auto" }} />
                                         </TouchableOpacity>
 
-                                        <TouchableOpacity style={styles.privacyListItem} activeOpacity={0.7}>
+                                        <TouchableOpacity
+                                            style={styles.privacyListItem}
+                                            activeOpacity={0.7}
+                                            onPress={() => {
+                                                setIsLoginHistoryModalVisible(true);
+                                                fetchLoginHistory();
+                                            }}
+                                        >
                                             <View style={styles.privacyListIcon}>
                                                 <Ionicons name="time-outline" size={18} color="#6D28D9" />
                                             </View>
-                                            <Text style={[styles.privacyListText, { color: colors.text }]}>Login History</Text>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={[styles.privacyListText, { color: colors.text }]}>Login History</Text>
+                                                <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>
+                                                    Recent logins with date, time & device name
+                                                </Text>
+                                            </View>
                                             <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginLeft: "auto" }} />
                                         </TouchableOpacity>
                                     </View>
@@ -2049,6 +2166,199 @@ export default function SettingsScreen() {
                     </View>
                 </View>
             </Modal>
+
+            {/* Login History Popup Modal */}
+            <Modal
+                visible={isLoginHistoryModalVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setIsLoginHistoryModalVisible(false)}
+            >
+                <View style={styles.passwordModalBackdrop}>
+                    <TouchableOpacity
+                        style={StyleSheet.absoluteFill}
+                        activeOpacity={1}
+                        onPress={() => setIsLoginHistoryModalVisible(false)}
+                    />
+                    <View
+                        style={[
+                            styles.deviceModalCard,
+                            {
+                                backgroundColor: colors.surface,
+                                borderColor: colors.border,
+                                maxWidth: 580,
+                            },
+                        ]}
+                    >
+                        {/* Header */}
+                        <View style={styles.passwordModalHeader}>
+                            <View style={styles.passwordModalHeaderIconBox}>
+                                <Ionicons name="time" size={20} color="#6D28D9" />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.passwordModalTitle, { color: colors.text }]}>
+                                    Login History
+                                </Text>
+                                <Text style={[styles.passwordModalSub, { color: colors.textSecondary }]}>
+                                    Date, time, and device details for your account
+                                </Text>
+                            </View>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                <TouchableOpacity
+                                    onPress={fetchLoginHistory}
+                                    style={[styles.modalRefreshBtn, { backgroundColor: isDark ? colors.border : "#F1F5F9" }]}
+                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                    disabled={isLoadingLoginHistory}
+                                >
+                                    {isLoadingLoginHistory ? (
+                                        <ActivityIndicator size="small" color="#6D28D9" />
+                                    ) : (
+                                        <Ionicons name="refresh" size={16} color={colors.text} />
+                                    )}
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    onPress={() => setIsLoginHistoryModalVisible(false)}
+                                    style={[styles.modalCloseBtn, { backgroundColor: isDark ? colors.border : "#F1F5F9" }]}
+                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                >
+                                    <Ionicons name="close" size={18} color={colors.text} />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
+                        {/* Account Type Chip */}
+                        <View style={[styles.accountTypeChip, { backgroundColor: isDark ? colors.border : "#F8FAFC", borderColor: colors.border }]}>
+                            <Ionicons
+                                name={user?.userType === "BUSINESS" ? "business-outline" : "person-outline"}
+                                size={15}
+                                color="#6D28D9"
+                            />
+                            <Text style={[styles.accountTypeChipText, { color: colors.text }]}>
+                                {user?.userType === "BUSINESS" ? "Business Account" : "Personal Account"}
+                                {user?.businessName ? ` • ${user.businessName}` : (user?.fullName ? ` • ${user.fullName}` : "")}
+                            </Text>
+                        </View>
+
+                        {/* Security Notice Banner */}
+                        <View style={[styles.deviceSecurityNotice, { backgroundColor: isDark ? "#1E1B4B" : "#F5F3FF", borderColor: isDark ? colors.border : "#DDD6FE" }]}>
+                            <Ionicons name="shield-checkmark" size={18} color="#6D28D9" />
+                            <Text style={[styles.deviceSecurityNoticeText, { color: isDark ? "#C4B5FD" : "#6D28D9" }]}>
+                                Showing recent login sessions. If you spot an unrecognized device or unusual time, change your password immediately.
+                            </Text>
+                        </View>
+
+                        {/* List of Login Records */}
+                        {isLoadingLoginHistory ? (
+                            <View style={{ paddingVertical: 40, alignItems: "center", justifyContent: "center", gap: 10 }}>
+                                <ActivityIndicator size="large" color="#6D28D9" />
+                                <Text style={{ fontSize: 13, color: colors.textSecondary }}>Fetching login history...</Text>
+                            </View>
+                        ) : loginHistoryList.length === 0 ? (
+                            <View style={{ paddingVertical: 40, alignItems: "center", justifyContent: "center", gap: 8 }}>
+                                <Ionicons name="time-outline" size={36} color={colors.textSecondary} style={{ opacity: 0.6 }} />
+                                <Text style={{ fontSize: 14, fontWeight: "600", color: colors.text }}>No login history records found</Text>
+                                <Text style={{ fontSize: 12, color: colors.textSecondary }}>Your login activities will be recorded here.</Text>
+                            </View>
+                        ) : (
+                            <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+                                {loginHistoryList.map((item: any, idx: number) => {
+                                    const isCurrent = idx === 0 || item.status === "ACTIVE";
+                                    const devIcon = getDeviceIcon(item.device_name);
+                                    return (
+                                        <View
+                                            key={item.id || idx}
+                                            style={[
+                                                styles.loginHistoryCard,
+                                                {
+                                                    backgroundColor: isCurrent
+                                                        ? (isDark ? "#2E1065" : "#FAF5FF")
+                                                        : (isDark ? colors.surface : "#FFFFFF"),
+                                                    borderColor: isCurrent
+                                                        ? "#8B5CF6"
+                                                        : (isDark ? colors.border : "#E2E8F0"),
+                                                },
+                                            ]}
+                                        >
+                                            <View style={styles.loginHistoryCardHeader}>
+                                                <View style={[
+                                                    styles.loginDeviceIconBox,
+                                                    { backgroundColor: isCurrent ? "#EDE9FE" : (isDark ? colors.border : "#F1F5F9") }
+                                                ]}>
+                                                    <Ionicons name={devIcon} size={20} color={isCurrent ? "#6D28D9" : colors.text} />
+                                                </View>
+                                                <View style={{ flex: 1, gap: 2 }}>
+                                                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+                                                        <Text style={[styles.loginDeviceName, { color: colors.text }]}>
+                                                            {item.device_name || "Personal Device"}
+                                                        </Text>
+                                                        {isCurrent ? (
+                                                            <View style={styles.activeNowBadge}>
+                                                                <View style={styles.greenPulseDot} />
+                                                                <Text style={styles.activeNowText}>Current Session</Text>
+                                                            </View>
+                                                        ) : (
+                                                            <View style={styles.loginSuccessBadge}>
+                                                                <Ionicons name="checkmark-circle" size={12} color="#10B981" />
+                                                                <Text style={styles.loginSuccessText}>Logged In</Text>
+                                                            </View>
+                                                        )}
+                                                    </View>
+
+                                                    {/* Date & Time Row */}
+                                                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
+                                                        <Ionicons name="calendar-outline" size={13} color="#6D28D9" />
+                                                        <Text style={[styles.loginDateTimeText, { color: colors.text }]}>
+                                                            {formatLoginDateTime(item.login_time)}
+                                                        </Text>
+                                                    </View>
+
+                                                    {/* Location & IP Row */}
+                                                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 3, flexWrap: "wrap" }}>
+                                                        {item.location ? (
+                                                            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                                                                <Ionicons name="location-outline" size={13} color={colors.textSecondary} />
+                                                                <Text style={{ fontSize: 12, color: colors.textSecondary }}>{item.location}</Text>
+                                                            </View>
+                                                        ) : null}
+                                                        {item.ip_address ? (
+                                                            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                                                                <Text style={{ fontSize: 12, color: colors.textSecondary }}>•</Text>
+                                                                <Text style={{ fontSize: 11, color: colors.textSecondary }}>IP: {item.ip_address}</Text>
+                                                            </View>
+                                                        ) : null}
+                                                    </View>
+                                                </View>
+                                            </View>
+                                        </View>
+                                    );
+                                })}
+                            </ScrollView>
+                        )}
+
+                        {/* Modal Footer Actions */}
+                        <View style={[styles.passwordModalActions, { marginTop: 16 }]}>
+                            <TouchableOpacity
+                                style={[styles.passwordModalCancelBtn, { borderColor: colors.border }]}
+                                onPress={() => setIsLoginHistoryModalVisible(false)}
+                                activeOpacity={0.8}
+                            >
+                                <Text style={[styles.passwordModalCancelText, { color: colors.text }]}>Close</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.passwordModalSubmitBtn, { backgroundColor: "#6D28D9" }]}
+                                onPress={() => {
+                                    setIsLoginHistoryModalVisible(false);
+                                    handleOpenPasswordModal();
+                                }}
+                                activeOpacity={0.8}
+                            >
+                                <Ionicons name="key-outline" size={15} color="#FFF" />
+                                <Text style={styles.passwordModalSubmitText}>Change Password</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -2758,6 +3068,48 @@ const styles = StyleSheet.create({
         color: "#6D28D9",
         flex: 1,
         lineHeight: 16,
+    },
+    loginHistoryCard: {
+        borderRadius: 14,
+        borderWidth: 1.5,
+        padding: 14,
+        marginBottom: 10,
+    },
+    loginHistoryCardHeader: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        gap: 12,
+    },
+    loginDeviceIconBox: {
+        width: 38,
+        height: 38,
+        borderRadius: 10,
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    loginDeviceName: {
+        fontSize: 14,
+        fontWeight: "700",
+    },
+    loginDateTimeText: {
+        fontSize: 12,
+        fontWeight: "600",
+    },
+    loginSuccessBadge: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#ECFDF5",
+        borderColor: "#A7F3D0",
+        borderWidth: 1,
+        borderRadius: 10,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        gap: 4,
+    },
+    loginSuccessText: {
+        fontSize: 10,
+        fontWeight: "700",
+        color: "#059669",
     },
 });
 

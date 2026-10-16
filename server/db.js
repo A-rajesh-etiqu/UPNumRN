@@ -226,6 +226,18 @@ async function createTables() {
             );
         `);
 
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS login_history (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id VARCHAR(50) NOT NULL,
+                device_name VARCHAR(255) NOT NULL,
+                ip_address VARCHAR(100),
+                location VARCHAR(255),
+                login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                status VARCHAR(50) DEFAULT 'SUCCESS'
+            );
+        `);
+
         console.log("Database schema validated successfully (tables exist).");
     } catch (err) {
         console.error("Error migrating tables schema:", err);
