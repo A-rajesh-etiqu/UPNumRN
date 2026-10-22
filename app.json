@@ -13,6 +13,12 @@
     ],
     "android": {
       "package": "com.upnumrn"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "bc2cee24-47dc-49c4-8ed2-d6d32b4595c0"
+      }
+    },
+    "owner": "etiquette-developer"
   }
 }
