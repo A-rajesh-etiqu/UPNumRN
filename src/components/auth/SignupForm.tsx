@@ -94,8 +94,18 @@ export default function SignupForm() {
                     mobile: data.mobile,
                     role: isAdmin ? "ADMIN" : "USER",
                     userType: data.userType,
-                    isVerified: true,
-                    subscription: { id: "lifetime", name: "Lifetime Plan", price: 10, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: true },
+                    subscription: {
+                        id: "free-tier",
+                        name: "Free Tier",
+                        price: 0,
+                        currency: "INR",
+                        billingCycle: "MONTHLY",
+                        isLifetimeOffer: false,
+                        status: "TRIAL",
+                        trialEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                        validDays: 30
+                    },
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString(),
                 };

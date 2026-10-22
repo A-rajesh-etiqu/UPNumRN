@@ -7,6 +7,7 @@ interface TransactionStore {
     loadTransactions: (userId?: string) => Promise<void>;
     addTransaction: (data: { userId?: string, title: string, category: string, amount: number, type: "income" | "expense", date_time?: string }) => Promise<boolean>;
     uploadBulkTransactions: (formData: FormData, userId?: string) => Promise<boolean>;
+    saveImportedTransactions: (userId: string, transactions: any[]) => Promise<boolean>;
 }
 
 export const useTransactionStore = create<TransactionStore>((set, get) => ({
@@ -44,6 +45,18 @@ export const useTransactionStore = create<TransactionStore>((set, get) => ({
             return true;
         } catch (error) {
             console.error("Failed to bulk upload transactions", error);
+            return false;
+        }
+    },
+
+    saveImportedTransactions: async (userId, transactions) => {
+        try {
+            await transactionsService.saveImportedTransactions(userId, transactions);
+            const { loadTransactions } = get();
+            await loadTransactions(userId);
+            return true;
+        } catch (error) {
+            console.error("Failed to save imported transactions", error);
             return false;
         }
     }

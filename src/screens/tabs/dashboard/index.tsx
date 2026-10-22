@@ -348,7 +348,13 @@ function PersonalDashboard({ data, recentTransactions }: { data: any, recentTran
     const { width } = useWindowDimensions();
     const isDesktop = width >= 1024;
 
-    const [chartWidth, setChartWidth] = useState(width - 80);
+    const initialCardWidth = isDesktop ? Math.max(300, (width - 120) / 2 - 40) : Math.max(240, width - 72);
+    const [chartWidth, setChartWidth] = useState(initialCardWidth);
+
+    useEffect(() => {
+        const w = isDesktop ? Math.max(300, (width - 120) / 2 - 40) : Math.max(240, width - 72);
+        setChartWidth(w);
+    }, [width, isDesktop]);
 
     // Use dynamic data if available
     const income = data?.income ?? 0;
@@ -370,6 +376,15 @@ function PersonalDashboard({ data, recentTransactions }: { data: any, recentTran
     }));
 
     const chartAxisProps = calculateNiceYAxis(chartDataIncome, chartDataExpense);
+
+    const dataPointsCount = Math.max(chartDataIncome.length, chartDataExpense.length, 1);
+    const yAxisLabelWidth = 38;
+    const initialSpacing = 16;
+    const endSpacing = 16;
+    const effectiveWidth = chartWidth > 0 ? chartWidth : initialCardWidth;
+    const dynamicSpacing = dataPointsCount > 1
+        ? Math.max(20, (effectiveWidth - yAxisLabelWidth - initialSpacing - endSpacing) / (dataPointsCount - 1))
+        : 60;
 
     const pieData = data?.pieData?.length ? data.pieData : [{ value: 100, color: '#E2E8F0' }];
 
@@ -399,23 +414,46 @@ function PersonalDashboard({ data, recentTransactions }: { data: any, recentTran
                 <View style={{ flex: 1, gap: 16 }}>
                     {/* Income vs Expenses Chart */}
                     <SectionCard>
-                        <SectionHeader title="Income vs Expenses" />
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                            <SectionHeader title="Income vs Expenses" />
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#16A34A" }} />
+                                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.textSecondary }}>Income</Text>
+                                </View>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#EF4444" }} />
+                                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.textSecondary }}>Expenses</Text>
+                                </View>
+                            </View>
+                        </View>
                         <View
-                            style={{ marginTop: 16, overflow: 'hidden' }}
-                            onLayout={(e) => setChartWidth(e.nativeEvent.layout.width)}
+                            style={{ marginTop: 16, overflow: 'hidden', width: '100%' }}
+                            onLayout={(e) => {
+                                const w = e.nativeEvent.layout.width;
+                                if (w > 0 && Math.abs(w - chartWidth) > 5) {
+                                    setChartWidth(w);
+                                }
+                            }}
                         >
                             <LineChart
                                 data={chartDataIncome}
                                 data2={chartDataExpense}
-                                height={180}
-                                width={chartWidth}
+                                height={220}
+                                width={effectiveWidth}
+                                parentWidth={effectiveWidth}
+                                spacing={dynamicSpacing}
+                                initialSpacing={initialSpacing}
+                                endSpacing={endSpacing}
+                                yAxisLabelWidth={yAxisLabelWidth}
+                                curved
                                 showVerticalLines={false}
                                 color1="#16A34A"
                                 color2="#EF4444"
                                 dataPointsColor1="#16A34A"
                                 dataPointsColor2="#EF4444"
-                                thickness1={2}
-                                thickness2={2}
+                                thickness1={2.5}
+                                thickness2={2.5}
                                 maxValue={chartAxisProps.maxValue}
                                 stepValue={chartAxisProps.stepValue}
                                 noOfSections={chartAxisProps.noOfSections}
@@ -431,10 +469,10 @@ function PersonalDashboard({ data, recentTransactions }: { data: any, recentTran
                                 endFillColor1="#16A34A"
                                 startFillColor2="#EF4444"
                                 endFillColor2="#EF4444"
-                                startOpacity1={0.2}
-                                endOpacity1={0.0}
-                                startOpacity2={0.2}
-                                endOpacity2={0.0}
+                                startOpacity1={0.25}
+                                endOpacity1={0.02}
+                                startOpacity2={0.25}
+                                endOpacity2={0.02}
                             />
                         </View>
                     </SectionCard>

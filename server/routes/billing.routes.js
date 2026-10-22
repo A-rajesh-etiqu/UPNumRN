@@ -50,11 +50,8 @@ function authenticateBilling(req, res, next) {
 
 function resolvePlanDetails(planId) {
     const raw = String(planId || '').toLowerCase().trim();
-    if (raw === 'free-trial' || raw === 'trial') {
-        return { id: 'free-trial', name: 'Free Trial (1 Month)', price: 0, billingCycle: 'MONTHLY', isLifetimeOffer: false, status: 'TRIAL' };
-    }
-    if (raw.startsWith('1') || raw === 'free') {
-        return { id: '1', name: 'Free Tier', price: 0, billingCycle: 'MONTHLY', isLifetimeOffer: false };
+    if (raw === 'free-tier' || raw === 'free-trial' || raw === 'trial' || raw === 'free' || raw.startsWith('1')) {
+        return { id: 'free-tier', name: 'Free Tier', price: 0, billingCycle: 'MONTHLY', isLifetimeOffer: false, status: 'TRIAL' };
     }
     if (raw.startsWith('2') || raw.includes('standard') || raw.includes('monthly')) {
         return { id: '2', name: 'Standard Plan', price: 50, billingCycle: 'MONTHLY', isLifetimeOffer: false };
@@ -150,7 +147,7 @@ router.get("/history", authenticateBilling, async (req, res) => {
         }
 
         const successfulPayments = deduplicatedPaymentRows.filter(p => (p.status || '').toUpperCase() === 'SUCCESS');
-        let activePlanId = '1';
+        let activePlanId = 'free-tier';
         let latestPaymentDate = null;
 
         if (successfulPayments.length > 0) {
@@ -159,9 +156,9 @@ router.get("/history", authenticateBilling, async (req, res) => {
             activePlanId = String(latest.plan_id || (parseFloat(latest.amount) === 150 ? '3' : parseFloat(latest.amount) === 10 ? '4' : '2'));
         } else if (userSubRows.length > 0) {
             const row = userSubRows[0];
-            activePlanId = (row.user_plan_id && row.user_plan_id !== 'free-trial')
+            activePlanId = (row.user_plan_id && row.user_plan_id !== 'free-trial' && row.user_plan_id !== 'free-tier' && row.user_plan_id !== '1')
                 ? row.user_plan_id
-                : ((row.sub_plan_id && row.sub_plan_id !== 'free-trial') ? row.sub_plan_id : (row.user_plan_id || row.sub_plan_id || '1'));
+                : ((row.sub_plan_id && row.sub_plan_id !== 'free-trial' && row.sub_plan_id !== 'free-tier' && row.sub_plan_id !== '1') ? row.sub_plan_id : (row.user_plan_id || row.sub_plan_id || 'free-tier'));
         }
 
         let planDetails = resolvePlanDetails(activePlanId);
@@ -186,8 +183,17 @@ router.get("/history", authenticateBilling, async (req, res) => {
             console.warn("Could not query plans table for details:", planDbErr.message);
         }
 
+        const isTrialPlan = activePlanId === 'free-tier' || activePlanId === 'free-trial' || activePlanId === '1' || activePlanId === 'free';
+        const trialEnd = userSubRows[0]?.trial_end;
+        const isTrialExpired = isTrialPlan && trialEnd && new Date() > new Date(trialEnd);
+        const subStatus = isTrialPlan 
+            ? (isTrialExpired ? 'EXPIRED' : 'TRIAL') 
+            : (userSubRows[0]?.sub_status || 'ACTIVE');
+
         let nextBilling = null;
-        if (userSubRows.length > 0 && userSubRows[0]?.next_billing_date && new Date(userSubRows[0].next_billing_date) > new Date()) {
+        if (isTrialPlan) {
+            nextBilling = trialEnd ? new Date(trialEnd) : null;
+        } else if (userSubRows.length > 0 && userSubRows[0]?.next_billing_date && new Date(userSubRows[0].next_billing_date) > new Date()) {
             nextBilling = userSubRows[0].next_billing_date;
         } else {
             nextBilling = new Date(latestPaymentDate || new Date());
@@ -200,7 +206,7 @@ router.get("/history", authenticateBilling, async (req, res) => {
 
         const subscription = {
             planId: activePlanId,
-            planName: planDetails.name,
+            planName: isTrialExpired ? "Free Tier (Expired)" : planDetails.name,
             price: planDetails.price,
             billingCycle: planDetails.billingCycle,
             description: planDetails.description || '',
@@ -211,14 +217,16 @@ router.get("/history", authenticateBilling, async (req, res) => {
                 "Priority Support",
                 "Secure Data & Backups"
             ],
-            status: activePlanId === 'free-trial' ? 'TRIAL' : (userSubRows[0]?.sub_status || 'ACTIVE'),
-            currentPeriodStart: latestPaymentDate || new Date(),
+            status: subStatus,
+            currentPeriodStart: latestPaymentDate || userSubRows[0]?.trial_start || new Date(),
             nextBillingDate: nextBilling,
-            autoRenew: true
+            trialEnd: trialEnd || null,
+            expiresAt: isTrialPlan ? trialEnd : nextBilling,
+            autoRenew: !isTrialPlan
         };
 
         // Sync database tables so future queries stay in sync
-        if (activePlanId !== '1') {
+        if (!isTrialPlan) {
             await db.query(`UPDATE users SET plan_id = ? WHERE id = ?;`, [activePlanId, userId]).catch(() => {});
             await db.query(`
                 INSERT INTO subscriptions (user_id, plan_id, status, trial_start, trial_end, next_billing_date, billing_day)

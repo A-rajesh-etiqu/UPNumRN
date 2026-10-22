@@ -123,7 +123,7 @@ export default function DashboardHeader({
             {/* Left Section: Title & Subtitle */}
             <View style={styles.leftSection}>
                 {(!isDesktop && isDashboard) ? (
-                    <Image source={Platform.OS === 'web' ? require('../../../assets/images/web-logo.png') : require('../../../assets/images/logo.png')} style={{ height: 54, width: 160, resizeMode: 'contain', marginLeft: -16 }} />
+                    <Image source={isDark ? require('../../../assets/images/web-logo.png') : require('../../../assets/images/logo.png')} style={{ height: 54, width: 160, resizeMode: 'contain', marginLeft: -16 }} />
                 ) : (
                     <>
                         <Text style={[styles.titleText, { color: colors.text }]}>{title}</Text>

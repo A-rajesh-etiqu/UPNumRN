@@ -7,6 +7,7 @@ const { sendOTP, sendInvoice } = require("./services/mailer");
 const { generateInvoicePDF } = require("./services/pdfGenerator");
 const multer = require("multer");
 const xlsx = require("xlsx");
+const { parseStatementFile } = require("./services/pdfStatementParser");
 const upload = multer({ storage: multer.memoryStorage() });
 
 const path = require("path");
@@ -14,7 +15,8 @@ dotenv.config({ path: path.join(__dirname, ".env") });
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 const PORT = process.env.PORT || 8085;
 const JWT_SECRET = process.env.JWT_SECRET || "upnum_secure_jwt_secret_key_2026";
@@ -47,27 +49,16 @@ function verifyToken(token) {
 function resolvePlanDetails(planId) {
     const id = String(planId || '').toLowerCase();
 
-    if (id === 'free-trial' || id === 'trial') {
+    if (id === 'free-tier' || id === 'free-trial' || id === 'trial' || id === 'free' || id === '1') {
         return {
-            id: 'free-trial',
-            code: 'free-trial',
-            name: 'Free Trial (1 Month)',
-            type: 'Free Trial',
-            price: 0,
-            billingCycle: 'MONTHLY',
-            isLifetimeOffer: false,
-            status: 'TRIAL'
-        };
-    }
-    if (id === '1' || id === 'free') {
-        return {
-            id: '1',
-            code: 'free',
+            id: 'free-tier',
+            code: 'free-tier',
             name: 'Free Tier',
             type: 'Basic Features',
             price: 0,
             billingCycle: 'MONTHLY',
             isLifetimeOffer: false,
+            status: 'TRIAL'
         };
     }
     if (id === '2' || id === 'standard' || id === 'monthly') {
@@ -129,7 +120,7 @@ app.post("/api/auth/register", async (req, res) => {
         // 1. Insert into users table
         await db.query(`
             INSERT INTO users (id, name, email, mobile, role, status, password, user_type, plan_id)
-            VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?, ?, 'free-trial');
+            VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?, ?, 'free-tier');
         `, [id, fullName, email, mobile, role, password, userType || 'PERSONAL']);
 
         // 2. Insert into profiles table
@@ -146,13 +137,13 @@ app.post("/api/auth/register", async (req, res) => {
             VALUES (?, ?, TRUE, TRUE);
         `, [id, email.split("@")[0] + "@upi"]);
 
-        // 4. Create default free trial subscription (1 month)
+        // 4. Create default Free Tier subscription (30 days validity)
         const trialStart = new Date();
         const trialEnd = new Date();
-        trialEnd.setMonth(trialEnd.getMonth() + 1); // 1 month free trial
+        trialEnd.setDate(trialEnd.getDate() + 30); // 30 days valid days
         await db.query(`
             INSERT INTO subscriptions (user_id, plan_id, trial_start, trial_end, billing_day, next_billing_date, status)
-            VALUES (?, 'free-trial', ?, ?, ?, ?, 'TRIAL');
+            VALUES (?, 'free-tier', ?, ?, ?, ?, 'TRIAL');
         `, [id, trialStart, trialEnd, trialStart.getDate(), trialEnd]);
 
         res.status(201).json({
@@ -175,8 +166,20 @@ app.post("/api/auth/register", async (req, res) => {
                 userType: userType || 'PERSONAL',
                 isVerified: true,
                 isUpiVerified: true,
-                planId: "free-trial",
-                subscription: { id: "free-trial", name: "Free Trial (1 Month)", price: 0, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: "TRIAL", trialEnd: trialEnd.toISOString() }
+                planId: "free-tier",
+                subscription: {
+                    id: "free-tier",
+                    name: "Free Tier",
+                    price: 0,
+                    currency: "INR",
+                    billingCycle: "MONTHLY",
+                    isLifetimeOffer: false,
+                    status: "TRIAL",
+                    trialStart: trialStart.toISOString(),
+                    trialEnd: trialEnd.toISOString(),
+                    expiresAt: trialEnd.toISOString(),
+                    validDays: 30
+                }
             }
         });
     } catch (err) {
@@ -217,22 +220,25 @@ app.post("/api/auth/login", async (req, res) => {
             "SELECT s.*, p.name as plan_name, p.price as plan_price, p.billing as plan_billing FROM subscriptions s LEFT JOIN plans p ON CAST(p.id AS CHAR) = CAST(s.plan_id AS CHAR) WHERE s.user_id = ? LIMIT 1;", 
             [userRow.id]
         );
-        let subscription = { id: "free-trial", name: "Free Trial (1 Month)", price: 0, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: "TRIAL" };
+        let subscription = { id: "free-tier", name: "Free Tier", price: 0, currency: "INR", billingCycle: "MONTHLY", isLifetimeOffer: false, status: "TRIAL" };
         if (subRows.length > 0) {
             const s = subRows[0];
-            const isTrial = s.plan_id === 'free-trial' || s.status === 'TRIAL';
+            const isTrial = s.plan_id === 'free-trial' || s.plan_id === 'free-tier' || s.status === 'TRIAL' || s.plan_id === '1' || s.plan_id === 'free';
             const isExpired = isTrial && s.trial_end && new Date() > new Date(s.trial_end);
 
             if (isTrial) {
                 subscription = {
-                    id: 'free-trial',
-                    name: isExpired ? "Free Trial (Expired)" : "Free Trial (1 Month)",
+                    id: 'free-tier',
+                    name: isExpired ? "Free Tier (Expired)" : "Free Tier",
                     price: 0,
                     currency: "INR",
                     billingCycle: "MONTHLY",
                     isLifetimeOffer: false,
                     status: isExpired ? "EXPIRED" : "TRIAL",
-                    trialEnd: s.trial_end
+                    trialStart: s.trial_start,
+                    trialEnd: s.trial_end,
+                    expiresAt: s.trial_end,
+                    validDays: 30
                 };
             } else {
                 const planDetails = resolvePlanDetails(s.plan_id);
@@ -243,9 +249,34 @@ app.post("/api/auth/login", async (req, res) => {
                     currency: "INR",
                     billingCycle: s.plan_billing || planDetails.billingCycle,
                     isLifetimeOffer: planDetails.isLifetimeOffer,
-                    status: s.status || "ACTIVE"
+                    status: s.status || "ACTIVE",
+                    expiresAt: s.next_billing_date
                 };
             }
+        } else {
+            const trialStart = userRow.created_at ? new Date(userRow.created_at) : new Date();
+            const trialEnd = new Date(trialStart);
+            trialEnd.setDate(trialEnd.getDate() + 30);
+            const isExpired = new Date() > trialEnd;
+            await db.query(`
+                INSERT INTO subscriptions (user_id, plan_id, trial_start, trial_end, billing_day, next_billing_date, status)
+                VALUES (?, 'free-tier', ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE plan_id = VALUES(plan_id);
+            `, [userRow.id, trialStart, trialEnd, trialStart.getDate(), trialEnd, isExpired ? 'EXPIRED' : 'TRIAL']).catch(() => {});
+
+            subscription = {
+                id: 'free-tier',
+                name: isExpired ? "Free Tier (Expired)" : "Free Tier",
+                price: 0,
+                currency: "INR",
+                billingCycle: "MONTHLY",
+                isLifetimeOffer: false,
+                status: isExpired ? "EXPIRED" : "TRIAL",
+                trialStart: trialStart.toISOString(),
+                trialEnd: trialEnd.toISOString(),
+                expiresAt: trialEnd.toISOString(),
+                validDays: 30
+            };
         }
 
         const user = {
@@ -737,6 +768,100 @@ app.post("/api/transactions", async (req, res) => {
     }
 });
 
+app.post("/api/transactions/parse-statement", upload.single("file"), async (req, res) => {
+    try {
+        let fileBuffer = null;
+        let originalName = "";
+
+        if (req.file) {
+            fileBuffer = req.file.buffer;
+            originalName = req.file.originalname;
+        } else if (req.body.base64File) {
+            fileBuffer = Buffer.from(req.body.base64File, "base64");
+            originalName = req.body.filename || "statement.pdf";
+        } else if (typeof req.body.file === "string" && req.body.file.startsWith("data:")) {
+            const base64Data = req.body.file.split(",")[1];
+            fileBuffer = Buffer.from(base64Data, "base64");
+            originalName = req.body.filename || "statement.pdf";
+        }
+
+        if (!fileBuffer) {
+            return res.status(400).json({ error: "No statement file uploaded" });
+        }
+
+        const password = req.body.password || "";
+        const result = await parseStatementFile(fileBuffer, originalName, password);
+
+        if (!result.success) {
+            if (result.isPasswordProtected) {
+                return res.json({
+                    success: false,
+                    isPasswordProtected: true,
+                    error: result.error || "This statement is password protected.",
+                });
+            }
+            return res.status(400).json(result);
+        }
+
+        res.json({
+            success: true,
+            filename: originalName,
+            bankDetected: result.bankDetected,
+            totalFound: result.totalFound,
+            transactions: result.transactions,
+        });
+    } catch (err) {
+        console.error("Statement Parse Error:", err);
+        res.status(500).json({ error: err.message || "Failed to parse statement file" });
+    }
+});
+
+app.post("/api/transactions/save-imported", async (req, res) => {
+    try {
+        const { userId, transactions } = req.body;
+        const uid = userId || "user-1";
+
+        if (!Array.isArray(transactions) || transactions.length === 0) {
+            return res.status(400).json({ error: "No transactions to save" });
+        }
+
+        let insertedCount = 0;
+
+        for (const tx of transactions) {
+            const txId = `tx-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+            const title = String(tx.title || "Imported Tx").slice(0, 100);
+            const category = String(tx.category || "General").slice(0, 50);
+            
+            let finalAmount = parseFloat(tx.amount) || 0;
+            const typeStr = String(tx.type || "").toLowerCase();
+            if (typeStr === "expense" && finalAmount > 0) {
+                finalAmount = -finalAmount;
+            } else if (typeStr === "income" && finalAmount < 0) {
+                finalAmount = Math.abs(finalAmount);
+            }
+
+            const txDate = tx.date_time ? new Date(tx.date_time) : (tx.date ? new Date(tx.date) : new Date());
+            const validDate = isNaN(txDate.getTime()) ? new Date() : txDate;
+
+            await db.query(`
+                INSERT INTO transactions (id, user_id, title, category, amount, date_time, status, payment_method)
+                VALUES (?, ?, ?, ?, ?, ?, 'SUCCESS', 'STATEMENT_IMPORT');
+            `, [txId, uid, title, category, finalAmount, validDate]);
+
+            insertedCount++;
+        }
+
+        res.status(201).json({
+            success: true,
+            message: `Successfully imported ${insertedCount} transactions`,
+            count: insertedCount,
+        });
+    } catch (err) {
+        console.error("Save Imported Transactions Error:", err);
+        res.status(500).json({ error: "Failed to save imported transactions" });
+    }
+});
+
 app.post("/api/transactions/bulk", upload.single("file"), async (req, res) => {
     try {
         const { userId } = req.body;
@@ -746,9 +871,27 @@ app.post("/api/transactions/bulk", upload.single("file"), async (req, res) => {
             return res.status(400).json({ error: "No file uploaded" });
         }
 
-        const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
-        const sheetName = workbook.SheetNames[0];
-        const rows = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+        let rows = [];
+        const isPdf = req.file.originalname?.toLowerCase().endsWith(".pdf") || (req.file.buffer && req.file.buffer.slice(0, 4).toString() === "%PDF");
+
+        if (isPdf) {
+            const password = req.body.password || "";
+            const parsed = await parseStatementFile(req.file.buffer, req.file.originalname, password);
+            if (!parsed.success) {
+                return res.status(parsed.isPasswordProtected ? 401 : 400).json(parsed);
+            }
+            rows = (parsed.transactions || []).map(t => ({
+                title: t.title,
+                category: t.category,
+                amount: t.amount,
+                type: t.type,
+                date: t.date_time,
+            }));
+        } else {
+            const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
+            const sheetName = workbook.SheetNames[0];
+            rows = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+        }
 
         if (!rows || rows.length === 0) {
             return res.status(400).json({ error: "Empty or invalid file" });
@@ -778,7 +921,7 @@ app.post("/api/transactions/bulk", upload.single("file"), async (req, res) => {
 
             await db.query(`
                 INSERT INTO transactions (id, user_id, title, category, amount, date_time, status, payment_method)
-                VALUES (?, ?, ?, ?, ?, ?, 'SUCCESS', 'MANUAL');
+                VALUES (?, ?, ?, ?, ?, ?, 'SUCCESS', 'STATEMENT_IMPORT');
             `, [txId, uid, String(title).slice(0, 100), String(category).slice(0, 50), finalAmount, txDate]);
 
             insertedCount++;
@@ -790,6 +933,7 @@ app.post("/api/transactions/bulk", upload.single("file"), async (req, res) => {
         res.status(500).json({ error: "Failed to process bulk import" });
     }
 });
+
 
 // ==========================================
 // Dashboard summary APIs
@@ -935,17 +1079,22 @@ app.get("/api/profile", async (req, res) => {
             "SELECT s.*, p.name as plan_name, p.price as plan_price, p.billing as plan_billing FROM subscriptions s LEFT JOIN plans p ON CAST(p.id AS CHAR) = CAST(s.plan_id AS CHAR) WHERE s.user_id = ? LIMIT 1;", 
             [uid]
         );
-        const activePlanId = userRow.plan_id || (subRows[0]?.plan_id) || '1';
+        const activePlanId = userRow.plan_id || (subRows[0]?.plan_id) || 'free-tier';
         const planDetails = resolvePlanDetails(activePlanId);
+        const isTrial = activePlanId === 'free-trial' || activePlanId === 'free-tier' || activePlanId === '1' || activePlanId === 'free';
+        const isExpired = isTrial && subRows[0]?.trial_end && new Date() > new Date(subRows[0].trial_end);
 
         let subscription = {
             id: activePlanId,
-            name: (subRows[0]?.plan_name) || planDetails.name,
+            name: isExpired ? "Free Tier (Expired)" : ((subRows[0]?.plan_name) || planDetails.name),
             price: (subRows[0]?.plan_price !== null && subRows[0]?.plan_price !== undefined) ? parseFloat(subRows[0].plan_price) : planDetails.price,
             currency: "INR",
             billingCycle: (subRows[0]?.plan_billing) || planDetails.billingCycle,
             isLifetimeOffer: planDetails.isLifetimeOffer,
-            status: activePlanId === 'free-trial' ? 'TRIAL' : (subRows[0]?.status || 'ACTIVE')
+            status: isTrial ? (isExpired ? 'EXPIRED' : 'TRIAL') : (subRows[0]?.status || 'ACTIVE'),
+            trialStart: subRows[0]?.trial_start,
+            trialEnd: subRows[0]?.trial_end,
+            expiresAt: subRows[0]?.trial_end || subRows[0]?.next_billing_date
         };
 
         const names = userRow.name.split(" ");
@@ -1183,6 +1332,13 @@ app.get("/api/plans", async (req, res) => {
         const { userId } = req.query;
         let [rows] = await db.query("SELECT * FROM plans WHERE LOWER(status) = 'active' ORDER BY id ASC");
 
+        // Filter out Free Tier from plans available for purchase
+        rows = rows.filter(p => {
+            const price = parseFloat(p.price) || 0;
+            const name = (p.name || '').toLowerCase();
+            return price > 0 && !name.includes('free');
+        });
+
         if (userId) {
             const [subRows] = await db.query(
                 "SELECT * FROM subscriptions WHERE user_id = ? AND status = 'ACTIVE';",
@@ -1194,7 +1350,7 @@ app.get("/api/plans", async (req, res) => {
             );
 
             const hasSubscribed =
-                (subRows.length > 0 && subRows[0].plan_id !== "free" && subRows[0].plan_id !== "free-trial") ||
+                (subRows.length > 0 && subRows[0].plan_id !== "free" && subRows[0].plan_id !== "free-trial" && subRows[0].plan_id !== "free-tier" && subRows[0].plan_id !== "1") ||
                 payRows.length > 0;
 
             if (hasSubscribed) {

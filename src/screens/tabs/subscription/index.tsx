@@ -18,14 +18,23 @@ import Svg, { Rect, Path, Ellipse, Circle, Stop, LinearGradient as SvgLinearGrad
 import DashboardHeader from "../../../components/layout/DashboardHeader";
 import { useAppTheme, Spacing, Shadows } from "../../../theme";
 import { useAuthStore } from "../../../store/auth.store";
+import { useSubscriptionStore } from "../../../store/subscription.store";
 import { ENV } from "../../../config/env";
 import {
     loadRazorpayCheckoutScript,
     launchDirectRazorpayCheckout,
 } from "../../../services/razorpay.service";
 
+const isFreePlan = (plan: any) => {
+    if (!plan) return false;
+    const price = parseFloat(plan.price) || 0;
+    const name = (plan.name || "").toLowerCase();
+    const type = (plan.type || "").toLowerCase();
+    const id = String(plan.id || "").toLowerCase();
+    return price <= 0 || name.includes("free") || type.includes("free") || id === "1" || id === "free-tier" || id === "free-trial";
+};
+
 const DEFAULT_PLANS = [
-    { id: 1, name: "Free Tier", type: "Basic Features", price: 0, billing: "Monthly", status: "Active", subscribers: 12543, description: "Basic Dashboard Features,100 Transactions/mo,Community Support,Standard Data Backups" },
     { id: 2, name: "Standard Plan", type: "Advanced Features", price: 50, billing: "Monthly", status: "Active", subscribers: 5234, description: "All Dashboard Features,AI Insights & Suggestions,Unlimited Transactions,Priority Support,Secure Data & Backups" },
     { id: 3, name: "Premium Plan", type: "All Features", price: 150, billing: "Monthly", status: "Active", subscribers: 1845, description: "All Dashboard Features,AI Insights & Suggestions,Unlimited Transactions,24/7 Dedicated Support,Secure Data & Backups,API Access" },
     { id: 4, name: "Lifetime Plan", type: "One-time Offer", price: 10, billing: "Monthly", status: "Active", subscribers: 980, description: "All Dashboard Features,AI Insights & Suggestions,Unlimited Transactions,Priority Support,Secure Data & Backups" },
@@ -71,6 +80,26 @@ export default function SubscriptionIndexScreen() {
     const isBusinessUser = user?.userType === "BUSINESS";
     const userEmailOrHandle = user?.email || user?.mobile || "you@upi";
 
+    const isCurrentPlanFree = useMemo(() => {
+        const sub = user?.subscription;
+        if (!sub) return true;
+        return isFreePlan(sub);
+    }, [user?.subscription]);
+
+    const trialDaysRemaining = useMemo(() => {
+        const sub = user?.subscription as any;
+        const trialEnd = sub?.trialEnd || sub?.expiresAt;
+        if (trialEnd) {
+            const diffMs = new Date(trialEnd).getTime() - Date.now();
+            return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+        }
+        if (user?.createdAt) {
+            const endMs = new Date(user.createdAt).getTime() + 30 * 24 * 60 * 60 * 1000;
+            return Math.max(0, Math.ceil((endMs - Date.now()) / (1000 * 60 * 60 * 24)));
+        }
+        return 30;
+    }, [user?.subscription, user?.createdAt]);
+
     useEffect(() => {
         loadRazorpayCheckoutScript();
     }, []);
@@ -79,12 +108,12 @@ export default function SubscriptionIndexScreen() {
         let isMounted = true;
         const loadPlans = async () => {
             const findDefaultPlanId = (plansList: any[]) => {
-                if (user?.subscription?.id) {
+                if (user?.subscription?.id && !isFreePlan(user.subscription)) {
                     const subIdStr = user.subscription.id.toString();
                     const match = plansList.find((p: any) => p.id.toString() === subIdStr);
                     if (match) return match.id.toString();
                 }
-                if (user?.subscription?.name) {
+                if (user?.subscription?.name && !isFreePlan(user.subscription)) {
                     const subName = user.subscription.name.toLowerCase();
                     const match = plansList.find((p: any) => (p.name || "").toLowerCase() === subName);
                     if (match) return match.id.toString();
@@ -98,8 +127,8 @@ export default function SubscriptionIndexScreen() {
                 if (res.ok) {
                     let data = await res.json();
                     if (isMounted && Array.isArray(data) && data.length > 0) {
-                        const activePlans = data.filter((p: any) => (p.status || "Active").toLowerCase() === "active");
-                        const listToUse = activePlans.length > 0 ? activePlans : data;
+                        const activePaidPlans = data.filter((p: any) => !isFreePlan(p) && (p.status || "Active").toLowerCase() === "active");
+                        const listToUse = activePaidPlans.length > 0 ? activePaidPlans : DEFAULT_PLANS;
                         setPlans(listToUse);
                         setSelectedPlanId(prev => (prev && listToUse.some((d: any) => d.id.toString() === prev)) ? prev : findDefaultPlanId(listToUse));
                         setLoadingPlans(false);
@@ -123,6 +152,7 @@ export default function SubscriptionIndexScreen() {
 
     const visiblePlans = useMemo(() => {
         return plans.filter((plan: any) => {
+            if (isFreePlan(plan)) return false;
             const b = (plan.billing || "").toLowerCase();
             if (billingCycle === "monthly") {
                 return b === "monthly" || b === "month";
@@ -430,6 +460,68 @@ export default function SubscriptionIndexScreen() {
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
             >
+                {/* ── Active Subscription Status Card ── */}
+                <View
+                    style={[
+                        styles.activeStatusCard,
+                        {
+                            backgroundColor: isDark
+                                ? (isCurrentPlanFree ? "#1E293B" : "#064E3B")
+                                : (isCurrentPlanFree ? "#EFF6FF" : "#F0FDF4"),
+                            borderColor: isDark
+                                ? (isCurrentPlanFree ? "#334155" : "#047857")
+                                : (isCurrentPlanFree ? "#BFDBFE" : "#BBF7D0"),
+                        }
+                    ]}
+                >
+                    <View style={[styles.activeStatusIconBox, { backgroundColor: isCurrentPlanFree ? "#DBEAFE" : "#DCFCE7" }]}>
+                        <Ionicons
+                            name={isCurrentPlanFree ? "sparkles" : "shield-checkmark"}
+                            size={22}
+                            color={isCurrentPlanFree ? "#2563EB" : "#16A34A"}
+                        />
+                    </View>
+                    <View style={{ flex: 1, gap: 4 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                            <Text style={[styles.activeStatusTitle, { color: isDark ? colors.text : "#0F172A" }]}>
+                                {isCurrentPlanFree ? "Current Plan: Free Tier" : `Current Plan: ${user?.subscription?.name || "Active"}`}
+                            </Text>
+                            <View
+                                style={[
+                                    styles.activeStatusBadge,
+                                    {
+                                        backgroundColor: isCurrentPlanFree
+                                            ? (trialDaysRemaining > 0 ? "#DBEAFE" : "#FEE2E2")
+                                            : "#DCFCE7"
+                                    }
+                                ]}
+                            >
+                                <Text
+                                    style={[
+                                        styles.activeStatusBadgeText,
+                                        {
+                                            color: isCurrentPlanFree
+                                                ? (trialDaysRemaining > 0 ? "#1D4ED8" : "#DC2626")
+                                                : "#15803D"
+                                        }
+                                    ]}
+                                >
+                                    {isCurrentPlanFree
+                                        ? (trialDaysRemaining > 0 ? `${trialDaysRemaining} Days Left` : "Trial Expired")
+                                        : "ACTIVE"}
+                                </Text>
+                            </View>
+                        </View>
+                        <Text style={[styles.activeStatusSubtitle, { color: isDark ? colors.textSecondary : "#475569" }]}>
+                            {isCurrentPlanFree
+                                ? (trialDaysRemaining > 0
+                                    ? `Every new user receives 30 days of Free Tier access (${trialDaysRemaining} days remaining). Choosing and subscribing to any plan below switches your account directly to that plan.`
+                                    : "Your 30-day Free Tier access has expired. Choose any plan below to switch and continue full access.")
+                                : "You are currently subscribed. Choose any plan below to switch your subscription."}
+                        </Text>
+                    </View>
+                </View>
+
                 {/* ── Monthly / Yearly Pill Toggle ── */}
                 <View style={styles.toggleRowWrap}>
                     <View style={[styles.toggleContainer, { backgroundColor: isDark ? colors.surface : "#FFF", borderColor: isDark ? colors.border : "#E2E8F0" }]}>
@@ -479,7 +571,7 @@ export default function SubscriptionIndexScreen() {
                                     <View style={{ flex: 1 }}>
                                         <Text style={[styles.whyFeatureTitle, { color: colors.text }]}>AI Powered Insights</Text>
                                         <Text style={[styles.whyFeatureDesc, { color: colors.textSecondary }]}>
-                                            {isBusinessUser ? "Get smart suggestions to boost your sales" : "Get smart suggestions to boost your savings"}
+                                             {isBusinessUser ? "Get smart suggestions to boost your sales" : "Get smart suggestions to boost your savings"}
                                         </Text>
                                     </View>
                                 </View>
@@ -586,9 +678,7 @@ export default function SubscriptionIndexScreen() {
                                 <View style={styles.razorpayBtnInner}>
                                     <Ionicons name="lock-closed" size={15} color="#FFF" />
                                     <Text style={styles.razorpayPayBtnText}>
-                                        {selectedPlan && (parseFloat(selectedPlan.price) || 0) === 0
-                                            ? "Activate Free Tier"
-                                            : `Pay ₹${selectedPlan ? parseFloat(selectedPlan.price) || 0 : 50} via Razorpay`}
+                                        {`Pay ₹${selectedPlan ? parseFloat(selectedPlan.price) || 0 : 50} via Razorpay`}
                                     </Text>
                                 </View>
                             )}
@@ -606,22 +696,19 @@ export default function SubscriptionIndexScreen() {
 
                 </View>
 
-                {/* ── 3. 1st Month Free Banner ── */}
+                {/* ── 3. 30 Days Free Tier Banner ── */}
                 <View style={[styles.freeTrialBanner, { backgroundColor: isDark ? "#422006" : "#FEFCE8", borderColor: "#FDE68A" }]}>
                     <View style={styles.freeTrialIconBadge}>
                         <Ionicons name="timer-outline" size={20} color="#EA580C" />
                     </View>
                     <View style={{ flex: 1, gap: 2 }}>
                         <Text style={[styles.freeTrialTitle, { color: isDark ? "#FEF08A" : "#854D0E" }]}>
-                            1st Month Free for All Users!
+                            30 Days Free Tier for All New Users!
                         </Text>
                         <Text style={[styles.freeTrialSubtitle, { color: isDark ? "#FDE68A" : "#A16207" }]}>
-                            Your subscription will start after the free trial period.
+                            Every newly registered user automatically starts with 30 days of Free Tier access. Subscribe to any plan anytime to switch directly.
                         </Text>
                     </View>
-                    <TouchableOpacity style={[styles.freeTrialBtn, { borderColor: "#6366F1" }]}>
-                        <Text style={styles.freeTrialBtnText}>Learn More</Text>
-                    </TouchableOpacity>
                 </View>
 
             </ScrollView>
@@ -632,6 +719,41 @@ export default function SubscriptionIndexScreen() {
 const styles = StyleSheet.create({
     container: { flex: 1 },
     scrollContent: { padding: 24, paddingBottom: 60, gap: 20 },
+
+    // Active Status Card
+    activeStatusCard: {
+        flexDirection: "row",
+        alignItems: "center",
+        padding: 18,
+        borderRadius: 16,
+        borderWidth: 1,
+        gap: 16,
+        marginBottom: 4,
+    },
+    activeStatusIconBox: {
+        width: 44,
+        height: 44,
+        borderRadius: 12,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    activeStatusTitle: {
+        fontSize: 16,
+        fontWeight: "700",
+    },
+    activeStatusBadge: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 999,
+    },
+    activeStatusBadgeText: {
+        fontSize: 12,
+        fontWeight: "700",
+    },
+    activeStatusSubtitle: {
+        fontSize: 13,
+        lineHeight: 18,
+    },
 
     // Toggle
     toggleRowWrap: { alignItems: "center", marginVertical: 8 },

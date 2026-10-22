@@ -37,8 +37,7 @@ const NEW_RECOMMENDATIONS = [
     { title: "Manage Utility Bills", desc: "Set up auto-pay for your electricity and water bills to avoid late fees.", icon: "flash-outline", color: "#F59E0B", bg: "#FFFBEB", btnText: "Setup Now" },
 ];
 
-const DATE_RANGES = ["This Month", "Last Month", "Last 3 Months", "Last 6 Months", "This Year"];
-const CATEGORIES = ["All", "Shopping", "Food", "Travel", "Utilities", "Entertainment", "Groceries", "Income", "Transfer"];
+const DATE_RANGES = ["This Month", "Last Month", "Last 3 Months", "Last 6 Months", "This Year", "Custom Range"];
 
 export default function AiInsightsPersonal() {
     const [recommendations, setRecommendations] = useState(DEFAULT_RECOMMENDATIONS);
@@ -48,8 +47,15 @@ export default function AiInsightsPersonal() {
     // Filter / date state
     const [dateRange, setDateRange] = useState("This Month");
     const [datePickerVisible, setDatePickerVisible] = useState(false);
-    const [filterVisible, setFilterVisible] = useState(false);
-    const [selectedCategory, setSelectedCategory] = useState("All");
+    const [customRangeModalVisible, setCustomRangeModalVisible] = useState(false);
+    const [startDateInput, setStartDateInput] = useState(() => {
+        const d = new Date();
+        d.setDate(d.getDate() - 30);
+        return d.toISOString().split("T")[0];
+    });
+    const [endDateInput, setEndDateInput] = useState(() => {
+        return new Date().toISOString().split("T")[0];
+    });
 
     // Stat detail modal
     const [statDetailVisible, setStatDetailVisible] = useState(false);
@@ -60,9 +66,6 @@ export default function AiInsightsPersonal() {
     const [selectedRec, setSelectedRec] = useState<any>(null);
     const [budgetInput, setBudgetInput] = useState("");
 
-    // Insight detail modal
-    const [insightDetailVisible, setInsightDetailVisible] = useState(false);
-    const [selectedInsight, setSelectedInsight] = useState<any>(null);
 
     // AI Chat
     const [chatQuery, setChatQuery] = useState("");
@@ -97,9 +100,24 @@ export default function AiInsightsPersonal() {
     };
 
     const handleDateRangeSelect = (range: string) => {
-        setDateRange(range);
         setDatePickerVisible(false);
-        loadDashboard(user?.id, range);
+        if (range === "Custom Range") {
+            setCustomRangeModalVisible(true);
+        } else {
+            setDateRange(range);
+            loadDashboard(user?.id, range);
+        }
+    };
+
+    const handleApplyCustomRange = () => {
+        if (!startDateInput || !endDateInput) {
+            Alert.alert("Invalid Dates", "Please enter both start and end dates.");
+            return;
+        }
+        setCustomRangeModalVisible(false);
+        const displayLabel = `${startDateInput} to ${endDateInput}`;
+        setDateRange(displayLabel);
+        loadDashboard(user?.id, "Custom Range", startDateInput, endDateInput);
     };
 
     const handleDownloadReport = () => {
@@ -130,10 +148,6 @@ The report will include:\n• Spending trends\n• Category breakdown\n• Perso
         setRecModalVisible(true);
     };
 
-    const handleInsightDetail = (insight: any) => {
-        setSelectedInsight(insight);
-        setInsightDetailVisible(true);
-    };
 
     const handleSendChat = async (query?: string) => {
         const q = (query ?? chatQuery).trim();
@@ -220,17 +234,6 @@ The report will include:\n• Spending trends\n• Category breakdown\n• Perso
 
     const pieData = data.pieData?.length ? data.pieData : [{ value: 100, color: '#E2E8F0' }];
     
-    const getInsightConfig = (type: string) => {
-        switch (type) {
-            case 'warning': return { icon: 'warning-outline', color: '#EF4444', bg: '#FEE2E2' };
-            case 'success': return { icon: 'leaf-outline', color: '#10B981', bg: '#ECFDF5' };
-            default: return { icon: 'information-circle-outline', color: '#3B82F6', bg: '#EFF6FF' };
-        }
-    };
-
-    const aiInsights = data.aiInsights?.length ? data.aiInsights : [
-        { id: "1", title: "No Insights Yet", description: "Keep tracking your expenses to get personalized AI insights.", type: "info" }
-    ];
 
     return (
         <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -252,22 +255,6 @@ The report will include:\n• Spending trends\n• Category breakdown\n• Perso
                         <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
                         <Text style={[styles.rangeSelectorText, { color: colors.text }]}>{dateRange}</Text>
                         <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        style={[styles.compareBtn, { backgroundColor: selectedCategory !== "All" ? "#8B5CF6" : colors.surface, borderColor: selectedCategory !== "All" ? "#8B5CF6" : colors.border }]}
-                        activeOpacity={0.8}
-                        onPress={() => setFilterVisible(true)}
-                    >
-                        <Ionicons name="filter-outline" size={14} color={selectedCategory !== "All" ? "#FFF" : colors.text} />
-                        <Text style={[styles.compareBtnText, { color: selectedCategory !== "All" ? "#FFF" : colors.text }]}>
-                            {selectedCategory !== "All" ? selectedCategory : "Filters"}
-                        </Text>
-                        {selectedCategory !== "All" && (
-                            <TouchableOpacity onPress={() => setSelectedCategory("All")}>
-                                <Ionicons name="close-circle" size={14} color="#FFF" />
-                            </TouchableOpacity>
-                        )}
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -299,33 +286,108 @@ The report will include:\n• Spending trends\n• Category breakdown\n• Perso
                     </Pressable>
                 </Modal>
 
-                {/* ── Category Filter Modal ── */}
-                <Modal visible={filterVisible} transparent animationType="slide" onRequestClose={() => setFilterVisible(false)}>
-                    <Pressable style={styles.modalOverlay} onPress={() => setFilterVisible(false)}>
-                        <Pressable style={[styles.modalSheet, { backgroundColor: isDark ? colors.surface : "#FFF" }]} onPress={() => {}}>
-                            <View style={styles.modalHandleBar} />
+                {/* ── Custom Date Range Picker Modal Card ── */}
+                <Modal visible={customRangeModalVisible} transparent animationType="slide" onRequestClose={() => setCustomRangeModalVisible(false)}>
+                    <Pressable style={styles.modalOverlay} onPress={() => setCustomRangeModalVisible(false)}>
+                        <Pressable style={[styles.modalSheet, { backgroundColor: isDark ? colors.surface : "#FFF", maxWidth: 480, width: "92%", alignSelf: "center", borderRadius: 16, padding: 22 }]} onPress={() => { }}>
                             <View style={styles.modalHeader}>
-                                <Text style={[styles.modalTitle, { color: colors.text }]}>Filter by Category</Text>
-                                <TouchableOpacity onPress={() => setFilterVisible(false)} style={styles.modalCloseBtn}>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                                    <View style={[styles.modalIconCircle, { backgroundColor: "#8B5CF6" }]}>
+                                        <Ionicons name="calendar" size={20} color="#FFF" />
+                                    </View>
+                                    <View>
+                                        <Text style={[styles.modalTitle, { color: colors.text }]}>Custom Date Range</Text>
+                                        <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>Filter transaction data for a specific timeframe</Text>
+                                    </View>
+                                </View>
+                                <TouchableOpacity onPress={() => setCustomRangeModalVisible(false)} style={styles.modalCloseBtn}>
                                     <Ionicons name="close" size={20} color={colors.textSecondary} />
                                 </TouchableOpacity>
                             </View>
-                            <View style={styles.filterChipsWrap}>
-                                {CATEGORIES.map(cat => (
+
+                            {/* Quick Presets */}
+                            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.textSecondary, marginTop: 14, marginBottom: 8 }}>QUICK PRESETS</Text>
+                            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                                {[
+                                    { label: "Last 7 Days", days: 7 },
+                                    { label: "Last 30 Days", days: 30 },
+                                    { label: "Last 90 Days", days: 90 },
+                                ].map((preset) => (
                                     <TouchableOpacity
-                                        key={cat}
-                                        onPress={() => { setSelectedCategory(cat); setFilterVisible(false); }}
-                                        style={[styles.filterChip, {
-                                            backgroundColor: selectedCategory === cat ? "#8B5CF6" : (isDark ? colors.border : "#F1F5F9"),
-                                        }]}
+                                        key={preset.label}
+                                        style={{
+                                            paddingHorizontal: 12,
+                                            paddingVertical: 7,
+                                            borderRadius: 8,
+                                            backgroundColor: isDark ? colors.border : "#F1F5F9",
+                                            borderWidth: 1,
+                                            borderColor: colors.border
+                                        }}
+                                        onPress={() => {
+                                            const end = new Date();
+                                            const start = new Date();
+                                            start.setDate(end.getDate() - preset.days);
+                                            const sStr = start.toISOString().split("T")[0];
+                                            const eStr = end.toISOString().split("T")[0];
+                                            setStartDateInput(sStr);
+                                            setEndDateInput(eStr);
+                                        }}
                                     >
-                                        <Text style={[styles.filterChipText, { color: selectedCategory === cat ? "#FFF" : colors.text }]}>{cat}</Text>
+                                        <Text style={{ fontSize: 12, fontWeight: "600", color: colors.text }}>{preset.label}</Text>
                                     </TouchableOpacity>
                                 ))}
+                            </View>
+
+                            {/* Date Inputs */}
+                            <View style={{ gap: 14, marginBottom: 14 }}>
+                                <View>
+                                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.text, marginBottom: 6 }}>Start Date (YYYY-MM-DD)</Text>
+                                    <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, backgroundColor: isDark ? colors.background : "#F8FAFC" }}>
+                                        <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} style={{ marginRight: 8 }} />
+                                        <TextInput
+                                            value={startDateInput}
+                                            onChangeText={setStartDateInput}
+                                            placeholder="YYYY-MM-DD"
+                                            placeholderTextColor={colors.textSecondary}
+                                            style={{ flex: 1, height: 42, color: colors.text, fontSize: 14 }}
+                                        />
+                                    </View>
+                                </View>
+
+                                <View>
+                                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.text, marginBottom: 6 }}>End Date (YYYY-MM-DD)</Text>
+                                    <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, backgroundColor: isDark ? colors.background : "#F8FAFC" }}>
+                                        <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} style={{ marginRight: 8 }} />
+                                        <TextInput
+                                            value={endDateInput}
+                                            onChangeText={setEndDateInput}
+                                            placeholder="YYYY-MM-DD"
+                                            placeholderTextColor={colors.textSecondary}
+                                            style={{ flex: 1, height: 42, color: colors.text, fontSize: 14 }}
+                                        />
+                                    </View>
+                                </View>
+                            </View>
+
+                            {/* Action Buttons */}
+                            <View style={{ flexDirection: "row", gap: 12, marginTop: 10 }}>
+                                <TouchableOpacity
+                                    style={{ flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}
+                                    onPress={() => setCustomRangeModalVisible(false)}
+                                >
+                                    <Text style={{ fontWeight: "600", color: colors.text }}>Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: "#8B5CF6", alignItems: "center" }}
+                                    onPress={handleApplyCustomRange}
+                                >
+                                    <Text style={{ fontWeight: "600", color: "#FFF" }}>Apply Range</Text>
+                                </TouchableOpacity>
                             </View>
                         </Pressable>
                     </Pressable>
                 </Modal>
+
             </View>
 
             {/* Greeting Card */}
@@ -511,28 +573,6 @@ The report will include:\n• Spending trends\n• Category breakdown\n• Perso
                     </View>
                 </View>
 
-                {/* 2. Smart Insights */}
-                <View style={[styles.infoCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.insightCardTitle, { color: colors.text, marginBottom: 20 }]}>Smart Insights for You</Text>
-                    
-                    <View style={styles.insightsList}>
-                        {aiInsights.map((item, idx) => {
-                            const config = getInsightConfig(item.type);
-                            return (
-                                <TouchableOpacity key={item.id || idx} style={[styles.insightListItem, { borderBottomColor: colors.border, borderBottomWidth: idx === aiInsights.length - 1 ? 0 : 1 }]} onPress={() => handleInsightDetail(item)} activeOpacity={0.85}>
-                                    <View style={[styles.itemIconCircle, { backgroundColor: isDark ? colors.border : config.bg }]}>
-                                        <Ionicons name={config.icon as any} size={18} color={config.color} />
-                                    </View>
-                                    <View style={styles.itemContent}>
-                                        <Text style={[styles.itemTitle, { color: colors.text }]}>{item.title}</Text>
-                                        <Text style={[styles.itemDesc, { color: colors.textSecondary }]}>{item.description}</Text>
-                                    </View>
-                                    <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-                                </TouchableOpacity>
-                            );
-                        })}
-                    </View>
-                </View>
 
                 {/* 3. Personalized Recommendations */}
                 <View style={[styles.infoCard, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -828,33 +868,6 @@ The report will include:\n• Spending trends\n• Category breakdown\n• Perso
             </Pressable>
         </Modal>
 
-        {/* ── Insight Detail Modal ── */}
-        <Modal visible={insightDetailVisible} transparent animationType="slide" onRequestClose={() => setInsightDetailVisible(false)}>
-            <Pressable style={styles.modalOverlay} onPress={() => setInsightDetailVisible(false)}>
-                <Pressable style={[styles.modalSheet, { backgroundColor: isDark ? colors.surface : "#FFF" }]} onPress={() => {}}>
-                    <View style={styles.modalHandleBar} />
-                    <View style={styles.modalHeader}>
-                        <View style={styles.modalHeaderLeft}>
-                            <View style={[styles.modalIconCircle, { backgroundColor: selectedInsight?.type === "warning" ? "#EF4444" : selectedInsight?.type === "success" ? "#10B981" : "#3B82F6" }]}>
-                                <Ionicons name={selectedInsight?.type === "warning" ? "warning-outline" : selectedInsight?.type === "success" ? "leaf-outline" : "information-circle-outline"} size={20} color="#FFF" />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={[styles.modalTitle, { color: colors.text }]}>{selectedInsight?.title}</Text>
-                            </View>
-                        </View>
-                        <TouchableOpacity onPress={() => setInsightDetailVisible(false)} style={styles.modalCloseBtn}>
-                            <Ionicons name="close" size={20} color={colors.textSecondary} />
-                        </TouchableOpacity>
-                    </View>
-                    <View style={[styles.recInfoBox, { backgroundColor: isDark ? colors.background : "#F8FAFC", borderColor: colors.border }]}>
-                        <Text style={[{ color: colors.text, fontSize: 14, lineHeight: 22 }]}>{selectedInsight?.description}</Text>
-                    </View>
-                    <TouchableOpacity style={[styles.modalCta, { backgroundColor: "#3B82F6" }]} onPress={() => setInsightDetailVisible(false)}>
-                        <Text style={styles.modalCtaText}>Dismiss</Text>
-                    </TouchableOpacity>
-                </Pressable>
-            </Pressable>
-        </Modal>
         </View>
     );
 }

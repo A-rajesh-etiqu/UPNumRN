@@ -1,14 +1,37 @@
 const nodemailer = require("nodemailer");
 
-const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "smtp.gmail.com",
-    port: parseInt(process.env.SMTP_PORT) || 587,
-    secure: false,
-    auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-    },
-});
+function getTransporter() {
+    const host = process.env.SMTP_HOST || "smtp.gmail.com";
+    const port = parseInt(process.env.SMTP_PORT) || 587;
+    const user = process.env.SMTP_USER;
+    // Clean up any spaces in case a Google App Password was pasted with spaces: "xxxx xxxx xxxx xxxx"
+    const pass = process.env.SMTP_PASS ? process.env.SMTP_PASS.replace(/\s+/g, "").trim() : "";
+
+    return nodemailer.createTransport({
+        host,
+        port,
+        secure: port === 465,
+        auth: {
+            user,
+            pass,
+        },
+        tls: {
+            rejectUnauthorized: false,
+        },
+    });
+}
+
+function handleMailError(error, context = "email") {
+    if (error?.code === "EAUTH" || error?.responseCode === 535) {
+        console.error(`\n[SMTP Authentication Failed (535 BadCredentials)] while sending ${context}:`);
+        console.error(`Account: ${process.env.SMTP_USER}`);
+        console.error(`Reason: Google Workspace / Gmail blocks regular account passwords on SMTP.`);
+        console.error(`Solution: You must use a 16-character Google App Password in server/.env.`);
+        console.error(`Steps to fix:\n 1. Go to https://myaccount.google.com/apppasswords\n 2. Generate an App Password for 'UpNum'\n 3. Set SMTP_PASS=your-16-char-app-password in server/.env\n`);
+    } else {
+        console.error(`Error sending ${context}:`, error);
+    }
+}
 
 // ─────────────────────────────────────────────────
 // OTP Email — Forgot Password
@@ -109,7 +132,7 @@ const sendOTP = async (to, otp) => {
     `.trim();
 
     try {
-        const info = await transporter.sendMail({
+        const info = await getTransporter().sendMail({
             from: `"UpNum" <${process.env.SMTP_USER}>`,
             to,
             subject: "🔐 Your UpNum Password Reset OTP",
@@ -119,7 +142,7 @@ const sendOTP = async (to, otp) => {
         console.log("OTP email sent:", info.messageId);
         return true;
     } catch (error) {
-        console.error("Error sending OTP email:", error);
+        handleMailError(error, "OTP email");
         return false;
     }
 };
@@ -289,11 +312,11 @@ const sendInvoice = async (to, invoiceData = {}, pdfBuffer = null) => {
             ];
         }
 
-        const info = await transporter.sendMail(mailOptions);
+        const info = await getTransporter().sendMail(mailOptions);
         console.log("Invoice email sent:", info.messageId);
         return true;
     } catch (error) {
-        console.error("Error sending invoice email:", error);
+        handleMailError(error, "invoice email");
         return false;
     }
 };

@@ -23,6 +23,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import Svg, { Path } from "react-native-svg";
 import { useAppTheme } from "../../../theme";
 import { useTransactionStore } from "../../../store/transaction.store";
+import { transactionsService } from "../../../services/transactions.service";
 import { useAuthStore } from "../../../store/auth.store";
 import DashboardHeader from "../../../components/layout/DashboardHeader";
 import { ReportCard } from "../../../components/dashboard/ReportCard";
@@ -30,6 +31,20 @@ import { router } from "../../../navigation/RootNavigation";
 
 // Types
 type TabType = "All" | "Credited" | "Debited";
+
+const IMPORT_CATEGORIES = [
+    "Food & Dining",
+    "Shopping",
+    "Groceries",
+    "Travel & Fuel",
+    "Entertainment",
+    "Utilities & Bills",
+    "Healthcare",
+    "Salary & Income",
+    "Investments",
+    "Transfers",
+    "General"
+];
 
 // SVG Components
 const UpiLogo = () => (
@@ -156,7 +171,22 @@ export default function TransactionsScreen() {
     const [isImportModalVisible, setIsImportModalVisible] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     const [importForm, setImportForm] = useState({ title: '', category: '', amount: '', type: 'expense' as 'expense' | 'income' });
-    const { uploadBulkTransactions } = useTransactionStore();
+    const { uploadBulkTransactions, saveImportedTransactions } = useTransactionStore();
+
+    // PDF & Statement Review Engine State
+    const [isReviewModalVisible, setIsReviewModalVisible] = useState(false);
+    const [statementPreviewData, setStatementPreviewData] = useState<{
+        bankDetected: string;
+        filename: string;
+        totalFound: number;
+        transactions: any[];
+    } | null>(null);
+    const [isSavingImport, setIsSavingImport] = useState(false);
+
+    // Password Protected PDF State
+    const [isPasswordModalVisible, setIsPasswordModalVisible] = useState(false);
+    const [pdfPassword, setPdfPassword] = useState('');
+    const [pendingPdfFile, setPendingPdfFile] = useState<any>(null);
 
     const ITEMS_PER_PAGE = 10;
 
@@ -181,8 +211,18 @@ export default function TransactionsScreen() {
     const handleFileUpload = async () => {
         setIsImportMenuVisible(false);
         try {
+            const types = Platform.OS === 'android'
+                ? ['*/*']
+                : [
+                    'application/pdf',
+                    'text/csv',
+                    'application/vnd.ms-excel',
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'text/comma-separated-values'
+                ];
+
             const result = await DocumentPicker.getDocumentAsync({
-                type: ['text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+                type: types,
                 copyToCacheDirectory: true,
             });
 
@@ -190,26 +230,196 @@ export default function TransactionsScreen() {
 
             const file = result.assets[0];
 
-            setIsImporting(true);
-            const formData = new FormData();
-            formData.append("userId", user?.id || "user-1");
-            formData.append("file", {
-                uri: file.uri,
-                name: file.name,
-                type: file.mimeType || "application/octet-stream",
-            } as any);
+            // If on Android and wild-card was used, filter by extension to provide friendly error
+            const ext = (file.name || '').toLowerCase();
+            const isValid = ext.endsWith('.pdf') || ext.endsWith('.csv') || ext.endsWith('.xlsx') || ext.endsWith('.xls') ||
+                file.mimeType?.includes('pdf') || file.mimeType?.includes('sheet') || file.mimeType?.includes('csv') || file.mimeType?.includes('excel');
 
-            const success = await uploadBulkTransactions(formData, user?.id);
-            setIsImporting(false);
-            if (success) {
-                Alert.alert("Success", "Transactions imported successfully!");
-            } else {
-                Alert.alert("Error", "Failed to upload file");
+            if (!isValid) {
+                Alert.alert("Unsupported File", "Please select a bank statement in PDF, CSV, or Excel (.xlsx) format.");
+                return;
             }
+
+            await processStatementFile(file);
         } catch (error) {
             console.error("File upload error:", error);
+            Alert.alert("Error", "Could not pick document");
+        }
+    };
+
+    const processStatementFile = async (file: any, password = '') => {
+        setIsImporting(true);
+        try {
+            let res: any;
+
+            // Priority 1 on Mobile (iOS / Android): Read file directly via FileSystem into Base64
+            // This completely avoids React Native FormData multipart boundary & ContentResolver streaming issues
+            let base64Content: string | null = null;
+            if (Platform.OS !== 'web' && file.uri) {
+                try {
+                    base64Content = await FileSystem.readAsStringAsync(file.uri, {
+                        encoding: 'base64' as any,
+                    });
+                } catch (fsErr) {
+                    console.warn("FileSystem read failed, attempting FormData fallback:", fsErr);
+                }
+            }
+
+            if (base64Content) {
+                res = await transactionsService.parseStatementFile({
+                    base64File: base64Content,
+                    filename: file.name || "statement.pdf",
+                    password: password || undefined,
+                    userId: user?.id || "user-1",
+                });
+            } else {
+                // Priority 2 (Web or fallback): Use FormData
+                const formData = new FormData();
+                formData.append("userId", user?.id || "user-1");
+
+                if (Platform.OS === 'web') {
+                    if (file.file) {
+                        (formData as any).append("file", file.file, file.name || file.file.name || "statement.pdf");
+                    } else if (file.uri) {
+                        try {
+                            const blobResp = await fetch(file.uri);
+                            const blob = await blobResp.blob();
+                            (formData as any).append("file", blob, file.name || "statement.pdf");
+                        } catch (err) {
+                            formData.append("file", file);
+                        }
+                    } else {
+                        formData.append("file", file);
+                    }
+                } else {
+                    formData.append("file", {
+                        uri: file.uri,
+                        name: file.name || "statement.pdf",
+                        type: file.mimeType || (file.name?.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'),
+                    } as any);
+                }
+
+                if (password) {
+                    formData.append("password", password);
+                }
+
+                res = await transactionsService.parseStatementFile(formData);
+            }
+
             setIsImporting(false);
-            Alert.alert("Error", "An unexpected error occurred during upload");
+
+            if (!res.success) {
+                if (res.isPasswordProtected) {
+                    setPendingPdfFile(file);
+                    setPdfPassword('');
+                    setIsPasswordModalVisible(true);
+                    return;
+                }
+                Alert.alert("Statement Error", res.error || "Failed to process statement file");
+                return;
+            }
+
+            if (!res.transactions || res.transactions.length === 0) {
+                Alert.alert("No Transactions Detected", "We couldn't detect any transaction rows in this file. Please verify the statement layout.");
+                return;
+            }
+
+            setStatementPreviewData({
+                bankDetected: res.bankDetected || "Bank Statement",
+                filename: file.name || "statement.pdf",
+                totalFound: res.totalFound || res.transactions.length,
+                transactions: res.transactions.map((t: any) => ({
+                    ...t,
+                    selected: true,
+                })),
+            });
+            setIsReviewModalVisible(true);
+        } catch (error: any) {
+            console.error("Statement parse error:", error);
+            setIsImporting(false);
+            if (error?.response?.data?.isPasswordProtected || error?.response?.status === 401) {
+                setPendingPdfFile(file);
+                setPdfPassword('');
+                setIsPasswordModalVisible(true);
+                return;
+            }
+            Alert.alert("Import Error", error?.response?.data?.error || "An unexpected error occurred while parsing the statement.");
+        }
+    };
+
+    const handleUnlockPassword = async () => {
+        if (!pdfPassword.trim() || !pendingPdfFile) return;
+        setIsPasswordModalVisible(false);
+        await processStatementFile(pendingPdfFile, pdfPassword.trim());
+    };
+
+    const toggleSelectAll = () => {
+        if (!statementPreviewData) return;
+        const allSelected = statementPreviewData.transactions.every(t => t.selected);
+        setStatementPreviewData({
+            ...statementPreviewData,
+            transactions: statementPreviewData.transactions.map(t => ({
+                ...t,
+                selected: !allSelected,
+            })),
+        });
+    };
+
+    const toggleSelectTx = (id: string) => {
+        if (!statementPreviewData) return;
+        setStatementPreviewData({
+            ...statementPreviewData,
+            transactions: statementPreviewData.transactions.map(t =>
+                t.id === id ? { ...t, selected: !t.selected } : t
+            ),
+        });
+    };
+
+    const updateTxField = (id: string, field: string, val: any) => {
+        if (!statementPreviewData) return;
+        setStatementPreviewData({
+            ...statementPreviewData,
+            transactions: statementPreviewData.transactions.map(t =>
+                t.id === id ? { ...t, [field]: val } : t
+            ),
+        });
+    };
+
+    const deletePreviewTx = (id: string) => {
+        if (!statementPreviewData) return;
+        setStatementPreviewData({
+            ...statementPreviewData,
+            transactions: statementPreviewData.transactions.filter(t => t.id !== id),
+        });
+    };
+
+    const handleConfirmImport = async () => {
+        if (!statementPreviewData) return;
+        const selectedTx = statementPreviewData.transactions.filter(t => t.selected);
+        if (selectedTx.length === 0) {
+            Alert.alert("Selection Required", "Please select at least one transaction to import.");
+            return;
+        }
+
+        setIsSavingImport(true);
+        try {
+            const success = await saveImportedTransactions(user?.id || "user-1", selectedTx);
+            setIsSavingImport(false);
+            if (success) {
+                setIsReviewModalVisible(false);
+                const bank = statementPreviewData.bankDetected;
+                setStatementPreviewData(null);
+                Alert.alert(
+                    "Import Successful! 🎉",
+                    `Successfully imported ${selectedTx.length} transactions from your ${bank} statement.`
+                );
+            } else {
+                Alert.alert("Error", "Failed to save transactions to database.");
+            }
+        } catch (err) {
+            console.error("Save import error:", err);
+            setIsSavingImport(false);
+            Alert.alert("Error", "An unexpected error occurred while saving transactions.");
         }
     };
 
@@ -639,35 +849,51 @@ export default function TransactionsScreen() {
                     animationType="fade"
                 >
                     <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }} activeOpacity={1} onPress={() => setIsImportMenuVisible(false)}>
-                        <View style={{ width: 280, backgroundColor: isDark ? colors.surface : "#FFF", borderRadius: 16, overflow: 'hidden', ...Platform.select({ ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12 }, android: { elevation: 8 }, web: { boxShadow: "0 4px 12px rgba(0,0,0,0.1)" } as any }) }}>
-                            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border, alignItems: 'center' }}>
-                                <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>Import Transactions</Text>
-                                <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>Choose an import method</Text>
+                        <View style={{ width: 330, backgroundColor: isDark ? colors.surface : "#FFF", borderRadius: 16, overflow: 'hidden', ...Platform.select({ ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12 }, android: { elevation: 8 }, web: { boxShadow: "0 4px 16px rgba(0,0,0,0.12)" } as any }) }}>
+                            <View style={{ padding: 18, borderBottomWidth: 1, borderBottomColor: colors.border, alignItems: 'center' }}>
+                                <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text }}>Import Transactions</Text>
+                                <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>Select statement or manual entry</Text>
                             </View>
 
                             <TouchableOpacity
                                 style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}
-                                onPress={() => { setIsImportMenuVisible(false); setIsImportModalVisible(true); }}
+                                onPress={handleFileUpload}
                             >
-                                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: isDark ? '#1e3a8a' : '#E0F2FE', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-                                    <Ionicons name="create-outline" size={18} color="#0284C7" />
+                                <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: isDark ? '#2E1065' : '#F5F3FF', justifyContent: 'center', alignItems: 'center', marginRight: 14 }}>
+                                    <Ionicons name="document-text-outline" size={22} color="#8B5CF6" />
                                 </View>
-                                <View>
-                                    <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>Add Manually</Text>
-                                    <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>Enter one transaction at a time</Text>
+                                <View style={{ flex: 1 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Bank Statement</Text>
+                                        <View style={{ backgroundColor: '#8B5CF6', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 }}>
+                                            <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '700' }}>NEW</Text>
+                                        </View>
+                                    </View>
+                                    <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>PDF (HDFC, SBI, ICICI, Axis...), CSV, Excel</Text>
+                                    <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                                        <View style={{ backgroundColor: isDark ? colors.border : '#F1F5F9', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                            <Text style={{ fontSize: 10, color: colors.textSecondary, fontWeight: '600' }}>.PDF</Text>
+                                        </View>
+                                        <View style={{ backgroundColor: isDark ? colors.border : '#F1F5F9', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                            <Text style={{ fontSize: 10, color: colors.textSecondary, fontWeight: '600' }}>.CSV</Text>
+                                        </View>
+                                        <View style={{ backgroundColor: isDark ? colors.border : '#F1F5F9', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                            <Text style={{ fontSize: 10, color: colors.textSecondary, fontWeight: '600' }}>.XLSX</Text>
+                                        </View>
+                                    </View>
                                 </View>
                             </TouchableOpacity>
 
                             <TouchableOpacity
                                 style={{ flexDirection: 'row', alignItems: 'center', padding: 16 }}
-                                onPress={handleFileUpload}
+                                onPress={() => { setIsImportMenuVisible(false); setIsImportModalVisible(true); }}
                             >
-                                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: isDark ? '#064e3b' : '#DCFCE7', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-                                    <Ionicons name="document-text-outline" size={18} color="#16A34A" />
+                                <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: isDark ? '#1e3a8a' : '#E0F2FE', justifyContent: 'center', alignItems: 'center', marginRight: 14 }}>
+                                    <Ionicons name="create-outline" size={20} color="#0284C7" />
                                 </View>
-                                <View>
-                                    <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>Upload File</Text>
-                                    <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>CSV or Excel (.xls, .xlsx)</Text>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Add Manually</Text>
+                                    <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>Enter one transaction at a time</Text>
                                 </View>
                             </TouchableOpacity>
                         </View>
@@ -746,6 +972,296 @@ export default function TransactionsScreen() {
                                     disabled={isImporting || !importForm.title || !importForm.amount || !importForm.category}
                                 >
                                     {isImporting ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={{ color: "#FFF", fontWeight: '600' }}>Add</Text>}
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </View>
+                </Modal>
+
+                {/* Parsing Loading Modal */}
+                <Modal visible={isImporting} transparent={true} animationType="fade">
+                    <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+                        <View style={{ backgroundColor: isDark ? colors.surface : "#FFF", padding: 26, borderRadius: 18, alignItems: 'center', width: 310, borderWidth: 1, borderColor: colors.border, ...Platform.select({ web: { boxShadow: "0 8px 30px rgba(0,0,0,0.18)" } as any, default: { elevation: 10 } }) }}>
+                            <ActivityIndicator size="large" color="#8B5CF6" />
+                            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginTop: 16, textAlign: 'center' }}>Parsing Statement...</Text>
+                            <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 6, textAlign: 'center', lineHeight: 18 }}>
+                                Extracting transaction dates, merchants, and debit/credit amounts
+                            </Text>
+                        </View>
+                    </View>
+                </Modal>
+
+                {/* PDF Password Unlock Modal */}
+                <Modal visible={isPasswordModalVisible} transparent={true} animationType="fade">
+                    <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+                        <View style={{ backgroundColor: isDark ? colors.surface : "#FFF", padding: 24, borderRadius: 18, width: 340, borderWidth: 1, borderColor: colors.border, ...Platform.select({ web: { boxShadow: "0 8px 30px rgba(0,0,0,0.18)" } as any, default: { elevation: 10 } }) }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+                                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center' }}>
+                                    <Ionicons name="lock-closed" size={20} color="#DC2626" />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>Protected Statement</Text>
+                                    <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>Enter PDF password to unlock</Text>
+                                </View>
+                            </View>
+                            <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 12, lineHeight: 18 }}>
+                                Bank statements typically use your Date of Birth (DDMM), PAN in capital letters, or mobile number as password.
+                            </Text>
+                            <TextInput
+                                style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.text, marginBottom: 18, fontSize: 14, backgroundColor: isDark ? colors.background : "#F8FAFC" }}
+                                placeholder="e.g. 1508 or ABCDE1234F"
+                                placeholderTextColor={colors.textSecondary}
+                                secureTextEntry
+                                value={pdfPassword}
+                                onChangeText={setPdfPassword}
+                            />
+                            <View style={{ flexDirection: 'row', gap: 12 }}>
+                                <TouchableOpacity
+                                    style={{ flex: 1, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: 'center' }}
+                                    onPress={() => { setIsPasswordModalVisible(false); setPendingPdfFile(null); }}
+                                >
+                                    <Text style={{ color: colors.text, fontWeight: '600' }}>Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={{ flex: 1, padding: 12, borderRadius: 10, backgroundColor: '#8B5CF6', alignItems: 'center' }}
+                                    onPress={handleUnlockPassword}
+                                >
+                                    <Text style={{ color: '#FFF', fontWeight: '700' }}>Unlock & Read</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </View>
+                </Modal>
+
+                {/* Statement Review & Import Modal */}
+                <Modal visible={isReviewModalVisible} transparent={true} animationType="slide" onRequestClose={() => setIsReviewModalVisible(false)}>
+                    <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', padding: isDesktop ? 24 : 12 }}>
+                        <View style={{
+                            backgroundColor: isDark ? colors.surface : "#FFF",
+                            width: '100%',
+                            maxWidth: 860,
+                            maxHeight: '92%',
+                            borderRadius: 20,
+                            overflow: 'hidden',
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            ...Platform.select({ web: { boxShadow: "0 12px 40px rgba(0,0,0,0.2)" } as any, default: { elevation: 12 } })
+                        }}>
+                            {/* Modal Header */}
+                            <View style={{ paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isDark ? colors.background : "#F8FAFC" }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+                                    <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: '#8B5CF6', justifyContent: 'center', alignItems: 'center' }}>
+                                        <Ionicons name="sparkles" size={20} color="#FFF" />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                            <Text style={{ fontSize: 17, fontWeight: '800', color: colors.text }}>Review Transactions</Text>
+                                            <View style={{ backgroundColor: isDark ? '#2E1065' : '#F5F3FF', borderWidth: 1, borderColor: '#8B5CF6', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                                                <Text style={{ fontSize: 11, fontWeight: '700', color: '#8B5CF6' }}>{statementPreviewData?.bankDetected || "Bank Statement"}</Text>
+                                            </View>
+                                        </View>
+                                        <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1}>
+                                            {statementPreviewData?.filename} • {statementPreviewData?.transactions?.length || 0} rows extracted
+                                        </Text>
+                                    </View>
+                                </View>
+                                <TouchableOpacity onPress={() => setIsReviewModalVisible(false)} style={{ padding: 6, borderRadius: 20, backgroundColor: isDark ? colors.border : '#F1F5F9' }}>
+                                    <Ionicons name="close" size={20} color={colors.textSecondary} />
+                                </TouchableOpacity>
+                            </View>
+
+                            {/* Summary Stats Strip */}
+                            {statementPreviewData && (() => {
+                                const txs = statementPreviewData.transactions || [];
+                                const selectedTxs = txs.filter(t => t.selected);
+                                const credits = selectedTxs.filter(t => t.type === 'income').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+                                const debits = selectedTxs.filter(t => t.type === 'expense').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+                                const allSelected = txs.length > 0 && txs.every(t => t.selected);
+
+                                return (
+                                    <View style={{ paddingHorizontal: 20, paddingVertical: 12, backgroundColor: isDark ? colors.surface : "#FFF", borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                            <View style={{ backgroundColor: isDark ? colors.border : '#F1F5F9', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }}>
+                                                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>
+                                                    {selectedTxs.length} of {txs.length} Selected
+                                                </Text>
+                                            </View>
+                                            <View style={{ backgroundColor: isDark ? '#064e3b' : '#DCFCE7', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }}>
+                                                <Text style={{ fontSize: 12, fontWeight: '700', color: '#16A34A' }}>
+                                                    + ₹{credits.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                                </Text>
+                                            </View>
+                                            <View style={{ backgroundColor: isDark ? '#7f1d1d' : '#FEE2E2', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }}>
+                                                <Text style={{ fontSize: 12, fontWeight: '700', color: '#DC2626' }}>
+                                                    - ₹{debits.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                        <TouchableOpacity
+                                            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
+                                            onPress={toggleSelectAll}
+                                        >
+                                            <Ionicons name={allSelected ? "checkbox" : "square-outline"} size={16} color="#8B5CF6" />
+                                            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>
+                                                {allSelected ? "Deselect All" : "Select All"}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                );
+                            })()}
+
+                            {/* Transactions Table / List */}
+                            <ScrollView style={{ maxHeight: 420, paddingHorizontal: 16, paddingVertical: 12 }} showsVerticalScrollIndicator={true}>
+                                {statementPreviewData?.transactions?.map((item, idx) => (
+                                    <View
+                                        key={item.id || idx}
+                                        style={{
+                                            backgroundColor: isDark ? colors.background : (item.selected ? "#FFFFFF" : "#F8FAFC"),
+                                            borderWidth: 1,
+                                            borderColor: item.selected ? '#8B5CF6' : colors.border,
+                                            borderRadius: 14,
+                                            padding: 14,
+                                            marginBottom: 10,
+                                            opacity: item.selected ? 1 : 0.6,
+                                            gap: 10
+                                        }}
+                                    >
+                                        {/* Row 1: Checkbox, Date, Amount, Type & Delete */}
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                            <TouchableOpacity
+                                                style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                                                onPress={() => toggleSelectTx(item.id)}
+                                            >
+                                                <Ionicons
+                                                    name={item.selected ? "checkbox" : "square-outline"}
+                                                    size={20}
+                                                    color={item.selected ? "#8B5CF6" : colors.textSecondary}
+                                                />
+                                                <View style={{ backgroundColor: isDark ? colors.border : '#F1F5F9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                                                    <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textSecondary }}>{item.date}</Text>
+                                                </View>
+                                            </TouchableOpacity>
+
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                                {/* Type Toggle */}
+                                                <TouchableOpacity
+                                                    style={{
+                                                        paddingHorizontal: 8,
+                                                        paddingVertical: 3,
+                                                        borderRadius: 6,
+                                                        backgroundColor: item.type === 'income' ? (isDark ? '#064e3b' : '#DCFCE7') : (isDark ? '#7f1d1d' : '#FEE2E2'),
+                                                        borderWidth: 1,
+                                                        borderColor: item.type === 'income' ? '#16A34A' : '#DC2626'
+                                                    }}
+                                                    onPress={() => updateTxField(item.id, 'type', item.type === 'income' ? 'expense' : 'income')}
+                                                >
+                                                    <Text style={{ fontSize: 11, fontWeight: '700', color: item.type === 'income' ? '#16A34A' : '#DC2626' }}>
+                                                        {item.type === 'income' ? 'Income' : 'Expense'}
+                                                    </Text>
+                                                </TouchableOpacity>
+
+                                                {/* Amount Input */}
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 8, height: 32, backgroundColor: isDark ? colors.surface : '#FFF' }}>
+                                                    <Text style={{ fontSize: 12, fontWeight: '700', color: item.type === 'income' ? '#16A34A' : '#DC2626', marginRight: 2 }}>₹</Text>
+                                                    <TextInput
+                                                        style={{ fontSize: 13, fontWeight: '700', color: colors.text, width: 80, padding: 0 }}
+                                                        keyboardType="numeric"
+                                                        value={String(item.amount)}
+                                                        onChangeText={(val) => updateTxField(item.id, 'amount', parseFloat(val) || 0)}
+                                                    />
+                                                </View>
+
+                                                {/* Delete Button */}
+                                                <TouchableOpacity onPress={() => deletePreviewTx(item.id)} style={{ padding: 4 }}>
+                                                    <Ionicons name="trash-outline" size={17} color="#EF4444" />
+                                                </TouchableOpacity>
+                                            </View>
+                                        </View>
+
+                                        {/* Row 2: Editable Title & Narration */}
+                                        <View>
+                                            <TextInput
+                                                style={{
+                                                    fontSize: 14,
+                                                    fontWeight: '700',
+                                                    color: colors.text,
+                                                    borderWidth: 1,
+                                                    borderColor: colors.border,
+                                                    borderRadius: 8,
+                                                    paddingHorizontal: 10,
+                                                    paddingVertical: 6,
+                                                    backgroundColor: isDark ? colors.surface : '#FFF'
+                                                }}
+                                                placeholder="Transaction Title"
+                                                placeholderTextColor={colors.textSecondary}
+                                                value={item.title}
+                                                onChangeText={(val) => updateTxField(item.id, 'title', val)}
+                                            />
+                                            {item.description ? (
+                                                <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 4, fontStyle: 'italic' }} numberOfLines={1}>
+                                                    Raw: {item.description}
+                                                </Text>
+                                            ) : null}
+                                        </View>
+
+                                        {/* Row 3: Category Chips */}
+                                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 2 }}>
+                                            {IMPORT_CATEGORIES.map((cat) => (
+                                                <TouchableOpacity
+                                                    key={cat}
+                                                    style={{
+                                                        paddingHorizontal: 8,
+                                                        paddingVertical: 3,
+                                                        borderRadius: 6,
+                                                        backgroundColor: item.category === cat ? '#8B5CF6' : (isDark ? colors.border : '#F1F5F9'),
+                                                    }}
+                                                    onPress={() => updateTxField(item.id, 'category', cat)}
+                                                >
+                                                    <Text style={{ fontSize: 11, fontWeight: item.category === cat ? '700' : '500', color: item.category === cat ? '#FFF' : colors.text }}>
+                                                        {cat}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </ScrollView>
+                                    </View>
+                                ))}
+                            </ScrollView>
+
+                            {/* Modal Footer Actions */}
+                            <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', gap: 12, backgroundColor: isDark ? colors.background : "#F8FAFC" }}>
+                                <TouchableOpacity
+                                    style={{ flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: 'center', backgroundColor: colors.surface }}
+                                    onPress={() => setIsReviewModalVisible(false)}
+                                    disabled={isSavingImport}
+                                >
+                                    <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>Cancel</Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={{
+                                        flex: 2,
+                                        paddingVertical: 12,
+                                        borderRadius: 10,
+                                        backgroundColor: '#8B5CF6',
+                                        alignItems: 'center',
+                                        flexDirection: 'row',
+                                        justifyContent: 'center',
+                                        gap: 8,
+                                        opacity: isSavingImport ? 0.7 : 1
+                                    }}
+                                    onPress={handleConfirmImport}
+                                    disabled={isSavingImport}
+                                >
+                                    {isSavingImport ? (
+                                        <ActivityIndicator size="small" color="#FFF" />
+                                    ) : (
+                                        <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
+                                    )}
+                                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFF' }}>
+                                        {isSavingImport
+                                            ? "Saving Transactions..."
+                                            : `Import (${statementPreviewData?.transactions?.filter(t => t.selected).length || 0}) Transactions`}
+                                    </Text>
                                 </TouchableOpacity>
                             </View>
                         </View>

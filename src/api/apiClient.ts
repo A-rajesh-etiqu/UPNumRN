@@ -3,6 +3,7 @@ import axios, {
     InternalAxiosRequestConfig,
 } from "axios";
 
+import { Platform } from "react-native";
 import { ENV } from "../config/env";
 import { secureStorage } from "../services/secureStorage";
 import { useAuthStore } from "../store/auth.store";
@@ -25,6 +26,12 @@ apiClient.interceptors.request.use(
         if (token) {
             config.headers.Authorization =
                 `Bearer ${token}`;
+        }
+
+        // When sending FormData on Web or Native, remove default Content-Type header so the platform/browser sets multipart/form-data with boundary
+        if (typeof FormData !== "undefined" && config.data instanceof FormData) {
+            delete config.headers["Content-Type"];
+            delete config.headers["content-type"];
         }
 
         return config;

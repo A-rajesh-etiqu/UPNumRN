@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import apiClient from "../api/apiClient";
 import { RecentTransaction } from "../types/dashboard";
 
@@ -20,11 +21,31 @@ export const transactionsService = {
         return response.data;
     },
     async uploadBulkTransactions(formData: FormData): Promise<{ success: boolean, message: string }> {
+        const headers: Record<string, any> = Platform.OS === "web" ? { "Content-Type": undefined } : { "Content-Type": "multipart/form-data" };
         const response = await apiClient.post<{ success: boolean, message: string }>("/transactions/bulk", formData, {
-            headers: {
-                "Content-Type": "multipart/form-data",
-            }
+            headers,
         });
+        return response.data;
+    },
+    async parseStatementFile(payload: FormData | { base64File: string; filename: string; password?: string; userId?: string }): Promise<{
+        success: boolean;
+        filename?: string;
+        bankDetected?: string;
+        totalFound?: number;
+        transactions?: any[];
+        isPasswordProtected?: boolean;
+        error?: string;
+    }> {
+        if (payload instanceof FormData) {
+            const response = await apiClient.post("/transactions/parse-statement", payload);
+            return response.data;
+        } else {
+            const response = await apiClient.post("/transactions/parse-statement", payload);
+            return response.data;
+        }
+    },
+    async saveImportedTransactions(userId: string, transactions: any[]): Promise<{ success: boolean, count: number, message: string }> {
+        const response = await apiClient.post("/transactions/save-imported", { userId, transactions });
         return response.data;
     }
 };
